@@ -1,0 +1,101 @@
+.node {
+  padding: 10px 12px;
+  min-width: 160px;
+  min-height: 44px;
+  border-radius: 12px;
+  border: 1px solid #e2e8f0;
+  background: #ffffff;
+  color: #000000;
+  position: relative;
+  display: grid;
+  align-content: center;
+  justify-items: center;
+  height: 100%;
+  box-sizing: border-box;
+}
+
+.label {
+  font-size: 12px;
+  font-weight: 700;
+  text-align: center;
+  width: 100%;
+  line-height: 1.4;
+  margin: 0;
+  white-space: pre-wrap;
+  word-break: break-word;
+}
+
+.subtitle {
+  font-size: 11px;
+  color: #64748b;
+  text-align: center;
+  width: 100%;
+  margin-top: 2px;
+  line-height: 1.4;
+  white-space: pre-wrap;
+  word-break: break-word;
+}
+
+.input {
+  width: 100%;
+  border: none;
+  outline: none;
+  background: transparent;
+  font-size: 12px;
+  font-weight: 700;
+  text-align: center;
+  line-height: 1.4;
+  margin: 0;
+  padding: 0;
+  resize: none;
+  font-family: inherit;
+  height: auto;
+  overflow: hidden;
+  min-height: 1.4em;
+}
+
+.inputSubtitle {
+  width: 100%;
+  border: none;
+  outline: none;
+  background: transparent;
+  font-size: 11px;
+  text-align: center;
+  color: #64748b;
+  margin-top: 2px;
+  line-height: 1.4;
+  padding: 0;
+  resize: none;
+  font-family: inherit;
+  height: auto;
+  overflow: hidden;
+  min-height: 1.4em;
+}
+
+.handle {
+  width: 14px;
+  height: 14px;
+  border-radius: 999px;
+  border: 1px solid #cbd5e1;
+  background: #ffffff;
+  opacity: 0;
+  transition: opacity 120ms ease;
+}
+
+/* hover 才显示“圆点” */
+.node:hover .handle {
+  opacity: 1;
+}
+
+/* 连接/拖拽时仍隐藏（避免满屏圆点闪烁） */
+.react-flow__node.dragging .handle,
+.react-flow__node.connecting .handle {
+  opacity: 0;
+}
+
+.resizer .react-flow__resize-control {
+  transform: scale(0.85);
+  transform-origin: center center;
+  border-radius: 0;
+}
+
