@@ -94,35 +94,14 @@
   min-height: 1.4em;
 }
 
-/* 左侧居中：左侧一块垂直居中，文字从左到右 */
-.leftCenterWrap {
-  position: absolute;
-  left: 0;
-  top: 0;
-  bottom: 0;
-  max-width: 50%;
-  padding-left: 12px;
-  padding-right: 8px;
-  display: flex;
-  flex-direction: column;
-  justify-content: center;
-  align-items: flex-start;
-  text-align: left;
-  direction: ltr;
-  pointer-events: none;
-}
-
-.leftCenterWrap .titleLeft,
-.leftCenterWrap .titleInputLeft {
-  pointer-events: auto;
-}
-
-.leftCenterWrap .subtitleLeft,
-.leftCenterWrap .subtitleInputLeft {
-  pointer-events: auto;
-}
-
+/* Left-center position styles */
 .titleLeft {
+  position: absolute;
+  top: 50%;
+  left: 12px;
+  transform: translateY(-50%);
+  writing-mode: vertical-rl;
+  text-orientation: mixed;
   font-size: 13px;
   font-weight: 800;
   color: #1e3a8a;
@@ -133,7 +112,12 @@
 }
 
 .titleInputLeft {
-  width: 100%;
+  position: absolute;
+  top: 50%;
+  left: 12px;
+  transform: translateY(-50%);
+  writing-mode: vertical-rl;
+  text-orientation: mixed;
   border: none;
   outline: none;
   background: transparent;
@@ -149,7 +133,12 @@
 }
 
 .subtitleLeft {
-  margin-top: 6px;
+  position: absolute;
+  top: 50%;
+  left: 32px;
+  transform: translateY(-50%);
+  writing-mode: vertical-rl;
+  text-orientation: mixed;
   font-size: 11px;
   font-weight: 400;
   color: #64748b;
@@ -161,8 +150,12 @@
 }
 
 .subtitleInputLeft {
-  margin-top: 6px;
-  width: 100%;
+  position: absolute;
+  top: 50%;
+  left: 32px;
+  transform: translateY(-50%);
+  writing-mode: vertical-rl;
+  text-orientation: mixed;
   border: none;
   outline: none;
   background: transparent;

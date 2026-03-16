@@ -100,44 +100,6 @@ const GRID: [number, number] = [8, 8]
 const GROUP_PADDING = GRID[0] // 群组内边距跟随网格
 const GROUP_TITLE_H = GRID[1] * 4 // 标题高度为网格的4倍 (32px)
 
-function hexToRgbColor(hex: string): { r: number; g: number; b: number } | null {
-  const t = hex.replace(/^#/, '').trim()
-  if (t.length !== 3 && t.length !== 6) return null
-  if (t.length === 3) {
-    const r = parseInt(t[0] + t[0], 16)
-    const g = parseInt(t[1] + t[1], 16)
-    const b = parseInt(t[2] + t[2], 16)
-    return { r, g, b }
-  }
-  return {
-    r: parseInt(t.slice(0, 2), 16),
-    g: parseInt(t.slice(2, 4), 16),
-    b: parseInt(t.slice(4, 6), 16),
-  }
-}
-
-function ensureAlpha12(color: string): string {
-  const v = color.trim()
-  if (!v) return v
-  // 已经是 rgba 的，保留用户指定透明度
-  if (v.startsWith('rgba')) return v
-  // 只有 rgb 的，按 12% 透明度包一层
-  if (/^rgb\(/i.test(v)) {
-    const m = v.match(/rgb\s*\(\s*(\d+)\s*,\s*(\d+)\s*,\s*(\d+)\s*\)/i)
-    if (m) {
-      const [r, g, b] = [m[1], m[2], m[3]].map(Number)
-      return `rgba(${r},${g},${b},0.12)`
-    }
-    return v
-  }
-  // hex 颜色 => rgba(...,0.12)
-  const rgb = hexToRgbColor(v)
-  if (rgb) return `rgba(${rgb.r},${rgb.g},${rgb.b},0.12)`
-  const rgb2 = hexToRgbColor('#' + v)
-  if (rgb2) return `rgba(${rgb2.r},${rgb2.g},${rgb2.b},0.12)`
-  return v
-}
-
 /** 边默认颜色与默认终点箭头（React Flow MarkerType），所有新边/未设置箭头的边都带终点箭头 */
 const DEFAULT_EDGE_COLOR = '#94a3b8'
 const DEFAULT_MARKER_END = {
@@ -1596,8 +1558,7 @@ function EditorInner({ onBackHome, source, previewSnapshot, readOnly: _readOnly 
 
     const groupId = nowId('g')
     const title = `群组 ${groupId.slice(-4)}`
-    // 左侧标题不占用垂直高度，只在左右挤出空间；顶部标题才需要预留 titleH
-    const titleH = 0
+    const titleH = title.trim() ? GROUP_TITLE_H : 0
 
     const parents = new Set(picked.map((n) => n.parentId).filter(Boolean) as string[])
     const commonParentId = parents.size === 1 ? [...parents][0] : undefined
@@ -1625,7 +1586,6 @@ function EditorInner({ onBackHome, source, previewSnapshot, readOnly: _readOnly 
       height: groupH,
       data: {
         title,
-        titlePosition: 'left-center',
         stroke: '#3b82f6',
         fill: 'rgba(59, 130, 246, 0.10)',
       } satisfies GroupNodeData,
@@ -1647,107 +1607,20 @@ function EditorInner({ onBackHome, source, previewSnapshot, readOnly: _readOnly 
       next = next.concat(groupNode)
       next = sortNodesParentFirst(next)
       next = assignZIndex(next)
-  const updateGroupStyle = useCallback(
-    (groupId: string, patch: Partial<GroupNodeData>) => {
-      setNodes((nds) => {
-        const next = nds.map((n) => (n.id === groupId ? { ...n, data: { ...(n.data ?? {}), ...patch } } : n))
       pushHistory(next, edges, 'group')
       return next
     })
   }, [assignZIndex, edges, getAbsolutePosition, getNodeSize, isGroupNode, nodes, pushHistory, selectedNodesNow, sortNodesParentFirst])
 
+  const updateGroupStyle = useCallback(
+    (groupId: string, patch: Partial<GroupNodeData>) => {
+      setNodes((nds) => {
+        const next = nds.map((n) => (n.id === groupId ? { ...n, data: { ...(n.data ?? {}), ...patch } } : n))
         pushHistory(next, edges, 'group-style')
         return next
       })
     },
     [edges, pushHistory],
-  )
-
-  /** 根据子节点自动排版：调整编组大小与位置以包裹所有子节点 */
-      pushHistory(next, edges, 'group')
-      return next
-    })
-  }, [assignZIndex, edges, getAbsolutePosition, getNodeSize, isGroupNode, nodes, pushHistory, selectedNodesNow, sortNodesParentFirst])
-
-  const fitGroupToChildren = useCallback(
-    (groupId: string) => {
-      const byId = new Map(nodes.map((n) => [n.id, n]))
-      const group = byId.get(groupId)
-      if (!group || !isGroupNode(group)) return
-      const children = nodes.filter((n) => n.parentId === groupId)
-      if (children.length === 0) return
-
-      const bounds = children.reduce(
-        (acc, n) => {
-          const pos = getAbsolutePosition(n, byId)
-          const { w, h } = getNodeSize(n)
-          acc.minX = Math.min(acc.minX, pos.x)
-          acc.minY = Math.min(acc.minY, pos.y)
-          acc.maxX = Math.max(acc.maxX, pos.x + w)
-          acc.maxY = Math.max(acc.maxY, pos.y + h)
-          return acc
-        },
-        { minX: Infinity, minY: Infinity, maxX: -Infinity, maxY: -Infinity },
-      )
-      const title = (group.data as GroupNodeData)?.title?.trim()
-      // 自动包裹时，同样只在有顶部标题时才额外预留高度；当前默认是左侧标题，按 1 格 GAP 计算
-      const titlePos = (group.data as GroupNodeData)?.titlePosition ?? 'top-center'
-      const titleH = title && titlePos === 'top-center' ? GROUP_TITLE_H : 0
-      const groupAbsX = bounds.minX - GROUP_PADDING
-      const groupAbsY = bounds.minY - GROUP_PADDING - titleH
-      const groupW = bounds.maxX - bounds.minX + GROUP_PADDING * 2
-      const groupH = bounds.maxY - bounds.minY + GROUP_PADDING * 2 + titleH
-
-      setNodes((nds) => {
-        const byId2 = new Map(nds.map((n) => [n.id, n]))
-        const groupAbs = group.parentId
-          ? getAbsolutePosition(byId2.get(group.parentId)!, byId2)
-          : { x: 0, y: 0 }
-        const groupPos = {
-          x: groupAbsX - (group.parentId ? groupAbs.x : 0),
-          y: groupAbsY - (group.parentId ? groupAbs.y : 0),
-        }
-        const childIds = new Set(children.map((c) => c.id))
-        let next = nds.map((n) => {
-          if (n.id === groupId) {
-            return {
-              ...n,
-              position: groupPos,
-              width: groupW,
-              height: groupH,
-              style: { ...(n.style as object), width: groupW, height: groupH },
-            }
-          }
-          if (!childIds.has(n.id)) return n
-          const absPos = getAbsolutePosition(n, byId2)
-          return {
-            ...n,
-            position: { x: absPos.x - groupAbsX, y: absPos.y - groupAbsY },
-          }
-        })
-        next = sortNodesParentFirst(next)
-        next = assignZIndex(next)
-        pushHistory(next, edges, 'fit-group')
-        return next
-      })
-    },
-    [assignZIndex, edges, getAbsolutePosition, getNodeSize, isGroupNode, nodes, pushHistory, sortNodesParentFirst],
-  )
-
-  const updateGroupStyle = useCallback(
-    (groupId: string, patch: Partial<GroupNodeData>) => {
-      setNodes((nds) => {
-        const next = nds.map((n) => (n.id === groupId ? { ...n, data: { ...(n.data ?? {}), ...patch } } : n))
-        pushHistory(next, edges, 'group-style')
-        return next
-      })
-      // 当标题位置发生变化（无论切到上方还是左侧）时，都自动根据子节点重新包裹编组，
-      // 这样可以在左侧模式预留标题带，在上方模式预留顶部标题区，并保持 GAP。
-      if (Object.prototype.hasOwnProperty.call(patch, 'titlePosition')) {
-        window.setTimeout(() => fitGroupToChildren(groupId), 0)
-      }
-    },
-    [edges, fitGroupToChildren, pushHistory],
   )
 
   // Group 双击标题编辑：来自 GroupNode 的自定义事件
@@ -2309,23 +2182,6 @@ function EditorInner({ onBackHome, source, previewSnapshot, readOnly: _readOnly 
                       <span className={styles.menuKbd}>Ctrl/Cmd+D</span>
                     </button>
                   )}
-                  {menu.nodeType === 'group' && menu.nodeId && (
-                    <button
-                      className={styles.menuItem}
-                      type="button"
-                      onClick={() => {
-                        fitGroupToChildren(menu.nodeId!)
-                        closeMenu()
-                      }}
-                    >
-                      <span className={styles.menuLabel}>
-                        <span className={styles.menuIcon}>
-                          <AlignHorizontalDistributeCenter size={14} />
-                        </span>
-                        <span>根据子节点调整大小</span>
-                      </span>
-                    </button>
-                  )}
                   {menu.nodeType === 'asset' && menu.nodeId && (
                     <button
                       className={styles.menuItem}
@@ -2408,7 +2264,7 @@ function EditorInner({ onBackHome, source, previewSnapshot, readOnly: _readOnly 
                 </>
               )}
             </div>
-        )}
+          )}
         </ReactFlow>
 
         <input
@@ -2417,6 +2273,27 @@ function EditorInner({ onBackHome, source, previewSnapshot, readOnly: _readOnly 
           type="file"
           accept="application/json,.json"
           onChange={onImportFile}
+        />
+      </main>
+
+      {!isPreview && (
+        <aside className={styles.inspector}>
+          <div className={styles.sectionTitle}>属性面板</div>
+
+        {!selectedNode && !selectedEdge && <div className={styles.muted}>未选中节点/边</div>}
+
+        {selectedNode && (
+          <div className={styles.form}>
+            <div className={styles.formTitle}>
+              {selectedNode.type === 'group'
+                ? `群组：${((selectedNode.data as GroupNodeData | undefined)?.title ||
+                    '未命名群组') as string}`
+                : selectedNode.type === 'asset'
+                ? `素材：${((selectedNode.data as any)?.assetName || '未命名素材') as string}`
+                : `节点：${(((selectedNode.data as any)?.title ??
+                    selectedNode.data?.label ??
+                    '未命名节点') as string)}`}
+            </div>
 
             {selectedNode.type === 'asset' && (
               <div className={styles.mutedSmall}>
@@ -2499,13 +2376,6 @@ function EditorInner({ onBackHome, source, previewSnapshot, readOnly: _readOnly 
 
             {selectedNode.type === 'group' && (
               <>
-                <button
-                  type="button"
-                  className={styles.btn}
-                  onClick={() => fitGroupToChildren(selectedNode.id)}
-                >
-                  根据子节点调整大小
-                </button>
                 <label className={styles.checkboxRow}>
                   <input
                     type="checkbox"
@@ -2530,7 +2400,7 @@ function EditorInner({ onBackHome, source, previewSnapshot, readOnly: _readOnly 
                   <ColorEditor
                     value={((selectedNode.data as GroupNodeData | undefined)?.titleColor ?? '') as string}
                     onChange={(v) => updateGroupStyle(selectedNode.id, { titleColor: v })}
-                    placeholder="rgba(0,0,0,0.8)"
+                    placeholder="#1e3a8a"
                     showAlpha={true}
                   />
                 </label>
@@ -2563,45 +2433,14 @@ function EditorInner({ onBackHome, source, previewSnapshot, readOnly: _readOnly 
                   <div className={styles.labelText}>底色（hex + 透明度或 rgba）</div>
                   <ColorEditor
                     value={((selectedNode.data as GroupNodeData | undefined)?.fill ?? '') as string}
-                    onChange={(v) => updateGroupStyle(selectedNode.id, { fill: ensureAlpha12(v) })}
-                    placeholder="rgba(59,130,246,0.12)"
+                    onChange={(v) => updateGroupStyle(selectedNode.id, { fill: v })}
+                    placeholder="rgba(59,130,246,0.1)"
                     showPicker={true}
                     showAlpha={true}
                   />
                 </label>
               </>
             )}
-          </div>
-        />
-      </main>
-
-      {!isPreview && (
-        <aside className={styles.inspector}>
-          <div className={styles.sectionTitle}>属性面板</div>
-
-        {!selectedNode && !selectedEdge && <div className={styles.muted}>未选中节点/边</div>}
-
-        {selectedNode && (
-          <div className={styles.form}>
-            <div className={styles.formTitle}>
-              {selectedNode.type === 'group'
-                ? `群组：${((selectedNode.data as GroupNodeData | undefined)?.title ||
-                    '未命名群组') as string}`
-                : selectedNode.type === 'asset'
-                ? `素材：${((selectedNode.data as any)?.assetName || '未命名素材') as string}`
-                : `节点：${(((selectedNode.data as any)?.title ??
-                    selectedNode.data?.label ??
-                    '未命名节点') as string)}`}
-            </div>
-          </label>
-            <label className={styles.checkboxRow}>
-              <input
-                type="checkbox"
-                checked={Boolean(selectedEdge.animated)}
-                onChange={(e) => updateSelectedEdge({ animated: e.target.checked })}
-              />
-              <span>Animated</span>
-            </label>
           </div>
         )}
 
@@ -2832,7 +2671,17 @@ function EditorInner({ onBackHome, source, previewSnapshot, readOnly: _readOnly 
                 <span>双向箭头</span>
               </label>
             </div>
-          )}
+          </label>
+            <label className={styles.checkboxRow}>
+              <input
+                type="checkbox"
+                checked={Boolean(selectedEdge.animated)}
+                onChange={(e) => updateSelectedEdge({ animated: e.target.checked })}
+              />
+              <span>Animated</span>
+            </label>
+          </div>
+        )}
 
         {/* Template modal removed */}
         </aside>
