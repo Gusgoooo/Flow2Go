@@ -9,6 +9,8 @@ export type AssetNodeData = {
   assetWidth?: number
   assetHeight?: number
   colorOverride?: GradientValue
+  /** 旋转角度（度数），顺时针，默认 0 */
+  rotation?: number
 }
 
 const DEFAULT_WIDTH = 120
@@ -23,18 +25,27 @@ export function AssetNode(props: NodeProps) {
   const selected = (props as any).selected
   const isSvg = data.assetType === 'svg'
   const colorOverride = data.colorOverride
+   // 旋转角度（度数）
+  const rotation = Number.isFinite(data.rotation) ? (data.rotation as number) : 0
 
   const onResize = useCallback(
-    (_event: unknown, params: { width: number; height: number }) => {
+    (_event: unknown, params: { x: number; y: number; width: number; height: number }) => {
+      const { x, y, width, height } = params
       rf.setNodes((nds) =>
         nds.map((n) =>
           n.id === props.id
             ? {
                 ...n,
+                // 让 NodeResizer 计算的左上角作为新的 position，
+                // 这样拖拽哪个角，视觉上就从哪个角拉伸，而不是绕中心缩放
+                position:
+                  Number.isFinite(x) && Number.isFinite(y)
+                    ? { x, y }
+                    : n.position,
                 data: {
                   ...(n.data ?? {}),
-                  assetWidth: Math.round(params.width),
-                  assetHeight: Math.round(params.height),
+                  assetWidth: Math.round(width),
+                  assetHeight: Math.round(height),
                 },
               }
             : n,
@@ -66,6 +77,8 @@ export function AssetNode(props: NodeProps) {
         width: w,
         height: h,
         position: 'relative',
+        transform: rotation ? `rotate(${rotation}deg)` : undefined,
+        transformOrigin: 'center center',
       }}
     >
       <NodeResizer

@@ -13,6 +13,7 @@
     "@floating-ui/react": "^0.27.19",
     "@xyflow/react": "^12.10.1",
     "dagre": "^0.8.5",
+    "jszip": "^3.10.1",
     "lucide-react": "^0.577.0",
     "react": "^19.2.0",
     "react-colorful": "^5.6.1",
@@ -21,6 +22,7 @@
   "devDependencies": {
     "@eslint/js": "^9.39.1",
     "@types/dagre": "^0.7.54",
+    "@types/jszip": "^3.4.0",
     "@types/node": "^24.10.1",
     "@types/react": "^19.2.7",
     "@types/react-dom": "^19.2.3",

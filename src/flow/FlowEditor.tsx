@@ -29,6 +29,7 @@ import {
   type EdgeChange,
   type OnSelectionChangeParams,
 } from '@xyflow/react'
+import JSZip from 'jszip'
 import {
   AlignLeft,
   AlignCenterHorizontal,
@@ -49,6 +50,7 @@ import { ColorEditor } from './ColorEditor'
 import { AssetNode, type AssetNodeData } from './AssetNode'
 import { GradientColorEditor, type GradientValue } from './GradientColorEditor'
 import { TextNode } from './TextNode'
+import { InlineInspector } from './InlineInspector'
 // overview 示例入口已移除
 
 export type AssetItem = {
@@ -251,8 +253,9 @@ function Sidebar({
 
   return (
     <aside className={styles.sidebar}>
-      <div className={styles.sidebarHeader}>
-        <div className={styles.titleRow}>
+      <div className={styles.sidebarInner}>
+        <div className={styles.sidebarHeader}>
+          <div className={styles.titleRow}>
           {onBackHome && (
             <button type="button" className={styles.backBtn} onClick={onBackHome} aria-label="返回首页">
               ←
@@ -289,9 +292,10 @@ function Sidebar({
               {fileName}
             </div>
           )}
+          </div>
         </div>
-      </div>
 
+        <div className={styles.sidebarScroll}>
       <div className={styles.section}>
         <div className={styles.sectionTitle}>节点库（拖拽到画布）</div>
         <div className={styles.palette}>
@@ -422,6 +426,11 @@ function Sidebar({
         )}
       </div>
 
+        </div>
+        <div className={styles.sidebarFooter}>
+          所有记录都储存在本地，保证您的数据安全
+        </div>
+      </div>
     </aside>
   )
 }
@@ -447,6 +456,13 @@ function EditorInner({ onBackHome, source, previewSnapshot, readOnly: _readOnly 
   const rf = useReactFlow<FlowNode, FlowEdge>()
   const projectId = source.projectId
   const isPreview = !!previewSnapshot || !!_readOnly
+
+  const [inlineInspector, setInlineInspector] = useState<{
+    kind: 'node' | 'group' | 'edge' | null
+    id: string | null
+    x: number
+    y: number
+  }>({ kind: null, id: null, x: 0, y: 0 })
 
   const initial = useMemo(() => {
     // 预览模式：使用 previewSnapshot
@@ -666,7 +682,7 @@ function EditorInner({ onBackHome, source, previewSnapshot, readOnly: _readOnly 
           {
             ...conn,
             type: 'smoothstep',
-            style: { stroke: DEFAULT_EDGE_COLOR, strokeWidth: 1 },
+            style: { stroke: DEFAULT_EDGE_COLOR, strokeWidth: 3 },
             markerEnd: { type: MarkerType.ArrowClosed, color: DEFAULT_EDGE_COLOR },
             data: { arrowStyle: 'end' },
           },
@@ -735,6 +751,16 @@ function EditorInner({ onBackHome, source, previewSnapshot, readOnly: _readOnly 
     for (const n of nodeList) visit(n.id)
     return result
   }, [])
+
+  const inlineNode = useMemo(
+    () => (inlineInspector.id && inlineInspector.kind !== 'edge' ? nodes.find((n) => n.id === inlineInspector.id) : undefined),
+    [inlineInspector.id, inlineInspector.kind, nodes],
+  )
+
+  const inlineEdge = useMemo(
+    () => (inlineInspector.id && inlineInspector.kind === 'edge' ? edges.find((e) => e.id === inlineInspector.id) : undefined),
+    [inlineInspector.id, inlineInspector.kind, edges],
+  )
 
   const assignZIndex = useCallback(
     (all: FlowNode[]) => {
@@ -1336,33 +1362,60 @@ function EditorInner({ onBackHome, source, previewSnapshot, readOnly: _readOnly 
     setSaveModalOpen(true)
   }, [fileName])
 
-  // Actually perform the export/download
-  const confirmExport = useCallback(() => {
-    const payload = {
+  // 实际执行导出：打一个 zip，包含 project.json + assets 文件夹
+  const confirmExport = useCallback(async () => {
+    const safeName = (exportFileName || 'flow2go').replace(/[^a-zA-Z0-9\u4e00-\u9fa5_-]/g, '_')
+    const zip = new JSZip()
+
+    const manifest = {
       version: 1,
       exportedAt: Date.now(),
       name: exportFileName,
       nodes,
       edges,
       viewport: rf.getViewport(),
-      assets, // Include asset library for portability
+      assets: assets.map((a) => ({
+        id: a.id,
+        name: a.name,
+        type: a.type,
+        fileName: `${a.id}.${a.type === 'svg' ? 'svg' : 'png'}`,
+        path: `assets/${a.id}.${a.type === 'svg' ? 'svg' : 'png'}`,
+      })),
     }
-    const blob = new Blob([JSON.stringify(payload, null, 2)], { type: 'application/json' })
-    const url = URL.createObjectURL(blob)
+    zip.file('project.json', JSON.stringify(manifest, null, 2))
+
+    const assetsFolder = zip.folder('assets')
+    if (assetsFolder) {
+      for (const a of assets) {
+        try {
+          const res = await fetch(a.dataUrl)
+          const blob = await res.blob()
+          const arrayBuffer = await blob.arrayBuffer()
+          assetsFolder.file(
+            `${a.id}.${a.type === 'svg' ? 'svg' : 'png'}`,
+            arrayBuffer,
+          )
+        } catch {
+          // 忽略单个素材失败
+        }
+      }
+    }
+
+    const zipBlob = await zip.generateAsync({ type: 'blob' })
+    const url = URL.createObjectURL(zipBlob)
     const a = document.createElement('a')
     a.href = url
-    const safeName = (exportFileName || 'flow2go').replace(/[^a-zA-Z0-9\u4e00-\u9fa5_-]/g, '_')
-    a.download = `${safeName}.json`
+    a.download = `${safeName}.zip`
     document.body.appendChild(a)
     a.click()
     a.remove()
     URL.revokeObjectURL(url)
-    
-    // Mark as saved
+
+    // 标记为已保存
     setHasUnsavedChanges(false)
     setSaveModalOpen(false)
-    
-    // Also update project name if changed
+
+    // 如果用户改了文件名，同步更新项目名
     if (exportFileName !== fileName) {
       setFileName(exportFileName)
       const proj = getProject(projectId)
@@ -1372,7 +1425,7 @@ function EditorInner({ onBackHome, source, previewSnapshot, readOnly: _readOnly 
         saveProject(proj)
       }
     }
-  }, [edges, nodes, rf, assets, exportFileName, fileName, projectId])
+  }, [assets, edges, exportFileName, fileName, nodes, projectId, rf])
 
   const fileInputRef = useRef<HTMLInputElement | null>(null)
 
@@ -1439,34 +1492,64 @@ function EditorInner({ onBackHome, source, previewSnapshot, readOnly: _readOnly 
       evt.target.value = ''
       if (!file) return
       try {
-        const raw = await file.text()
-        const parsed = JSON.parse(raw) as {
+        const zip = await JSZip.loadAsync(file)
+        const manifestFile = zip.file('project.json')
+        if (!manifestFile) return
+        const manifestText = await manifestFile.async('string')
+        const parsed = JSON.parse(manifestText) as {
           name?: string
           nodes?: FlowNode[]
           edges?: FlowEdge[]
           viewport?: { x: number; y: number; zoom: number }
-          assets?: AssetItem[]
+          assets?: {
+            id: string
+            name: string
+            type: 'svg' | 'png'
+            fileName: string
+            path: string
+          }[]
         }
         if (!Array.isArray(parsed.nodes) || !Array.isArray(parsed.edges)) return
+
+        // 先还原边和节点
         const nextNodes = parsed.nodes
         const nextEdges = parsed.edges.map((e) => ({ ...e, type: 'smoothstep' as const }))
         setNodes(nextNodes)
         setEdges(nextEdges)
         if (parsed.viewport) rf.setViewport(parsed.viewport, { duration: 0 })
         pushHistory(nextNodes, nextEdges, 'import')
-        
-        // Restore project name
+
+        // 项目名
         if (parsed.name) {
           setFileName(parsed.name)
         }
-        
-        // Merge imported assets into library (avoid duplicates by id)
+
+        // 还原素材：从 zip 里读出 assets 文件夹，转回 dataUrl，合并进素材库
         if (Array.isArray(parsed.assets) && parsed.assets.length > 0) {
-          setAssets((prev) => {
-            const existingIds = new Set(prev.map((a) => a.id))
-            const newAssets = parsed.assets!.filter((a) => !existingIds.has(a.id))
-            return [...prev, ...newAssets]
-          })
+          const restored: AssetItem[] = []
+          for (const a of parsed.assets) {
+            const f = zip.file(a.path) || zip.file(a.fileName) || zip.file(`assets/${a.fileName}`)
+            if (!f) continue
+            const blob = await f.async('blob')
+            const dataUrl = await new Promise<string>((resolve) => {
+              const reader = new FileReader()
+              reader.onload = () => resolve(reader.result as string)
+              reader.readAsDataURL(blob)
+            })
+            restored.push({
+              id: a.id,
+              name: a.name,
+              type: a.type,
+              dataUrl,
+            })
+          }
+          if (restored.length > 0) {
+            setAssets((prev) => {
+              const existingIds = new Set(prev.map((x) => x.id))
+              const incoming = restored.filter((x) => !existingIds.has(x.id))
+              return [...prev, ...incoming]
+            })
+          }
         }
       } catch {
         // ignore
@@ -2059,7 +2142,7 @@ function EditorInner({ onBackHome, source, previewSnapshot, readOnly: _readOnly 
           elementsSelectable={isPreview ? false : !spacePressed}
           defaultEdgeOptions={{
             type: 'smoothstep',
-            style: { stroke: DEFAULT_EDGE_COLOR, strokeWidth: 1 },
+            style: { stroke: DEFAULT_EDGE_COLOR, strokeWidth: 3 },
             markerEnd: { ...DEFAULT_MARKER_END },
           }}
           proOptions={{ hideAttribution: true }}
@@ -2198,6 +2281,24 @@ function EditorInner({ onBackHome, source, previewSnapshot, readOnly: _readOnly 
                       <span className={styles.menuKbd}>Ctrl/Cmd+D</span>
                     </button>
                   )}
+                  {menu.nodeId && (
+                    <button
+                      className={styles.menuItem}
+                      type="button"
+                      onClick={() => {
+                        setInlineInspector({
+                          kind: menu.nodeType === 'group' ? 'group' : 'node',
+                          id: menu.nodeId ?? null,
+                          x: menu.x,
+                          y: menu.y,
+                        })
+                        closeMenu()
+                      }}
+                    >
+                      <span>快速编辑</span>
+                      <span className={styles.menuKbd}></span>
+                    </button>
+                  )}
                   {menu.nodeType === 'asset' && menu.nodeId && (
                     <button
                       className={styles.menuItem}
@@ -2261,6 +2362,24 @@ function EditorInner({ onBackHome, source, previewSnapshot, readOnly: _readOnly 
                     <span>前移一层</span>
                     <span className={styles.menuKbd}></span>
                   </button>
+                  {menu.edgeId && (
+                    <button
+                      className={styles.menuItem}
+                      type="button"
+                      onClick={() => {
+                        setInlineInspector({
+                          kind: 'edge',
+                          id: menu.edgeId ?? null,
+                          x: menu.x,
+                          y: menu.y,
+                        })
+                        closeMenu()
+                      }}
+                    >
+                      <span>快速编辑</span>
+                      <span className={styles.menuKbd}></span>
+                    </button>
+                  )}
                   <button
                     className={styles.menuItem}
                     type="button"
@@ -2283,11 +2402,71 @@ function EditorInner({ onBackHome, source, previewSnapshot, readOnly: _readOnly 
           )}
         </ReactFlow>
 
+        <InlineInspector
+          anchor={inlineInspector.kind ? { x: inlineInspector.x, y: inlineInspector.y } : null}
+          kind={inlineInspector.kind}
+          node={inlineNode}
+          edge={inlineEdge}
+          onChangeNode={
+            inlineInspector.kind && inlineInspector.kind !== 'edge'
+              ? (patch) => {
+                  if (!inlineInspector.id) return
+                  setNodes((nds) =>
+                    nds.map((n) =>
+                      n.id === inlineInspector.id
+                        ? {
+                            ...n,
+                            data: { ...(n.data ?? {}), ...patch },
+                          }
+                        : n,
+                    ),
+                  )
+                }
+              : undefined
+          }
+          onChangeGroup={
+            inlineInspector.kind === 'group'
+              ? (patch) => {
+                  if (!inlineInspector.id) return
+                  setNodes((nds) =>
+                    nds.map((n) =>
+                      n.id === inlineInspector.id
+                        ? {
+                            ...n,
+                            data: { ...(n.data ?? {}), ...patch },
+                          }
+                        : n,
+                    ),
+                  )
+                }
+              : undefined
+          }
+          onChangeEdge={
+            inlineInspector.kind === 'edge'
+              ? (patch) => {
+                  if (!inlineInspector.id) return
+                  setEdges((eds) =>
+                    eds.map((e) =>
+                      e.id === inlineInspector.id
+                        ? {
+                            ...e,
+                            ...patch,
+                            data: { ...(e.data ?? {}), ...(patch as any).data },
+                          }
+                        : e,
+                    ),
+                  )
+                }
+              : undefined
+          }
+          onClose={() => setInlineInspector({ kind: null, id: null, x: 0, y: 0 })}
+        />
+
         <input
           ref={fileInputRef}
           style={{ display: 'none' }}
           type="file"
-          accept="application/json,.json"
+          accept=".zip,application/zip"
           onChange={onImportFile}
         />
       </main>
@@ -2312,23 +2491,48 @@ function EditorInner({ onBackHome, source, previewSnapshot, readOnly: _readOnly 
             </div>
 
             {selectedNode.type === 'asset' && (
-              <div className={styles.mutedSmall}>
-                素材节点 · {(selectedNode.data as any)?.assetName ?? '—'}
-                <br />
-                {(selectedNode.data as any)?.assetWidth ?? 120} ×{' '}
-                {(selectedNode.data as any)?.assetHeight ?? 80} 像素（选中后拖拽边角拉伸）
-              </div>
-            )}
+              <>
+                <div className={styles.mutedSmall}>
+                  素材节点 · {(selectedNode.data as any)?.assetName ?? '—'}
+                  <br />
+                  {(selectedNode.data as any)?.assetWidth ?? 120} ×{' '}
+                  {(selectedNode.data as any)?.assetHeight ?? 80} 像素（选中后拖拽边角拉伸）
+                </div>
 
-            {/* SVG 素材颜色覆盖 */}
-            {selectedNode.type === 'asset' && (selectedNode.data as AssetNodeData)?.assetType === 'svg' && (
-              <div className={styles.form}>
-                <div className={styles.formTitle}>颜色覆盖（仅SVG）</div>
-                <GradientColorEditor
-                  value={(selectedNode.data as AssetNodeData)?.colorOverride ?? { type: 'solid' }}
-                  onChange={(v: GradientValue) => updateSelectedNodeData({ colorOverride: v })}
-                />
-              </div>
+                <div className={styles.form} style={{ marginTop: 8 }}>
+                  <label className={styles.label}>
+                    <div className={styles.labelText}>旋转（度）</div>
+                    <input
+                      className={styles.input}
+                      type="number"
+                      min={-360}
+                      max={360}
+                      value={(selectedNode.data as AssetNodeData)?.rotation ?? 0}
+                      onChange={(e) => {
+                        const val = parseFloat(e.target.value)
+                        if (!Number.isFinite(val)) {
+                          updateSelectedNodeData({ rotation: 0 })
+                        } else {
+                          // 规范到 -360~360 范围
+                          const norm = ((val % 360) + 360) % 360
+                          updateSelectedNodeData({ rotation: norm })
+                        }
+                      }}
+                    />
+                  </label>
+                </div>
+
+                {/* SVG 素材颜色覆盖 */}
+                {(selectedNode.data as AssetNodeData)?.assetType === 'svg' && (
+                  <div className={styles.form}>
+                    <div className={styles.formTitle}>颜色覆盖（仅SVG）</div>
+                    <GradientColorEditor
+                      value={(selectedNode.data as AssetNodeData)?.colorOverride ?? { type: 'solid' }}
+                      onChange={(v: GradientValue) => updateSelectedNodeData({ colorOverride: v })}
+                    />
+                  </div>
+                )}
+              </>
             )}
 
             {selectedNode.type !== 'asset' && selectedNode.type !== 'group' && selectedNode.type !== 'text' && (

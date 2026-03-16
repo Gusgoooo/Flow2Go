@@ -13,11 +13,31 @@
   background: rgba(255, 255, 255, 0.95);
   backdrop-filter: blur(10px);
   padding: 12px;
-  overflow: auto;
+  overflow: hidden;
   border-radius: 12px;
   box-shadow: 0 4px 20px rgba(15, 23, 42, 0.08);
   border: 1px solid rgba(229, 231, 235, 0.8);
   z-index: 10;
+}
+
+.sidebarInner {
+  display: flex;
+  flex-direction: column;
+  height: 100%;
+}
+
+.sidebarScroll {
+  flex: 1 1 auto;
+  overflow: auto;
+  padding-right: 4px;
+}
+
+.sidebarFooter {
+  flex: 0 0 auto;
+  padding-top: 6px;
+  font-size: 12px;
+  color: #9ca3af;
+  text-align: center;
 }
 
 .sidebarHeader {
@@ -705,15 +725,48 @@
   top: 12px;
   right: 12px;
   bottom: 12px;
-  width: 254px;
+  width: 280px;
   background: rgba(255, 255, 255, 0.95);
   backdrop-filter: blur(10px);
   padding: 12px;
-  overflow: auto;
+  overflow: hidden;
   border-radius: 12px;
   box-shadow: 0 4px 20px rgba(15, 23, 42, 0.08);
   border: 1px solid rgba(229, 231, 235, 0.8);
   z-index: 10;
+}
+
+.inspectorInner {
+  display: flex;
+  flex-direction: column;
+  height: 100%;
+  overflow: hidden;
+}
+
+.inspectorScroll {
+  flex: 1 1 auto;
+  overflow: auto;
+  padding-right: 4px;
+}
+
+.inspectorFooter {
+  flex: 0 0 auto;
+  padding-top: 6px;
+  font-size: 12px;
+  color: #9ca3af;
+  text-align: center;
+}
+
+.inlineInspector {
+  position: absolute;
+  min-width: 220px;
+  max-width: 280px;
+  background: rgba(255, 255, 255, 0.98);
+  border-radius: 10px;
+  box-shadow: 0 18px 40px rgba(15, 23, 42, 0.2);
+  border: 1px solid #e5e7eb;
+  padding: 10px 12px;
+  z-index: 60;
 }
 
 .muted {
