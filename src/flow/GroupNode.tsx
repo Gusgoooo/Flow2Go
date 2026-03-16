@@ -32,7 +32,7 @@ export function GroupNode(props: NodeProps) {
   if (strokeWidth === 0) {
     groupStyle.border = 'none'
   } else {
-    groupStyle.borderColor = selected ? '#000000' : stroke
+    groupStyle.borderColor = selected ? 'rgba(0,0,0,0.8)' : stroke
     if (strokeWidth !== undefined) groupStyle.borderWidth = strokeWidth
   }
 

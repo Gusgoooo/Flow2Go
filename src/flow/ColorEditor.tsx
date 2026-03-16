@@ -117,7 +117,7 @@ function rgbToHex(r: number, g: number, b: number): string {
 export function ColorEditor({
   value,
   onChange,
-  placeholder = '#000000',
+  placeholder = 'rgba(0,0,0,0.8)',
   showPicker = true,
   showAlpha = true,
   compact = false,

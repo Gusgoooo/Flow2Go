@@ -29,7 +29,7 @@ function normalizeHex(s: string): string {
   const t = s.replace(/^#/, '').trim()
   if (/^[0-9A-Fa-f]{6}$/.test(t)) return `#${t}`
   if (/^[0-9A-Fa-f]{3}$/.test(t)) return `#${t[0]}${t[0]}${t[1]}${t[1]}${t[2]}${t[2]}`
-  return '#000000'
+  return 'rgba(0,0,0,0.8)'
 }
 
 const ANGLE_OPTIONS = [
@@ -48,7 +48,7 @@ export function GradientColorEditor({ value, onChange }: Props) {
   const [showPicker, setShowPicker] = useState(false)
 
   const type = value.type ?? 'solid'
-  const color = normalizeHex(value.color || '#000000')
+  const color = normalizeHex(value.color || 'rgba(0,0,0,0.8)')
   const alpha = value.alpha ?? 100
   const endColor = normalizeHex(value.endColor || '#ffffff')
   const endAlpha = value.endAlpha ?? 100
@@ -249,7 +249,7 @@ export function GradientColorEditor({ value, onChange }: Props) {
           className={styles.input}
           value={activeColor}
           onChange={(e) => handleColorChange(e.target.value)}
-          placeholder="#000000"
+          placeholder="rgba(0,0,0,0.8)"
         />
       </div>
 

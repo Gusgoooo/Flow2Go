@@ -187,6 +187,42 @@ function getSegments(points: Point[]): Array<{
   return segments
 }
 
+/** 让首尾两段与端口方向对齐，避免 in/out 出现斜线 */
+function snapEndpointsToPorts(
+  points: Point[],
+  sourcePosition: Position,
+  targetPosition: Position,
+): Point[] {
+  if (points.length < 3) return points
+
+  const snapped = points.map((p) => ({ ...p }))
+
+  // 第一段：源节点 → 第一个中间点
+  const src = snapped[0]
+  const first = snapped[1]
+  if (sourcePosition === Position.Left || sourcePosition === Position.Right) {
+    // 水平出发：和源节点保持同一条水平线
+    first.y = src.y
+  } else {
+    // 垂直出发：和源节点保持同一条竖线
+    first.x = src.x
+  }
+
+  // 最后一段：最后一个中间点 → 目标节点
+  const tgt = snapped[snapped.length - 1]
+  const lastIdx = snapped.length - 2
+  const last = snapped[lastIdx]
+  if (targetPosition === Position.Left || targetPosition === Position.Right) {
+    // 水平进入：和目标节点保持同一条水平线
+    last.y = tgt.y
+  } else {
+    // 垂直进入：和目标节点保持同一条竖线
+    last.x = tgt.x
+  }
+
+  return snapped
+}
+
 export function EditableSmoothStepEdge(props: EdgeProps) {
   const {
     id,
@@ -209,7 +245,7 @@ export function EditableSmoothStepEdge(props: EdgeProps) {
     (props as { labelStyle?: EdgeLabelStyle }).labelStyle) ?? {}
   const labelFontSize = labelStyleObj.fontSize ?? 12
   const labelFontWeight = labelStyleObj.fontWeight ?? '400'
-  const labelColor = labelStyleObj.color ?? '#000000'
+  const labelColor = labelStyleObj.color ?? 'rgba(0,0,0,0.8)'
 
   const rf = useReactFlow()
 
@@ -228,11 +264,13 @@ export function EditableSmoothStepEdge(props: EdgeProps) {
   // 如果有保存的 waypoints，使用它们（中间点），加上当前的源和目标
   let points: Point[]
   if (savedWaypoints && savedWaypoints.length > 0) {
-    points = [
+    const rawPoints = [
       { x: sourceX, y: sourceY },
       ...savedWaypoints,
       { x: targetX, y: targetY },
     ]
+    // 保证出入节点的线段与端口方向平行
+    points = snapEndpointsToPorts(rawPoints, srcPos, tgtPos)
   } else {
     points = defaultPoints
   }

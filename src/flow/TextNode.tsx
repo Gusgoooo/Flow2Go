@@ -71,7 +71,7 @@ export function TextNode(props: NodeProps) {
   const label = data.label ?? ''
   const fontSize = data.labelFontSize ?? DEFAULT_FONT_SIZE
   const fontWeight = data.labelFontWeight ?? '400'
-  const textColor = data.labelColor ?? '#000000'
+  const textColor = data.labelColor ?? 'rgba(0,0,0,0.8)'
 
   const textStyle: React.CSSProperties = {
     fontSize,

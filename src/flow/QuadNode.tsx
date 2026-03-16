@@ -120,12 +120,12 @@ export function QuadNode(props: NodeProps) {
   const labelStyle = {
     fontSize: data.labelFontSize ?? 12,
     fontWeight: data.labelFontWeight ?? '700',
-    color: data.labelColor ?? '#000000',
+    color: data.labelColor ?? 'rgba(0,0,0,0.8)',
   }
   const subtitleStyle = {
     fontSize: Math.max(10, (data.labelFontSize ?? 12) - 1),
     fontWeight: data.labelFontWeight ?? '400',
-    color: data.labelColor ?? '#000000',
+    color: data.labelColor ?? 'rgba(0,0,0,0.8)',
   }
 
   const nodeColor = data.color
@@ -142,7 +142,7 @@ export function QuadNode(props: NodeProps) {
   }
   
   // 选中时使用黑色描边
-  if (selected) nodeStyle.borderColor = '#000000'
+  if (selected) nodeStyle.borderColor = 'rgba(0,0,0,0.8)'
   
   // 填充色
   if (nodeColor) {
@@ -174,7 +174,7 @@ export function QuadNode(props: NodeProps) {
             onRequestClose={commitTitle}
             fontSize={data.labelFontSize ?? 12}
             fontWeight={data.labelFontWeight ?? '700'}
-            textColor={data.labelColor ?? '#000000'}
+            textColor={data.labelColor ?? 'rgba(0,0,0,0.8)'}
             onFontSizeChange={(v) =>
               rf.setNodes((nds) =>
                 nds.map((n) =>
@@ -232,7 +232,7 @@ export function QuadNode(props: NodeProps) {
             onRequestClose={commitSubtitle}
             fontSize={data.labelFontSize ?? 12}
             fontWeight={data.labelFontWeight ?? '400'}
-            textColor={data.labelColor ?? '#000000'}
+            textColor={data.labelColor ?? 'rgba(0,0,0,0.8)'}
             onFontSizeChange={(v) =>
               rf.setNodes((nds) =>
                 nds.map((n) =>

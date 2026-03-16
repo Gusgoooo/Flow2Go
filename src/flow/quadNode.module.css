@@ -5,7 +5,7 @@
   border-radius: 12px;
   border: 1px solid #e2e8f0;
   background: #ffffff;
-  color: #000000;
+  color: rgba(0, 0, 0, 0.8);
   position: relative;
   display: grid;
   align-content: center;

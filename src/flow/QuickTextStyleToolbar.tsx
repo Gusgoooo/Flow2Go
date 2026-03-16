@@ -32,7 +32,7 @@ export function QuickTextStyleToolbar({
   anchorRef,
   fontSize = 14,
   fontWeight = '400',
-  textColor = '#000000',
+  textColor = 'rgba(0,0,0,0.8)',
   onFontSizeChange,
   onFontWeightChange,
   onTextColorChange,

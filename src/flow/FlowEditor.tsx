@@ -100,6 +100,22 @@ const GRID: [number, number] = [8, 8]
 const GROUP_PADDING = GRID[0] // 群组内边距跟随网格
 const GROUP_TITLE_H = GRID[1] * 4 // 标题高度为网格的4倍 (32px)
 
+function hexToRgbColor(hex: string): { r: number; g: number; b: number } | null {
+  const t = hex.replace(/^#/, '').trim()
+  if (t.length !== 3 && t.length !== 6) return null
+  if (t.length === 3) {
+    const r = parseInt(t[0] + t[0], 16)
+    const g = parseInt(t[1] + t[1], 16)
+    const b = parseInt(t[2] + t[2], 16)
+    return { r, g, b }
+  }
+  return {
+    r: parseInt(t.slice(0, 2), 16),
+    g: parseInt(t.slice(2, 4), 16),
+    b: parseInt(t.slice(4, 6), 16),
+  }
+}
+
 /** 边默认颜色与默认终点箭头（React Flow MarkerType），所有新边/未设置箭头的边都带终点箭头 */
 const DEFAULT_EDGE_COLOR = '#94a3b8'
 const DEFAULT_MARKER_END = {
@@ -2331,9 +2347,9 @@ function EditorInner({ onBackHome, source, previewSnapshot, readOnly: _readOnly 
                 <label className={styles.label}>
                   <div className={styles.labelText}>文字颜色</div>
                   <ColorEditor
-                    value={(selectedNode.data as any)?.labelColor ?? '#000000'}
+                    value={(selectedNode.data as any)?.labelColor ?? ''}
                     onChange={(v) => updateSelectedNodeData({ labelColor: v })}
-                    placeholder="#000000"
+                    placeholder="rgba(0,0,0,0.8)"
                     showAlpha={true}
                   />
                 </label>
@@ -2433,8 +2449,28 @@ function EditorInner({ onBackHome, source, previewSnapshot, readOnly: _readOnly 
                   <div className={styles.labelText}>底色（hex + 透明度或 rgba）</div>
                   <ColorEditor
                     value={((selectedNode.data as GroupNodeData | undefined)?.fill ?? '') as string}
-                    onChange={(v) => updateGroupStyle(selectedNode.id, { fill: v })}
-                    placeholder="rgba(59,130,246,0.1)"
+                    onChange={(v) => {
+                      const trimmed = v.trim()
+                      // 用户显式输入 rgba(...) 时，按用户的透明度；否则默认 12%
+                      if (trimmed.startsWith('rgba')) {
+                        updateGroupStyle(selectedNode.id, { fill: trimmed })
+                        return
+                      }
+                      if (!trimmed) {
+                        updateGroupStyle(selectedNode.id, { fill: '' })
+                        return
+                      }
+                      const hex = trimmed.startsWith('#') ? trimmed : `#${trimmed}`
+                      const rgb = hexToRgbColor(hex)
+                      if (rgb) {
+                        updateGroupStyle(selectedNode.id, {
+                          fill: `rgba(${rgb.r},${rgb.g},${rgb.b},0.12)`,
+                        })
+                      } else {
+                        updateGroupStyle(selectedNode.id, { fill: trimmed })
+                      }
+                    }}
+                    placeholder="rgba(59,130,246,0.12)"
                     showPicker={true}
                     showAlpha={true}
                   />
