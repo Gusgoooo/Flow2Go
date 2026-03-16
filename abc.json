@@ -1,0 +1,24 @@
+{
+  "builder": {
+    "name": "@ali/builder-harmony-common",
+    "config": {
+      "framework": "vite",
+      "entry": "index.html",
+      "buildCommand": "npm run build",
+      "devCommand": "npm run dev",
+      "outputDir": "dist",
+      "postbuild": "tnpx --yes @ali/harmony-nextjs-build-scripts@2.0.1"
+    }
+  },
+  "cache": {
+    "build": {
+      "enable": true,
+      "cacheDir": [
+        ".next/cache/**",
+        "node_modules/.cache/**",
+        "dist/**"
+      ]
+    }
+  },
+  "nodeVersion": 22
+}
