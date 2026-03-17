@@ -497,7 +497,13 @@ function EditorInner({ onBackHome, source, previewSnapshot, readOnly: _readOnly 
       }
     }
     const proj = getProject(projectId)
-    if (!proj?.snapshot) {
+    const snap = proj?.snapshot as any
+    const hasValidSnapshot =
+      snap &&
+      Array.isArray(snap.nodes) &&
+      Array.isArray(snap.edges) &&
+      (snap.nodes.length > 0 || snap.edges.length > 0)
+    if (!hasValidSnapshot) {
       // 用户第一次打开产品：使用默认示例并居中展示
       return {
         nodes: (defaultExample.nodes as FlowNode[]) ?? [],
@@ -507,12 +513,12 @@ function EditorInner({ onBackHome, source, previewSnapshot, readOnly: _readOnly 
         isDefaultExample: true,
       }
     }
-    const snap = proj.snapshot
+    const snap2 = (proj as any).snapshot
     return {
-      nodes: (snap.nodes as FlowNode[]) ?? [],
-      edges: (snap.edges as FlowEdge[]) ?? [],
-      viewport: snap.viewport ?? { x: 0, y: 0, zoom: 1 },
-      name: proj.name,
+      nodes: (snap2.nodes as FlowNode[]) ?? [],
+      edges: (snap2.edges as FlowEdge[]) ?? [],
+      viewport: snap2.viewport ?? { x: 0, y: 0, zoom: 1 },
+      name: proj?.name ?? 'untitled',
       isDefaultExample: false,
     }
   }, [projectId, previewSnapshot])

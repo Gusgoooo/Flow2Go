@@ -298,7 +298,7 @@
         "label": "🏃即用即走",
         "title": "🏃即用即走",
         "showSubtitle": true,
-        "subtitle": "浏览器打开即用",
+        "subtitle": "浏览器打开即用，关闭即走",
         "labelFontSize": 16,
         "subtitleFontSize": 13
       },
