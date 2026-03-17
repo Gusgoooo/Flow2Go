@@ -253,6 +253,7 @@ export function ColorEditor({
       }}
       className={styles.pickerPopover}
       style={portalPicker ? floatingStyles : undefined}
+      data-color-editor-portal
       {...(focusRetainDataAttr ? { [focusRetainDataAttr]: true } : {})}
     >
       <HexColorPicker color={pickerColor} onChange={handleHexChange} />

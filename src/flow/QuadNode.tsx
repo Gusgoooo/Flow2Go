@@ -3,6 +3,8 @@ import { Handle, NodeResizer, Position, useReactFlow, type NodeProps } from '@xy
 import styles from './quadNode.module.css'
 import { QuickTextStyleToolbar, QUICK_TOOLBAR_DATA_ATTR } from './QuickTextStyleToolbar'
 
+export type QuadShape = 'rect' | 'circle' | 'diamond'
+
 type QuadNodeData = {
   label?: string
   title?: string
@@ -11,12 +13,16 @@ type QuadNodeData = {
   labelFontSize?: number
   labelFontWeight?: string
   labelColor?: string
+  /** 副标题字号（独立于主标题） */
+  subtitleFontSize?: number
   /** 节点填充色（右侧面板「颜色」） */
   color?: string
   /** 节点描边颜色 */
   stroke?: string
   /** 节点描边粗细 */
   strokeWidth?: number
+  /** 节点形状（点击节点弹出工具栏可切换） */
+  shape?: QuadShape
 }
 
 export function QuadNode(props: NodeProps) {
@@ -91,6 +97,7 @@ export function QuadNode(props: NodeProps) {
 
   const onDoubleClick = useCallback((e: React.MouseEvent) => {
     e.stopPropagation()
+    window.dispatchEvent(new CustomEvent('flow2go:close-popups-for-text'))
     setEditingTitle(true)
   }, [])
 
@@ -123,7 +130,7 @@ export function QuadNode(props: NodeProps) {
     color: data.labelColor ?? 'rgba(0,0,0,0.8)',
   }
   const subtitleStyle = {
-    fontSize: Math.max(10, (data.labelFontSize ?? 12) - 1),
+    fontSize: data.subtitleFontSize ?? Math.max(10, (data.labelFontSize ?? 12) - 1),
     fontWeight: data.labelFontWeight ?? '400',
     color: data.labelColor ?? 'rgba(0,0,0,0.8)',
   }
@@ -131,8 +138,18 @@ export function QuadNode(props: NodeProps) {
   const nodeColor = data.color
   const strokeColor = data.stroke
   const strokeWidth = data.strokeWidth
+  const shape = data.shape ?? 'rect'
   const nodeStyle: React.CSSProperties = {}
-  
+
+  // 形状：圆形 / 菱形；描边贴合图形
+  if (shape === 'circle') {
+    nodeStyle.borderRadius = '50%'
+  } else if (shape === 'diamond') {
+    nodeStyle.borderRadius = 0
+    nodeStyle.clipPath = 'polygon(50% 0%, 100% 50%, 50% 100%, 0% 50%)'
+  }
+  // rect 保持默认圆角
+
   // 描边：支持自定义颜色和粗细，strokeWidth 为 0 时无描边
   if (strokeWidth === 0) {
     nodeStyle.border = 'none'
@@ -140,15 +157,15 @@ export function QuadNode(props: NodeProps) {
     if (strokeColor) nodeStyle.borderColor = strokeColor
     if (strokeWidth !== undefined) nodeStyle.borderWidth = strokeWidth
   }
-  
+
   // 选中时使用黑色描边
   if (selected) nodeStyle.borderColor = 'rgba(0,0,0,0.8)'
-  
+
   // 填充色
   if (nodeColor) {
     // 透明度完全由 ColorEditor 决定：
-    // - 当有透明度时，ColorEditor 输出 rgba(...)，这里直接用 rgba 作为背景
-    // - 当透明度为 100% 时，ColorEditor 输出纯 hex，这里也直接用 hex 作为不透明背景
+    // - 当有透明度时, ColorEditor 输出 rgba(...)，这里直接用 rgba 作为背景
+    // - 当透明度为 100% 时, ColorEditor 输出纯 hex，这里也直接用 hex 作为不透明背景
     if (nodeColor.startsWith('rgba') || nodeColor.startsWith('#')) {
       nodeStyle.background = nodeColor
     }
@@ -158,154 +175,160 @@ export function QuadNode(props: NodeProps) {
     <div
       className={`${styles.node} ${editingTitle || editingSubtitle ? 'nodrag' : ''}`}
       onDoubleClick={onDoubleClick}
-      style={Object.keys(nodeStyle).length ? nodeStyle : undefined}
     >
       <NodeResizer
         minWidth={120}
         minHeight={44}
         handleStyle={{ width: 12, height: 12, borderRadius: 9999 }}
         isVisible={Boolean((props as any).selected)}
+        keepAspectRatio={shape === 'circle'}
       />
-      {editingTitle ? (
-        <>
-          <QuickTextStyleToolbar
-            anchorRef={titleInputRef}
-            visible={true}
-            onRequestClose={commitTitle}
-            fontSize={data.labelFontSize ?? 12}
-            fontWeight={data.labelFontWeight ?? '700'}
-            textColor={data.labelColor ?? 'rgba(0,0,0,0.8)'}
-            onFontSizeChange={(v) =>
-              rf.setNodes((nds) =>
-                nds.map((n) =>
-                  n.id === props.id
-                    ? { ...n, data: { ...(n.data ?? {}), labelFontSize: v } }
-                    : n,
-                ),
-              )
-            }
-            onFontWeightChange={(v) =>
-              rf.setNodes((nds) =>
-                nds.map((n) =>
-                  n.id === props.id
-                    ? { ...n, data: { ...(n.data ?? {}), labelFontWeight: v } }
-                    : n,
-                ),
-              )
-            }
-            onTextColorChange={(v) =>
-              rf.setNodes((nds) =>
-                nds.map((n) =>
-                  n.id === props.id
-                    ? { ...n, data: { ...(n.data ?? {}), labelColor: v } }
-                    : n,
-                ),
-              )
-            }
-          />
-          <textarea
-            ref={titleInputRef}
-            className={`${styles.input} nodrag`}
-            autoFocus
-            value={draftTitle}
-            placeholder="主标题"
-            style={{ ...labelStyle, height: 'auto' }}
-            rows={1}
-            onChange={(e) => {
-              setDraftTitle(e.target.value)
-              // 自动调整高度
-              e.target.style.height = 'auto'
-              e.target.style.height = e.target.scrollHeight + 'px'
-            }}
-            onBlur={(e) => {
-              if ((e.relatedTarget as HTMLElement)?.closest?.(`[${QUICK_TOOLBAR_DATA_ATTR}]`)) return
-              commitTitle()
-            }}
-            onKeyDown={onKeyDown}
-          />
-        </>
-      ) : editingSubtitle ? (
-        <>
-          <QuickTextStyleToolbar
-            anchorRef={subtitleInputRef}
-            visible={true}
-            onRequestClose={commitSubtitle}
-            fontSize={data.labelFontSize ?? 12}
-            fontWeight={data.labelFontWeight ?? '400'}
-            textColor={data.labelColor ?? 'rgba(0,0,0,0.8)'}
-            onFontSizeChange={(v) =>
-              rf.setNodes((nds) =>
-                nds.map((n) =>
-                  n.id === props.id
-                    ? { ...n, data: { ...(n.data ?? {}), labelFontSize: v } }
-                    : n,
-                ),
-              )
-            }
-            onFontWeightChange={(v) =>
-              rf.setNodes((nds) =>
-                nds.map((n) =>
-                  n.id === props.id
-                    ? { ...n, data: { ...(n.data ?? {}), labelFontWeight: v } }
-                    : n,
-                ),
-              )
-            }
-            onTextColorChange={(v) =>
-              rf.setNodes((nds) =>
-                nds.map((n) =>
-                  n.id === props.id
-                    ? { ...n, data: { ...(n.data ?? {}), labelColor: v } }
-                    : n,
-                ),
-              )
-            }
-          />
-          <div className={styles.label} style={labelStyle}>
-            {title}
-          </div>
-          <textarea
-            ref={subtitleInputRef}
-            className={`${styles.inputSubtitle} nodrag`}
-            autoFocus
-            value={draftSubtitle}
-            placeholder="副标题（可留空）"
-            style={{ ...subtitleStyle, height: 'auto' }}
-            rows={1}
-            onChange={(e) => {
-              setDraftSubtitle(e.target.value)
-              // 自动调整高度
-              e.target.style.height = 'auto'
-              e.target.style.height = e.target.scrollHeight + 'px'
-            }}
-            onBlur={(e) => {
-              if ((e.relatedTarget as HTMLElement)?.closest?.(`[${QUICK_TOOLBAR_DATA_ATTR}]`)) return
-              commitSubtitle()
-            }}
-            onKeyDown={onKeyDown}
-          />
-        </>
-      ) : (
-        <>
-          <div className={styles.label} style={labelStyle}>
-            {title}
-          </div>
-          {showSubtitle && (
-            <div
-              className={styles.subtitle}
-              style={subtitleStyle}
-              onDoubleClick={(e) => {
-                e.stopPropagation()
-                setEditingSubtitle(true)
+      <div
+        className={styles.nodeInner}
+        style={Object.keys(nodeStyle).length ? nodeStyle : undefined}
+      >
+        {editingTitle ? (
+          <>
+            <QuickTextStyleToolbar
+              anchorRef={titleInputRef}
+              visible={true}
+              onRequestClose={commitTitle}
+              fontSize={data.labelFontSize ?? 12}
+              fontWeight={data.labelFontWeight ?? '700'}
+              textColor={data.labelColor ?? 'rgba(0,0,0,0.8)'}
+              onFontSizeChange={(v) =>
+                rf.setNodes((nds) =>
+                  nds.map((n) =>
+                    n.id === props.id
+                      ? { ...n, data: { ...(n.data ?? {}), labelFontSize: v } }
+                      : n,
+                  ),
+                )
+              }
+              onFontWeightChange={(v) =>
+                rf.setNodes((nds) =>
+                  nds.map((n) =>
+                    n.id === props.id
+                      ? { ...n, data: { ...(n.data ?? {}), labelFontWeight: v } }
+                      : n,
+                  ),
+                )
+              }
+              onTextColorChange={(v) =>
+                rf.setNodes((nds) =>
+                  nds.map((n) =>
+                    n.id === props.id
+                      ? { ...n, data: { ...(n.data ?? {}), labelColor: v } }
+                      : n,
+                  ),
+                )
+              }
+            />
+            <textarea
+              ref={titleInputRef}
+              className={`${styles.input} nodrag`}
+              autoFocus
+              value={draftTitle}
+              placeholder="主标题"
+              style={{ ...labelStyle, height: 'auto' }}
+              rows={1}
+              onChange={(e) => {
+                setDraftTitle(e.target.value)
+                // 自动调整高度
+                e.target.style.height = 'auto'
+                e.target.style.height = e.target.scrollHeight + 'px'
               }}
-            >
-              {subtitle || '副标题（可留空）'}
+              onBlur={(e) => {
+                if ((e.relatedTarget as HTMLElement)?.closest?.(`[${QUICK_TOOLBAR_DATA_ATTR}]`)) return
+                commitTitle()
+              }}
+              onKeyDown={onKeyDown}
+            />
+          </>
+        ) : editingSubtitle ? (
+          <>
+            <QuickTextStyleToolbar
+              anchorRef={subtitleInputRef}
+              visible={true}
+              onRequestClose={commitSubtitle}
+              fontSize={data.subtitleFontSize ?? Math.max(10, (data.labelFontSize ?? 12) - 1)}
+              fontWeight={data.labelFontWeight ?? '400'}
+              textColor={data.labelColor ?? 'rgba(0,0,0,0.8)'}
+              onFontSizeChange={(v) =>
+                rf.setNodes((nds) =>
+                  nds.map((n) =>
+                    n.id === props.id
+                      ? { ...n, data: { ...(n.data ?? {}), subtitleFontSize: v } }
+                      : n,
+                  ),
+                )
+              }
+              onFontWeightChange={(v) =>
+                rf.setNodes((nds) =>
+                  nds.map((n) =>
+                    n.id === props.id
+                      ? { ...n, data: { ...(n.data ?? {}), labelFontWeight: v } }
+                      : n,
+                  ),
+                )
+              }
+              onTextColorChange={(v) =>
+                rf.setNodes((nds) =>
+                  nds.map((n) =>
+                    n.id === props.id
+                      ? { ...n, data: { ...(n.data ?? {}), labelColor: v } }
+                      : n,
+                  ),
+                )
+              }
+            />
+            <div className={styles.label} style={labelStyle}>
+              {title}
             </div>
-          )}
-        </>
-      )}
+            <textarea
+              ref={subtitleInputRef}
+              className={`${styles.inputSubtitle} nodrag`}
+              autoFocus
+              value={draftSubtitle}
+              placeholder="副标题（可留空）"
+              style={{ ...subtitleStyle, height: 'auto' }}
+              rows={1}
+              onChange={(e) => {
+                setDraftSubtitle(e.target.value)
+                // 自动调整高度
+                e.target.style.height = 'auto'
+                e.target.style.height = e.target.scrollHeight + 'px'
+              }}
+              onBlur={(e) => {
+                if ((e.relatedTarget as HTMLElement)?.closest?.(`[${QUICK_TOOLBAR_DATA_ATTR}]`)) return
+                commitSubtitle()
+              }}
+              onKeyDown={onKeyDown}
+            />
+          </>
+        ) : (
+          <>
+            <div className={styles.label} style={labelStyle}>
+              {title}
+            </div>
+            {showSubtitle && (
+              <div
+                className={styles.subtitle}
+                style={subtitleStyle}
+                onDoubleClick={(e) => {
+                  e.stopPropagation()
+                  window.dispatchEvent(new CustomEvent('flow2go:close-popups-for-text'))
+                  setEditingSubtitle(true)
+                }}
+              >
+                {subtitle || '副标题（可留空）'}
+              </div>
+            )}
+          </>
+        )}
+      </div>
 
-      {/* target handles */}
+      {/* target handles - 与 nodeInner 平级，不被 clip-path 裁剪 */}
       <Handle className={styles.handle} type="target" position={Position.Top} id="t-top" />
       <Handle className={styles.handle} type="target" position={Position.Right} id="t-right" />
       <Handle className={styles.handle} type="target" position={Position.Bottom} id="t-bottom" />

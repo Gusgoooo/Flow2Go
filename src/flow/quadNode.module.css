@@ -1,16 +1,24 @@
+/* 外层：仅提供尺寸与定位，不应用 clip-path，保证 Resizer/Handle 不被裁剪 */
 .node {
-  padding: 10px 12px;
   min-width: 160px;
   min-height: 44px;
+  position: relative;
+  height: 100%;
+  box-sizing: border-box;
+}
+
+/* 内层：视觉形状（含 clip-path）、描边、填充、内容区 */
+.nodeInner {
+  position: absolute;
+  inset: 0;
+  padding: 10px 12px;
   border-radius: 12px;
   border: 1px solid #e2e8f0;
   background: #ffffff;
   color: rgba(0, 0, 0, 0.8);
-  position: relative;
   display: grid;
   align-content: center;
   justify-items: center;
-  height: 100%;
   box-sizing: border-box;
 }
 

@@ -431,104 +431,59 @@
 }
 
 .topPanel {
-  display: flex;
-  gap: 8px;
-  padding: 8px;
-  border-radius: 12px;
-  background: rgba(255, 255, 255, 0.85);
-  border: 1px solid #e5e7eb;
-  backdrop-filter: blur(10px);
-  flex-wrap: wrap;
-  /* 位于左侧面板右边 20px，与左面板顶对齐 */
   position: absolute !important;
-  left: calc(12px + 280px + 20px) !important; /* 左边距 + 左面板宽度 + 间距 */
   top: 12px !important;
+  right: 12px !important;
   margin: 0 !important;
+  padding: 6px 8px;
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  border-radius: 999px;
+  background: rgba(255, 255, 255, 0.5);
+  backdrop-filter: blur(12px);
+  border: 1px solid rgba(15, 23, 42, 0.12);
 }
 
-.btn {
-  border: 1px solid #e5e7eb;
-  background: #ffffff;
-  border-radius: 10px;
-  padding: 8px 10px;
-  font-size: 13px;
-  cursor: pointer;
-}
-
-.btn:hover {
-  border-color: #cbd5e1;
-}
-
-.btnPrimary {
-  border: none;
-  background: linear-gradient(135deg, #3b82f6, #2563eb);
-  color: #fff;
-  border-radius: 10px;
-  padding: 8px 14px;
+.assetsBtn {
+  border: 1px solid rgba(15, 23, 42, 0.18);
+  background: rgba(255, 255, 255, 0.9);
+  color: #0f172a;
+  border-radius: 999px;
+  padding: 6px 12px;
   font-size: 13px;
   font-weight: 600;
   cursor: pointer;
-  box-shadow: 0 2px 8px rgba(59, 130, 246, 0.3);
-  transition: transform 0.15s, box-shadow 0.15s;
+  backdrop-filter: blur(10px);
 }
 
-.btnPrimary:hover {
-  transform: translateY(-1px);
-  box-shadow: 0 4px 12px rgba(59, 130, 246, 0.4);
+.assetsBtn:hover {
+  border-color: rgba(15, 23, 42, 0.28);
+  background: rgba(255, 255, 255, 0.98);
 }
 
-.btnSave {
+.saveBar {
   border: none;
-  background: linear-gradient(135deg, #10b981, #059669);
-  color: #fff;
-  border-radius: 10px;
-  padding: 8px 14px;
+  background: #0f172a;
+  color: #ffffff;
+  border-radius: 999px;
+  padding: 6px 14px;
   font-size: 13px;
   font-weight: 600;
   cursor: pointer;
-  box-shadow: 0 2px 8px rgba(16, 185, 129, 0.3);
-  transition: transform 0.15s, box-shadow 0.15s;
 }
 
-.btnSave:hover {
-  transform: translateY(-1px);
-  box-shadow: 0 4px 12px rgba(16, 185, 129, 0.4);
+.saveBar:hover {
 }
 
-.btnUnsaved {
-  border: 1px solid #f87171;
-  background: #fef2f2;
-  color: #b91c1c;
-  border-radius: 10px;
-  padding: 8px 14px;
-  font-size: 13px;
-  font-weight: 500;
-  cursor: pointer;
-  transition: transform 0.15s, box-shadow 0.15s, background 0.15s;
-}
-
-.btnUnsaved:hover {
-  background: #fee2e2;
-  transform: translateY(-1px);
-  box-shadow: 0 2px 8px rgba(239, 68, 68, 0.2);
-}
-
-.btnSaved {
-  border: none;
-  background: linear-gradient(135deg, #10b981, #059669);
-  color: #fff;
-  border-radius: 10px;
-  padding: 8px 14px;
-  font-size: 13px;
-  font-weight: 600;
-  cursor: pointer;
-  box-shadow: 0 2px 8px rgba(16, 185, 129, 0.3);
-  transition: transform 0.15s, box-shadow 0.15s;
-}
-
-.btnSaved:hover {
-  transform: translateY(-1px);
-  box-shadow: 0 4px 12px rgba(16, 185, 129, 0.4);
+.assetsPopup {
+  position: fixed;
+  top: 52px;
+  right: 12px;
+  left: auto;
+  bottom: 12px;
+  width: 280px;
+  z-index: 40;
 }
 
 .btnDanger {
@@ -656,6 +611,7 @@
 .menu {
   position: fixed;
   z-index: 50;
+  transform: translate(-50%, -100%);
   min-width: 210px;
   border: 1px solid #e5e7eb;
   background: rgba(255, 255, 255, 0.98);
@@ -720,6 +676,33 @@
   color: #64748b;
 }
 
+.shapePopup {
+  position: fixed;
+  z-index: 55;
+  transform: translate(-50%, 0);
+  display: flex;
+  gap: 6px;
+  padding: 6px 8px;
+  background: rgba(255, 255, 255, 0.98);
+  border: 1px solid #e5e7eb;
+  border-radius: 10px;
+  box-shadow: 0 12px 28px rgba(15, 23, 42, 0.18);
+}
+
+.shapePopupBtn {
+  padding: 6px 10px;
+  font-size: 12px;
+  border: 1px solid #e5e7eb;
+  border-radius: 6px;
+  background: #fff;
+  color: #0f172a;
+  cursor: pointer;
+}
+
+.shapePopupBtn:hover {
+  background: #f1f5f9;
+}
+
 .inspector {
   position: absolute;
   top: 12px;
@@ -758,7 +741,8 @@
 }
 
 .inlineInspector {
-  position: absolute;
+  position: fixed;
+  transform: translate(-50%, -100%);
   min-width: 220px;
   max-width: 280px;
   background: rgba(255, 255, 255, 0.98);

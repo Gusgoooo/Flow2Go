@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react'
 import './App.css'
-import { FlowEditor } from './flow/FlowEditor'
+import FlowEditor from './flow/FlowEditor'
 import {
   getProject,
   loadLastProjectId,

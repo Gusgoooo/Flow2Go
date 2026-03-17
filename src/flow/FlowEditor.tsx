@@ -7,7 +7,6 @@ import {
   type ChangeEvent,
   type DragEvent,
 } from 'react'
-import { flushSync } from 'react-dom'
 import {
   Background,
   BackgroundVariant,
@@ -19,9 +18,11 @@ import {
   SelectionMode,
   addEdge,
   useReactFlow,
+  useStoreApi,
   applyEdgeChanges,
   applyNodeChanges,
   MarkerType,
+  BezierEdge,
   type Connection,
   type Edge,
   type Node,
@@ -38,6 +39,8 @@ import {
   AlignHorizontalDistributeCenter,
   AlignVerticalDistributeCenter,
   SquareDashedKanban,
+  Square,
+  Type,
 } from 'lucide-react'
 // import { clearPersistedState } from './persistence'  // 已移除清空功能
 import { getProject, saveProject } from './projectStorage'
@@ -46,11 +49,12 @@ import { GroupNode, type GroupNodeData } from './GroupNode'
 import { autoLayout, type LayoutDirection } from './layout'
 import { QuadNode } from './QuadNode'
 import { EditableSmoothStepEdge } from './EditableSmoothStepEdge'
-import { ColorEditor } from './ColorEditor'
-import { AssetNode, type AssetNodeData } from './AssetNode'
-import { GradientColorEditor, type GradientValue } from './GradientColorEditor'
+import { AssetNode } from './AssetNode'
 import { TextNode } from './TextNode'
 import { InlineInspector } from './InlineInspector'
+import { NodeEditPopup } from './NodeEditPopup'
+import { GroupEditPopup } from './GroupEditPopup'
+import { EdgeEditPopup } from './EdgeEditPopup'
 // overview 示例入口已移除
 
 export type AssetItem = {
@@ -137,6 +141,7 @@ function Sidebar({
   fileName,
   onRenameFile,
   onBackHome,
+  containerClassName,
 }: {
   assets: AssetItem[]
   onAddAsset: (files: FileList | null) => void
@@ -145,6 +150,7 @@ function Sidebar({
   fileName: string
   onRenameFile?: (name: string) => void
   onBackHome?: () => void
+  containerClassName?: string
 }) {
   const [editingTitle, setEditingTitle] = useState(false)
   const [draftTitle, setDraftTitle] = useState(fileName)
@@ -165,13 +171,6 @@ function Sidebar({
     onRenameFile?.(next)
     setEditingTitle(false)
   }
-  const onDragStart = useCallback((evt: DragEvent, nodeType: string) => {
-    evt.dataTransfer.setData(DND_MIME, nodeType)
-    // 兼容某些浏览器：没有 text/plain 时 drop 可能不触发
-    evt.dataTransfer.setData('text/plain', nodeType)
-    evt.dataTransfer.effectAllowed = 'move'
-  }, [])
-
   const onDragStartAsset = useCallback((evt: DragEvent, asset: AssetItem) => {
     evt.dataTransfer.setData(DND_ASSET_MIME, JSON.stringify(asset))
     // 兼容某些浏览器：没有 text/plain 时 drop 可能不触发
@@ -252,7 +251,7 @@ function Sidebar({
   }, [aiPrompt, aiGenerating, onAddAiAsset, apiKey])
 
   return (
-    <aside className={styles.sidebar}>
+    <aside className={`${styles.sidebar} ${containerClassName ?? ''}`}>
       <div className={styles.sidebarInner}>
         <div className={styles.sidebarHeader}>
           <div className={styles.titleRow}>
@@ -296,18 +295,6 @@ function Sidebar({
         </div>
 
         <div className={styles.sidebarScroll}>
-      <div className={styles.section}>
-        <div className={styles.sectionTitle}>节点库（拖拽到画布）</div>
-        <div className={styles.palette}>
-          <div className={styles.paletteItem} draggable onDragStart={(e) => onDragStart(e, 'quad')}>
-            通用节点（四边连线）
-          </div>
-          <div className={styles.paletteItem} draggable onDragStart={(e) => onDragStart(e, 'text')}>
-            纯文本（无背景）
-          </div>
-        </div>
-      </div>
-
       <div className={styles.section}>
         <div className={styles.sectionTitle}>素材</div>
         <div className={styles.assetTabRow}>
@@ -454,8 +441,10 @@ type FlowEditorProps = {
 
 function EditorInner({ onBackHome, source, previewSnapshot, readOnly: _readOnly }: FlowEditorProps) {
   const rf = useReactFlow<FlowNode, FlowEdge>()
+  const storeApi = useStoreApi<FlowNode, FlowEdge>()
   const projectId = source.projectId
   const isPreview = !!previewSnapshot || !!_readOnly
+  const [assetsPopupOpen, setAssetsPopupOpen] = useState(false)
 
   const [inlineInspector, setInlineInspector] = useState<{
     kind: 'node' | 'group' | 'edge' | null
@@ -463,6 +452,22 @@ function EditorInner({ onBackHome, source, previewSnapshot, readOnly: _readOnly 
     x: number
     y: number
   }>({ kind: null, id: null, x: 0, y: 0 })
+
+  /** 点击节点时弹出的形状选择工具栏（仅 quad 节点） */
+  const [shapePopup, setShapePopup] = useState<{ nodeId: string; x: number; y: number } | null>(null)
+  /** 点击边时弹出的边属性 popup */
+  const [edgePopup, setEdgePopup] = useState<{ edgeId: string; x: number; y: number } | null>(null)
+
+  // 文本编辑时（标题/副标题双击），关闭节点/编组/边等其它浮层，只保留文字编辑工具条
+  useEffect(() => {
+    const handler = () => {
+      setShapePopup(null)
+      setEdgePopup(null)
+      setInlineInspector({ kind: null, id: null, x: 0, y: 0 })
+    }
+    window.addEventListener('flow2go:close-popups-for-text', handler)
+    return () => window.removeEventListener('flow2go:close-popups-for-text', handler)
+  }, [])
 
   const initial = useMemo(() => {
     // 预览模式：使用 previewSnapshot
@@ -510,7 +515,7 @@ function EditorInner({ onBackHome, source, previewSnapshot, readOnly: _readOnly 
   const [fileName, setFileName] = useState(initial.name)
   
   // Save state tracking
-  const [hasUnsavedChanges, setHasUnsavedChanges] = useState(false)
+  const [_hasUnsavedChanges, setHasUnsavedChanges] = useState(false)
   const [saveModalOpen, setSaveModalOpen] = useState(false)
   const [exportFileName, setExportFileName] = useState('')
   const initialLoadRef = useRef(true)
@@ -605,7 +610,7 @@ function EditorInner({ onBackHome, source, previewSnapshot, readOnly: _readOnly 
     [rf, snapshotSig],
   )
 
-  const canUndo = historyRef.current.past.length > 0
+  // const _canUndo = historyRef.current.past.length > 0
   // const canRedo = historyRef.current.future.length > 0  // 已移除重做按钮
 
   const undo = useCallback(() => {
@@ -637,6 +642,8 @@ function EditorInner({ onBackHome, source, previewSnapshot, readOnly: _readOnly 
         open: true
         x: number
         y: number
+        clientX: number
+        clientY: number
         kind: 'pane' | 'node' | 'edge'
         nodeId?: string
         nodeType?: string
@@ -648,6 +655,7 @@ function EditorInner({ onBackHome, source, previewSnapshot, readOnly: _readOnly 
 
   const closeMenu = useCallback(() => setMenu({ open: false }), [])
   const menuRef = useRef<HTMLDivElement | null>(null)
+  const canvasRef = useRef<HTMLElement | null>(null)
 
   useEffect(() => {
     if (!menu.open) return
@@ -701,8 +709,8 @@ function EditorInner({ onBackHome, source, previewSnapshot, readOnly: _readOnly 
   const selectedNodesNow = useMemo(() => nodes.filter((n) => n.selected), [nodes])
   const selectedEdgesNow = useMemo(() => edges.filter((e) => e.selected), [edges])
 
-  const selectedNode = selectedNodesNow[0]
-  const selectedEdge = selectedEdgesNow[0]
+  // const _selectedNode = selectedNodesNow[0]
+  // const _selectedEdge = selectedEdgesNow[0]
 
   const isGroupNode = useCallback((n: FlowNode) => n.type === 'group', [])
 
@@ -797,32 +805,32 @@ function EditorInner({ onBackHome, source, previewSnapshot, readOnly: _readOnly 
     [isGroupNode],
   )
 
-  // 前移一层 / 后移一层
-  const moveLayerUp = useCallback(
-    (nodeId: string) => {
-      setNodes((nds) => {
-        const updated = nds.map((n) =>
-          n.id === nodeId ? { ...n, zIndex: (n.zIndex ?? 0) + 1 } : n,
-        )
-        pushHistory(updated, edges, 'layer-up')
-        return updated
-      })
-    },
-    [edges, pushHistory, setNodes],
-  )
-
-  const moveLayerDown = useCallback(
-    (nodeId: string) => {
-      setNodes((nds) => {
-        const updated = nds.map((n) =>
-          n.id === nodeId ? { ...n, zIndex: Math.max(0, (n.zIndex ?? 0) - 1) } : n,
-        )
-        pushHistory(updated, edges, 'layer-down')
-        return updated
-      })
-    },
-    [edges, pushHistory, setNodes],
-  )
+  // 前移一层 / 后移一层（暂未在 UI 中使用）
+  // const moveLayerUp = useCallback(
+  //   (nodeId: string) => {
+  //     setNodes((nds) => {
+  //       const updated = nds.map((n) =>
+  //         n.id === nodeId ? { ...n, zIndex: (n.zIndex ?? 0) + 1 } : n,
+  //       )
+  //       pushHistory(updated, edges, 'layer-up')
+  //       return updated
+  //     })
+  //   },
+  //   [edges, pushHistory, setNodes],
+  // )
+  //
+  // const moveLayerDown = useCallback(
+  //   (nodeId: string) => {
+  //     setNodes((nds) => {
+  //       const updated = nds.map((n) =>
+  //         n.id === nodeId ? { ...n, zIndex: Math.max(0, (n.zIndex ?? 0) - 1) } : n,
+  //       )
+  //       pushHistory(updated, edges, 'layer-down')
+  //       return updated
+  //     })
+  //   },
+  //   [edges, pushHistory, setNodes],
+  // )
 
   // 边的图层控制
   const moveEdgeLayerUp = useCallback(
@@ -1280,6 +1288,26 @@ function EditorInner({ onBackHome, source, previewSnapshot, readOnly: _readOnly 
     img.src = dataUrl
   }, [])
 
+  /** 在画布指定位置添加节点（由右键菜单「添加节点/添加文本」调用） */
+  const addNodeAtPosition = useCallback(
+    (nodeType: 'quad' | 'text', flowPos: { x: number; y: number }) => {
+      const position = snapPos(flowPos)
+      const id = nowId('n')
+      const base: FlowNode = {
+        id,
+        type: nodeType,
+        position,
+        data: { label: nodeType === 'quad' ? `节点 ${id.slice(-4)}` : `文本 ${id.slice(-4)}` },
+      }
+      setNodes((nds) => {
+        const next = nds.concat(base)
+        pushHistory(next, edges, 'add')
+        return next
+      })
+    },
+    [edges, pushHistory, setNodes, snapPos],
+  )
+
   const onDrop = useCallback(
     (evt: DragEvent) => {
       evt.preventDefault()
@@ -1333,27 +1361,12 @@ function EditorInner({ onBackHome, source, previewSnapshot, readOnly: _readOnly 
     [edges, pushHistory, rf, snapPos],
   )
 
-  const updateSelectedNodeData = useCallback(
-    (patch: Partial<NodeData>) => {
-      const target = selectedNodesNow[0]
-      if (!target) return
-      setNodes((nds) =>
-        nds.map((n) => (n.id === target.id ? { ...n, data: { ...n.data, ...patch } } : n)),
-      )
+  /** 按 edgeId 更新边（供 EdgeEditPopup 使用，不依赖当前选中） */
+  const updateEdgeById = useCallback(
+    (edgeId: string, patch: Partial<FlowEdge>) => {
+      setEdges((eds) => eds.map((e) => (e.id === edgeId ? { ...e, ...patch } : e)))
     },
-    [selectedNodesNow, setNodes],
-  )
-
-  const updateSelectedEdge = useCallback(
-    (patch: Partial<FlowEdge>) => {
-      const targetId = selectedEdgesNow[0]?.id
-      if (!targetId) return
-      const currentEdges = rf.getEdges() as FlowEdge[]
-      const next = currentEdges.map((e) => (e.id === targetId ? { ...e, ...patch } : e))
-      flushSync(() => rf.setEdges(next))
-      setEdges(next)
-    },
-    [selectedEdgesNow, setEdges, rf],
+    [setEdges],
   )
 
   // Open save modal with pre-filled filename
@@ -1428,10 +1441,6 @@ function EditorInner({ onBackHome, source, previewSnapshot, readOnly: _readOnly 
   }, [assets, edges, exportFileName, fileName, nodes, projectId, rf])
 
   const fileInputRef = useRef<HTMLInputElement | null>(null)
-
-  const importJson = useCallback(() => {
-    fileInputRef.current?.click()
-  }, [])
 
   // Template功能已移除
   // const saveAsTemplate = useCallback(() => {
@@ -1949,30 +1958,33 @@ function EditorInner({ onBackHome, source, previewSnapshot, readOnly: _readOnly 
   )
 
   // 框选时会出现 selection-rect 覆盖层，可能吃掉右键事件；这里用 capture 阶段兜底。
+  // 只有在没有选中任何节点或边时，右击空白画布才打开 pane 菜单。
   const onCanvasContextMenuCapture = useCallback(
     (evt: React.MouseEvent) => {
-      // 只有选中多个节点时才显示菜单
-      if (selectedNodesNow.length < 2) {
-        evt.preventDefault()
-        return
-      }
       evt.preventDefault()
       evt.stopPropagation()
-      const x = evt.clientX
-      const y = evt.clientY
-      const flowPos = rf.screenToFlowPosition({ x, y })
-      setMenu({ open: true, x, y, kind: 'pane', flowPos })
+      if (selectedNodesNow.length > 0 || selectedEdgesNow.length > 0) return
+      const rect = canvasRef.current?.getBoundingClientRect()
+      if (!rect) return
+      const x = evt.clientX - rect.left
+      const y = evt.clientY - rect.top
+      const flowPos = rf.screenToFlowPosition({ x: evt.clientX, y: evt.clientY })
+      setMenu({ open: true, x, y, clientX: evt.clientX, clientY: evt.clientY, kind: 'pane', flowPos })
     },
-    [rf, selectedNodesNow.length],
+    [rf, selectedNodesNow.length, selectedEdgesNow.length],
   )
 
   const onNodeContextMenu = useCallback(
     (evt: MouseEvent | React.MouseEvent, node: FlowNode) => {
       ;(evt as any).preventDefault?.()
-      const x = (evt as any).clientX as number
-      const y = (evt as any).clientY as number
-      const flowPos = rf.screenToFlowPosition({ x, y })
-      setMenu({ open: true, x, y, kind: 'node', nodeId: node.id, nodeType: node.type, flowPos })
+      const rect = canvasRef.current?.getBoundingClientRect()
+      if (!rect) return
+      const x = (evt as any).clientX - rect.left
+      const y = (evt as any).clientY - rect.top
+      const cx = (evt as any).clientX
+      const cy = (evt as any).clientY
+      const flowPos = rf.screenToFlowPosition({ x: cx, y: cy })
+      setMenu({ open: true, x, y, clientX: cx, clientY: cy, kind: 'node', nodeId: node.id, nodeType: node.type, flowPos })
     },
     [rf],
   )
@@ -1980,10 +1992,14 @@ function EditorInner({ onBackHome, source, previewSnapshot, readOnly: _readOnly 
   const onEdgeContextMenu = useCallback(
     (evt: MouseEvent | React.MouseEvent, edge: FlowEdge) => {
       ;(evt as any).preventDefault?.()
-      const x = (evt as any).clientX as number
-      const y = (evt as any).clientY as number
-      const flowPos = rf.screenToFlowPosition({ x, y })
-      setMenu({ open: true, x, y, kind: 'edge', edgeId: edge.id, flowPos })
+      const rect = canvasRef.current?.getBoundingClientRect()
+      if (!rect) return
+      const x = (evt as any).clientX - rect.left
+      const y = (evt as any).clientY - rect.top
+      const cx = (evt as any).clientX
+      const cy = (evt as any).clientY
+      const flowPos = rf.screenToFlowPosition({ x: cx, y: cy })
+      setMenu({ open: true, x, y, clientX: cx, clientY: cy, kind: 'edge', edgeId: edge.id, flowPos })
     },
     [rf],
   )
@@ -2002,6 +2018,31 @@ function EditorInner({ onBackHome, source, previewSnapshot, readOnly: _readOnly 
     [setEdges],
   )
 
+  /** 单击节点时：quad 或 group 弹出对应属性工具栏；popup 在节点上方居中、间距 12px。编组内节点用 store 中的 positionAbsolute 才能得到正确屏幕坐标 */
+  const onNodeClick = useCallback(
+    (_evt: React.MouseEvent, node: FlowNode) => {
+      if (node.type !== 'quad' && node.type !== 'group') return
+      setEdgePopup(null)
+      const state = storeApi.getState()
+      const internalNode = state.nodeLookup.get(node.id)
+      const positionAbsolute = (internalNode as { internals?: { positionAbsolute?: { x: number; y: number } } } | undefined)?.internals?.positionAbsolute
+      const pos = positionAbsolute ?? node.position
+      const topLeft = rf.flowToScreenPosition(pos)
+      const w = (node.measured as { width?: number })?.width ?? (node as { width?: number }).width ?? (node.style as { width?: number })?.width ?? 160
+      const centerX = topLeft.x + Number(w) / 2
+      const top = topLeft.y
+      setShapePopup({ nodeId: node.id, x: centerX, y: top - 12 })
+    },
+    [rf, storeApi],
+  )
+
+  /** 单击边时：弹出边属性 popup，在点击位置上方 12px 居中 */
+  const onEdgeClick = useCallback((evt: React.MouseEvent, edge: FlowEdge) => {
+    setShapePopup(null)
+    setEdgePopup({ edgeId: edge.id, x: evt.clientX, y: evt.clientY - 12 })
+  }, [])
+
+
   // selectedNode / selectedEdge 已在上方派生
   const nodeTypesFull = useMemo(
     () => ({
@@ -2013,7 +2054,10 @@ function EditorInner({ onBackHome, source, previewSnapshot, readOnly: _readOnly 
     [],
   )
 
-  const edgeTypes = useMemo(() => ({ smoothstep: EditableSmoothStepEdge }), [])
+  const edgeTypes = useMemo(
+    () => ({ smoothstep: EditableSmoothStepEdge, bezier: BezierEdge }),
+    [],
+  )
 
   // ---------- Shortcuts（放在所有动作定义之后，避免 TDZ） ----------
   useEffect(() => {
@@ -2091,7 +2135,7 @@ function EditorInner({ onBackHome, source, previewSnapshot, readOnly: _readOnly 
 
   return (
     <div className={`${styles.editor} xy-theme`}>
-      {!isPreview && (
+      {!isPreview && assetsPopupOpen && (
         <Sidebar
           assets={assets}
           onAddAsset={onAddAsset}
@@ -2100,10 +2144,12 @@ function EditorInner({ onBackHome, source, previewSnapshot, readOnly: _readOnly 
           fileName={fileName}
           onRenameFile={onRenameFile}
           onBackHome={onBackHome ? handleBackHome : undefined}
+          containerClassName={styles.assetsPopup}
         />
       )}
 
       <main
+        ref={canvasRef}
         className={styles.canvas}
         data-space-pan={spacePressed ? true : undefined}
         onContextMenuCapture={onCanvasContextMenuCapture}
@@ -2120,7 +2166,9 @@ function EditorInner({ onBackHome, source, previewSnapshot, readOnly: _readOnly 
           onDrop={isPreview ? undefined : onDrop}
           onDragOver={isPreview ? undefined : onDragOver}
           onPaneContextMenu={isPreview ? undefined : onPaneContextMenu}
+          onNodeClick={isPreview ? undefined : onNodeClick}
           onNodeContextMenu={isPreview ? undefined : onNodeContextMenu}
+          onEdgeClick={isPreview ? undefined : onEdgeClick}
           onEdgeContextMenu={isPreview ? undefined : onEdgeContextMenu}
           onEdgeDoubleClick={isPreview ? undefined : onEdgeDoubleClick}
           fitView
@@ -2151,256 +2199,331 @@ function EditorInner({ onBackHome, source, previewSnapshot, readOnly: _readOnly 
           <MiniMap zoomable pannable />
           <Controls />
 
-          <Panel position="top-left" className={styles.topPanel}>
-            {!isPreview && (
+          {!isPreview && (
+            <Panel position="top-right" className={styles.topPanel}>
+              <button
+                className={styles.assetsBtn}
+                type="button"
+                onClick={() => setAssetsPopupOpen((v) => !v)}
+              >
+                素材
+              </button>
+              <button
+                className={styles.assetsBtn}
+                type="button"
+                onClick={() => fileInputRef.current?.click()}
+              >
+                导入
+              </button>
+              <button
+                className={styles.assetsBtn}
+                type="button"
+                onClick={() => {
+                  // 模板库：后续在前端补充模板数据
+                }}
+              >
+                模板库
+              </button>
+              <button
+                className={styles.saveBar}
+                type="button"
+                onClick={openSaveModal}
+              >
+                保存
+              </button>
+            </Panel>
+          )}
+        </ReactFlow>
+
+        {menu.open && (
+          <div
+            ref={menuRef}
+            className={styles.menu}
+            style={{ left: menu.clientX, top: menu.clientY - 12 }}
+            onMouseDown={(e) => e.stopPropagation()}
+            onClick={(e) => e.stopPropagation()}
+          >
+            {menu.kind === 'pane' && selectedNodesNow.length === 0 && selectedEdgesNow.length === 0 && (
               <>
-                <button className={styles.btn} type="button" onClick={undo} disabled={!canUndo}>
-                  撤销
+                <button
+                  className={styles.menuItem}
+                  type="button"
+                  onClick={() => {
+                    addNodeAtPosition('quad', menu.flowPos)
+                    closeMenu()
+                  }}
+                >
+                  <span className={styles.menuLabel}>
+                    <span className={styles.menuIcon}>
+                      <Square size={14} />
+                    </span>
+                    <span>添加节点</span>
+                  </span>
+                  <span className={styles.menuKbd}></span>
                 </button>
-                <button className={styles.btn} type="button" onClick={importJson}>
-                  导入文件
-                </button>
-                <button className={hasUnsavedChanges ? styles.btnUnsaved : styles.btnSaved} style={{ marginLeft: 'auto' }} type="button" onClick={openSaveModal}>
-                  {hasUnsavedChanges ? '未保存' : '✓ 已保存'}
+                <button
+                  className={styles.menuItem}
+                  type="button"
+                  onClick={() => {
+                    addNodeAtPosition('text', menu.flowPos)
+                    closeMenu()
+                  }}
+                >
+                  <span className={styles.menuLabel}>
+                    <span className={styles.menuIcon}>
+                      <Type size={14} />
+                    </span>
+                    <span>添加文本</span>
+                  </span>
+                  <span className={styles.menuKbd}></span>
                 </button>
               </>
             )}
-          </Panel>
-
-          {menu.open && (
-            <div
-              ref={menuRef}
-              className={styles.menu}
-              style={{ left: menu.x, top: menu.y }}
-              onMouseDown={(e) => e.stopPropagation()}
-              onClick={(e) => e.stopPropagation()}
-            >
-              {selectedNodesNow.length >= 2 && (
-                <>
-                  <button className={styles.menuItem} type="button" onClick={() => (groupSelection(), closeMenu())}>
-                    <span className={styles.menuLabel}>
-                      <span className={styles.menuIcon}>
-                        <SquareDashedKanban size={14} />
-                      </span>
-                      <span>群组</span>
+            {menu.kind === 'pane' && selectedNodesNow.length >= 2 && (
+              <>
+                <button className={styles.menuItem} type="button" onClick={() => (groupSelection(), closeMenu())}>
+                  <span className={styles.menuLabel}>
+                    <span className={styles.menuIcon}>
+                      <SquareDashedKanban size={14} />
                     </span>
-                    <span className={styles.menuKbd}>G</span>
-                  </button>
-                  <button className={styles.menuItem} type="button" onClick={() => (runLayout('LR'), closeMenu())}>
-                    <span className={styles.menuLabel}>
-                      <span className={styles.menuIcon}>
-                        <AlignHorizontalDistributeCenter size={14} />
-                      </span>
-                      <span>自动排列</span>
+                    <span>群组</span>
+                  </span>
+                  <span className={styles.menuKbd}>G</span>
+                </button>
+                <button className={styles.menuItem} type="button" onClick={() => (runLayout('LR'), closeMenu())}>
+                  <span className={styles.menuLabel}>
+                    <span className={styles.menuIcon}>
+                      <AlignHorizontalDistributeCenter size={14} />
                     </span>
-                    <span className={styles.menuKbd}></span>
-                  </button>
-                  <button className={styles.menuItem} type="button" onClick={() => (align('left'), closeMenu())}>
-                    <span className={styles.menuLabel}>
-                      <span className={styles.menuIcon}>
-                        <AlignLeft size={14} />
-                      </span>
-                      <span>左对齐</span>
+                    <span>自动排列</span>
+                  </span>
+                  <span className={styles.menuKbd}></span>
+                </button>
+                <button className={styles.menuItem} type="button" onClick={() => (align('left'), closeMenu())}>
+                  <span className={styles.menuLabel}>
+                    <span className={styles.menuIcon}>
+                      <AlignLeft size={14} />
                     </span>
-                    <span className={styles.menuKbd}></span>
-                  </button>
-                  <button className={styles.menuItem} type="button" onClick={() => (align('hcenter'), closeMenu())}>
-                    <span className={styles.menuLabel}>
-                      <span className={styles.menuIcon}>
-                        <AlignCenterHorizontal size={14} />
-                      </span>
-                      <span>水平居中</span>
+                    <span>左对齐</span>
+                  </span>
+                  <span className={styles.menuKbd}></span>
+                </button>
+                <button className={styles.menuItem} type="button" onClick={() => (align('hcenter'), closeMenu())}>
+                  <span className={styles.menuLabel}>
+                    <span className={styles.menuIcon}>
+                      <AlignCenterHorizontal size={14} />
                     </span>
-                    <span className={styles.menuKbd}></span>
-                  </button>
-                  <button className={styles.menuItem} type="button" onClick={() => (align('right'), closeMenu())}>
-                    <span className={styles.menuLabel}>
-                      <span className={styles.menuIcon}>
-                        <AlignRight size={14} />
-                      </span>
-                      <span>右对齐</span>
+                    <span>水平居中</span>
+                  </span>
+                  <span className={styles.menuKbd}></span>
+                </button>
+                <button className={styles.menuItem} type="button" onClick={() => (align('right'), closeMenu())}>
+                  <span className={styles.menuLabel}>
+                    <span className={styles.menuIcon}>
+                      <AlignRight size={14} />
                     </span>
-                    <span className={styles.menuKbd}></span>
-                  </button>
-                  <button className={styles.menuItem} type="button" onClick={() => (align('top'), closeMenu())}>
-                    <span className={styles.menuLabel}>
-                      <span className={styles.menuIcon}>⯅</span>
-                      <span>顶对齐</span>
+                    <span>右对齐</span>
+                  </span>
+                  <span className={styles.menuKbd}></span>
+                </button>
+                <button className={styles.menuItem} type="button" onClick={() => (align('top'), closeMenu())}>
+                  <span className={styles.menuLabel}>
+                    <span className={styles.menuIcon}>⯅</span>
+                    <span>顶对齐</span>
+                  </span>
+                  <span className={styles.menuKbd}></span>
+                </button>
+                <button className={styles.menuItem} type="button" onClick={() => (align('vcenter'), closeMenu())}>
+                  <span className={styles.menuLabel}>
+                    <span className={styles.menuIcon}>
+                      <AlignCenterVertical size={14} />
                     </span>
-                    <span className={styles.menuKbd}></span>
-                  </button>
-                  <button className={styles.menuItem} type="button" onClick={() => (align('vcenter'), closeMenu())}>
-                    <span className={styles.menuLabel}>
-                      <span className={styles.menuIcon}>
-                        <AlignCenterVertical size={14} />
-                      </span>
-                      <span>垂直居中</span>
+                    <span>垂直居中</span>
+                  </span>
+                  <span className={styles.menuKbd}></span>
+                </button>
+                <button className={styles.menuItem} type="button" onClick={() => (align('bottom'), closeMenu())}>
+                  <span className={styles.menuLabel}>
+                    <span className={styles.menuIcon}>⯆</span>
+                    <span>底对齐</span>
+                  </span>
+                  <span className={styles.menuKbd}></span>
+                </button>
+                <button className={styles.menuItem} type="button" onClick={() => (align('hspace'), closeMenu())}>
+                  <span className={styles.menuLabel}>
+                    <span className={styles.menuIcon}>
+                      <AlignHorizontalDistributeCenter size={14} />
                     </span>
-                    <span className={styles.menuKbd}></span>
-                  </button>
-                  <button className={styles.menuItem} type="button" onClick={() => (align('bottom'), closeMenu())}>
-                    <span className={styles.menuLabel}>
-                      <span className={styles.menuIcon}>⯆</span>
-                      <span>底对齐</span>
+                    <span>水平等距</span>
+                  </span>
+                  <span className={styles.menuKbd}></span>
+                </button>
+                <button className={styles.menuItem} type="button" onClick={() => (align('vspace'), closeMenu())}>
+                  <span className={styles.menuLabel}>
+                    <span className={styles.menuIcon}>
+                      <AlignVerticalDistributeCenter size={14} />
                     </span>
-                    <span className={styles.menuKbd}></span>
-                  </button>
-                  <button className={styles.menuItem} type="button" onClick={() => (align('hspace'), closeMenu())}>
-                    <span className={styles.menuLabel}>
-                      <span className={styles.menuIcon}>
-                        <AlignHorizontalDistributeCenter size={14} />
-                      </span>
-                      <span>水平等距</span>
-                    </span>
-                    <span className={styles.menuKbd}></span>
-                  </button>
-                  <button className={styles.menuItem} type="button" onClick={() => (align('vspace'), closeMenu())}>
-                    <span className={styles.menuLabel}>
-                      <span className={styles.menuIcon}>
-                        <AlignVerticalDistributeCenter size={14} />
-                      </span>
-                      <span>垂直等距</span>
-                    </span>
-                    <span className={styles.menuKbd}></span>
-                  </button>
-                  <button className={styles.menuItemDanger} type="button" onClick={() => (deleteSelection(), closeMenu())}>
-                    <span>删除</span>
-                    <span className={styles.menuKbd}>Del</span>
-                  </button>
-                </>
-              )}
-              {menu.kind === 'node' && (
-                <>
-                  {menu.nodeType !== 'asset' && menu.nodeType !== 'text' && (
-                    <button
-                      className={styles.menuItem}
-                      type="button"
-                      onClick={() => (menu.nodeId ? duplicateNode(menu.nodeId) : undefined, closeMenu())}
-                    >
-                      <span>复制节点</span>
-                      <span className={styles.menuKbd}>Ctrl/Cmd+D</span>
-                    </button>
-                  )}
-                  {menu.nodeId && (
-                    <button
-                      className={styles.menuItem}
-                      type="button"
-                      onClick={() => {
-                        setInlineInspector({
-                          kind: menu.nodeType === 'group' ? 'group' : 'node',
-                          id: menu.nodeId ?? null,
-                          x: menu.x,
-                          y: menu.y,
-                        })
-                        closeMenu()
-                      }}
-                    >
-                      <span>快速编辑</span>
-                      <span className={styles.menuKbd}></span>
-                    </button>
-                  )}
-                  {menu.nodeType === 'asset' && menu.nodeId && (
-                    <button
-                      className={styles.menuItem}
-                      type="button"
-                      onClick={() => {
-                        const node = nodes.find((n) => n.id === menu.nodeId)
-                        if (node && node.type === 'asset') {
-                          const data = node.data as { src?: string; name?: string }
-                          if (data.src) {
-                            onAddAiAsset(data.src, data.name || `asset-${Date.now()}.png`)
-                          }
-                        }
-                        closeMenu()
-                      }}
-                    >
-                      <span>存入素材库</span>
-                      <span className={styles.menuKbd}></span>
-                    </button>
-                  )}
-                  <button
-                    className={styles.menuItem}
-                    type="button"
-                    onClick={() => (menu.nodeId ? moveLayerUp(menu.nodeId) : undefined, closeMenu())}
-                  >
-                    <span>前移一层</span>
-                    <span className={styles.menuKbd}></span>
-                  </button>
-                  <button
-                    className={styles.menuItem}
-                    type="button"
-                    onClick={() => (menu.nodeId ? moveLayerDown(menu.nodeId) : undefined, closeMenu())}
-                  >
-                    <span>后移一层</span>
-                    <span className={styles.menuKbd}></span>
-                  </button>
-                  <button
-                    className={styles.menuItemDanger}
-                    type="button"
-                    onClick={() => (menu.nodeId ? deleteNode(menu.nodeId) : undefined, closeMenu())}
-                  >
-                    <span>
-                      {menu.nodeType === 'asset'
-                        ? '删除素材'
-                        : menu.nodeType === 'text'
-                          ? '删除文本'
-                          : '删除节点'}
-                    </span>
-                    <span className={styles.menuKbd}>Del</span>
-                  </button>
-                  {/* 分组折叠已移除（按需求：群组只是外框容器） */}
-                </>
-              )}
-
-              {menu.kind === 'edge' && (
-                <>
-                  <button
-                    className={styles.menuItem}
-                    type="button"
-                    onClick={() => (menu.edgeId ? moveEdgeLayerUp(menu.edgeId) : undefined, closeMenu())}
-                  >
-                    <span>前移一层</span>
-                    <span className={styles.menuKbd}></span>
-                  </button>
+                    <span>垂直等距</span>
+                  </span>
+                  <span className={styles.menuKbd}></span>
+                </button>
+                <button className={styles.menuItemDanger} type="button" onClick={() => (deleteSelection(), closeMenu())}>
+                  <span>删除</span>
+                  <span className={styles.menuKbd}>Del</span>
+                </button>
+              </>
+            )}
+            {menu.kind === 'node' && (
+              <>
+                <button
+                  className={styles.menuItem}
+                  type="button"
+                  onClick={() => (menu.nodeId ? duplicateNode(menu.nodeId) : undefined, closeMenu())}
+                >
+                  <span>复制节点</span>
+                  <span className={styles.menuKbd}>Ctrl/Cmd+D</span>
+                </button>
+                <button
+                  className={styles.menuItemDanger}
+                  type="button"
+                  onClick={() => (menu.nodeId ? deleteNode(menu.nodeId) : undefined, closeMenu())}
+                >
+                  <span>删除节点</span>
+                  <span className={styles.menuKbd}>Del</span>
+                </button>
+              </>
+            )}
+            {menu.kind === 'edge' && (
+              <>
+                <button
+                  className={styles.menuItem}
+                  type="button"
+                  onClick={() => (menu.edgeId ? moveEdgeLayerUp(menu.edgeId) : undefined, closeMenu())}
+                >
+                  <span>前移一层</span>
+                  <span className={styles.menuKbd}></span>
+                </button>
                   {menu.edgeId && (
                     <button
                       className={styles.menuItem}
                       type="button"
                       onClick={() => {
+                        // 打开文字编辑 Popup 时，关闭节点/编组的单击 Popup
+                        setShapePopup(null)
                         setInlineInspector({
                           kind: 'edge',
                           id: menu.edgeId ?? null,
-                          x: menu.x,
-                          y: menu.y,
+                          x: menu.clientX,
+                          y: menu.clientY - 12,
                         })
                         closeMenu()
                       }}
                     >
-                      <span>快速编辑</span>
-                      <span className={styles.menuKbd}></span>
-                    </button>
-                  )}
-                  <button
-                    className={styles.menuItem}
-                    type="button"
-                    onClick={() => (menu.edgeId ? moveEdgeLayerDown(menu.edgeId) : undefined, closeMenu())}
-                  >
-                    <span>后移一层</span>
+                    <span>快速编辑</span>
                     <span className={styles.menuKbd}></span>
                   </button>
-                  <button
-                    className={styles.menuItemDanger}
-                    type="button"
-                    onClick={() => (menu.edgeId ? deleteEdge(menu.edgeId) : undefined, closeMenu())}
-                  >
-                    <span>删除边</span>
-                    <span className={styles.menuKbd}>Del</span>
-                  </button>
-                </>
-              )}
-            </div>
-          )}
-        </ReactFlow>
+                )}
+                <button
+                  className={styles.menuItem}
+                  type="button"
+                  onClick={() => (menu.edgeId ? moveEdgeLayerDown(menu.edgeId) : undefined, closeMenu())}
+                >
+                  <span>后移一层</span>
+                  <span className={styles.menuKbd}></span>
+                </button>
+                <button
+                  className={styles.menuItemDanger}
+                  type="button"
+                  onClick={() => (menu.edgeId ? deleteEdge(menu.edgeId) : undefined, closeMenu())}
+                >
+                  <span>删除边</span>
+                  <span className={styles.menuKbd}>Del</span>
+                </button>
+              </>
+            )}
+          </div>
+        )}
+
+        {shapePopup && (() => {
+          const popupNode = nodes.find((n) => n.id === shapePopup.nodeId)
+          if (!popupNode) return null
+          if (popupNode.type === 'quad') {
+            return (
+              <NodeEditPopup
+                node={popupNode as FlowNode}
+                anchor={{ x: shapePopup.x, y: shapePopup.y }}
+                onUpdate={(patch) =>
+                  setNodes((nds) =>
+                    nds.map((n) => {
+                      if (n.id !== shapePopup.nodeId) return n
+                      const nextData = { ...(n.data ?? {}), ...patch }
+                      const nextNode = { ...n, data: nextData }
+                      if (patch.shape === 'circle') {
+                        const w = (n.measured as { width?: number })?.width ?? (n as { width?: number }).width ?? (n.style as { width?: number })?.width ?? 160
+                        const h = (n.measured as { height?: number })?.height ?? (n as { height?: number }).height ?? (n.style as { height?: number })?.height ?? 44
+                        const size = Math.max(Number(w) || 160, Number(h) || 44)
+                        nextNode.style = { ...(n.style as object ?? {}), width: size, height: size }
+                        nextNode.width = size
+                        nextNode.height = size
+                        // 保持中心不变：向左上偏移 (w-size)/2 和 (h-size)/2
+                        nextNode.position = {
+                          x: n.position.x + (Number(w) || 160 - size) / 2,
+                          y: n.position.y + (Number(h) || 44 - size) / 2,
+                        }
+                      }
+                      return nextNode
+                    }),
+                  )
+                }
+                onClose={() => setShapePopup(null)}
+              />
+            )
+          }
+          if (popupNode.type === 'group') {
+            return (
+              <GroupEditPopup
+                node={popupNode as FlowNode as Node<GroupNodeData>}
+                anchor={{ x: shapePopup.x, y: shapePopup.y }}
+                onUpdate={(patch) => updateGroupStyle(shapePopup.nodeId, patch)}
+                onFillChange={(v) => {
+                  const trimmed = v.trim()
+                  if (trimmed.startsWith('rgba')) {
+                    updateGroupStyle(shapePopup.nodeId, { fill: trimmed })
+                    return
+                  }
+                  if (!trimmed) {
+                    updateGroupStyle(shapePopup.nodeId, { fill: '' })
+                    return
+                  }
+                  const hex = trimmed.startsWith('#') ? trimmed : `#${trimmed}`
+                  const rgb = hexToRgbColor(hex)
+                  if (rgb) {
+                    updateGroupStyle(shapePopup.nodeId, {
+                      fill: `rgba(${rgb.r},${rgb.g},${rgb.b},0.12)`,
+                    })
+                  } else {
+                    updateGroupStyle(shapePopup.nodeId, { fill: trimmed })
+                  }
+                }}
+                onClose={() => setShapePopup(null)}
+              />
+            )
+          }
+          return null
+        })()}
+
+        {edgePopup && (() => {
+          const popupEdge = edges.find((e) => e.id === edgePopup.edgeId)
+          if (!popupEdge) return null
+          return (
+            <EdgeEditPopup
+              edge={popupEdge as FlowEdge}
+              anchor={{ x: edgePopup.x, y: edgePopup.y }}
+              onUpdate={(patch) => updateEdgeById(edgePopup.edgeId, patch)}
+              onClose={() => setEdgePopup(null)}
+            />
+          )
+        })()}
 
         <InlineInspector
           anchor={inlineInspector.kind ? { x: inlineInspector.x, y: inlineInspector.y } : null}
@@ -2471,462 +2594,6 @@ function EditorInner({ onBackHome, source, previewSnapshot, readOnly: _readOnly 
         />
       </main>
 
-      {!isPreview && (
-        <aside className={styles.inspector}>
-          <div className={styles.sectionTitle}>属性面板</div>
-
-        {!selectedNode && !selectedEdge && <div className={styles.muted}>未选中节点/边</div>}
-
-        {selectedNode && (
-          <div className={styles.form}>
-            <div className={styles.formTitle}>
-              {selectedNode.type === 'group'
-                ? `群组：${((selectedNode.data as GroupNodeData | undefined)?.title ||
-                    '未命名群组') as string}`
-                : selectedNode.type === 'asset'
-                ? `素材：${((selectedNode.data as any)?.assetName || '未命名素材') as string}`
-                : `节点：${(((selectedNode.data as any)?.title ??
-                    selectedNode.data?.label ??
-                    '未命名节点') as string)}`}
-            </div>
-
-            {selectedNode.type === 'asset' && (
-              <>
-                <div className={styles.mutedSmall}>
-                  素材节点 · {(selectedNode.data as any)?.assetName ?? '—'}
-                  <br />
-                  {(selectedNode.data as any)?.assetWidth ?? 120} ×{' '}
-                  {(selectedNode.data as any)?.assetHeight ?? 80} 像素（选中后拖拽边角拉伸）
-                </div>
-
-                <div className={styles.form} style={{ marginTop: 8 }}>
-                  <label className={styles.label}>
-                    <div className={styles.labelText}>旋转（度）</div>
-                    <input
-                      className={styles.input}
-                      type="number"
-                      min={-360}
-                      max={360}
-                      value={(selectedNode.data as AssetNodeData)?.rotation ?? 0}
-                      onChange={(e) => {
-                        const val = parseFloat(e.target.value)
-                        if (!Number.isFinite(val)) {
-                          updateSelectedNodeData({ rotation: 0 })
-                        } else {
-                          // 规范到 -360~360 范围
-                          const norm = ((val % 360) + 360) % 360
-                          updateSelectedNodeData({ rotation: norm })
-                        }
-                      }}
-                    />
-                  </label>
-                </div>
-
-                {/* SVG 素材颜色覆盖 */}
-                {(selectedNode.data as AssetNodeData)?.assetType === 'svg' && (
-                  <div className={styles.form}>
-                    <div className={styles.formTitle}>颜色覆盖（仅SVG）</div>
-                    <GradientColorEditor
-                      value={(selectedNode.data as AssetNodeData)?.colorOverride ?? { type: 'solid' }}
-                      onChange={(v: GradientValue) => updateSelectedNodeData({ colorOverride: v })}
-                    />
-                  </div>
-                )}
-              </>
-            )}
-
-            {selectedNode.type !== 'asset' && selectedNode.type !== 'group' && selectedNode.type !== 'text' && (
-              <>
-                {/* 副标题开关 - 仅 quad 节点 */}
-                {selectedNode.type === 'quad' && (
-                  <label className={styles.checkboxRow}>
-                    <input
-                      type="checkbox"
-                      checked={!!(selectedNode.data as any)?.showSubtitle}
-                      onChange={(e) => updateSelectedNodeData({ showSubtitle: e.target.checked })}
-                    />
-                    显示副标题
-                  </label>
-                )}
-                <label className={styles.label}>
-                  <div className={styles.labelText}>文字颜色</div>
-                  <ColorEditor
-                    value={(selectedNode.data as any)?.labelColor ?? ''}
-                    onChange={(v) => updateSelectedNodeData({ labelColor: v })}
-                    placeholder="rgba(0,0,0,0.8)"
-                    showAlpha={true}
-                  />
-                </label>
-                <label className={styles.label}>
-                  <div className={styles.labelText}>填充颜色（MiniMap/节点样式）</div>
-                  <ColorEditor
-                    value={selectedNode.data?.color ?? '#ffffff'}
-                    onChange={(v) => updateSelectedNodeData({ color: v })}
-                    placeholder="#ffffff"
-                    showAlpha={true}
-                  />
-                </label>
-                <label className={styles.label}>
-                  <div className={styles.labelText}>描边颜色</div>
-                  <ColorEditor
-                    value={(selectedNode.data as any)?.stroke ?? '#e2e8f0'}
-                    onChange={(v) => updateSelectedNodeData({ stroke: v })}
-                    placeholder="#e2e8f0"
-                    showAlpha={true}
-                  />
-                </label>
-                <label className={styles.label}>
-                  <div className={styles.labelText}>描边粗细</div>
-                  <input
-                    className={styles.input}
-                    type="number"
-                    min={0}
-                    step={1}
-                    value={(selectedNode.data as any)?.strokeWidth ?? 1}
-                    onChange={(e) => {
-                      const val = e.target.value
-                      const num = parseFloat(val)
-                      updateSelectedNodeData({ strokeWidth: Number.isFinite(num) && num >= 0 ? num : 1 })
-                    }}
-                    placeholder="1"
-                  />
-                </label>
-              </>
-            )}
-
-            {selectedNode.type === 'group' && (
-              <>
-                <label className={styles.checkboxRow}>
-                  <input
-                    type="checkbox"
-                    checked={!!((selectedNode.data as GroupNodeData | undefined)?.showSubtitle)}
-                    onChange={(e) => updateGroupStyle(selectedNode.id, { showSubtitle: e.target.checked })}
-                  />
-                  显示副标题
-                </label>
-                <label className={styles.label}>
-                  <div className={styles.labelText}>标题位置</div>
-                  <select
-                    className={styles.input}
-                    value={(selectedNode.data as GroupNodeData | undefined)?.titlePosition ?? 'top-center'}
-                    onChange={(e) => updateGroupStyle(selectedNode.id, { titlePosition: e.target.value as 'top-center' | 'left-center' })}
-                  >
-                    <option value="top-center">上方居中</option>
-                    <option value="left-center">左侧居中</option>
-                  </select>
-                </label>
-                <label className={styles.label}>
-                  <div className={styles.labelText}>标题文字颜色</div>
-                  <ColorEditor
-                    value={((selectedNode.data as GroupNodeData | undefined)?.titleColor ?? '') as string}
-                    onChange={(v) => updateGroupStyle(selectedNode.id, { titleColor: v })}
-                    placeholder="#1e3a8a"
-                    showAlpha={true}
-                  />
-                </label>
-                <label className={styles.label}>
-                  <div className={styles.labelText}>描边颜色</div>
-                  <ColorEditor
-                    value={((selectedNode.data as GroupNodeData | undefined)?.stroke ?? '') as string}
-                    onChange={(v) => updateGroupStyle(selectedNode.id, { stroke: v })}
-                    placeholder="#3b82f6"
-                    showAlpha={true}
-                  />
-                </label>
-                <label className={styles.label}>
-                  <div className={styles.labelText}>描边粗细</div>
-                  <input
-                    className={styles.input}
-                    type="number"
-                    min={0}
-                    step={1}
-                    value={((selectedNode.data as GroupNodeData | undefined)?.strokeWidth ?? 1)}
-                    onChange={(e) => {
-                      const val = e.target.value
-                      const num = parseFloat(val)
-                      updateGroupStyle(selectedNode.id, { strokeWidth: Number.isFinite(num) && num >= 0 ? num : 1 })
-                    }}
-                    placeholder="1"
-                  />
-                </label>
-                <label className={styles.label}>
-                  <div className={styles.labelText}>底色（hex + 透明度或 rgba）</div>
-                  <ColorEditor
-                    value={((selectedNode.data as GroupNodeData | undefined)?.fill ?? '') as string}
-                    onChange={(v) => {
-                      const trimmed = v.trim()
-                      // 用户显式输入 rgba(...) 时，按用户的透明度；否则默认 12%
-                      if (trimmed.startsWith('rgba')) {
-                        updateGroupStyle(selectedNode.id, { fill: trimmed })
-                        return
-                      }
-                      if (!trimmed) {
-                        updateGroupStyle(selectedNode.id, { fill: '' })
-                        return
-                      }
-                      const hex = trimmed.startsWith('#') ? trimmed : `#${trimmed}`
-                      const rgb = hexToRgbColor(hex)
-                      if (rgb) {
-                        updateGroupStyle(selectedNode.id, {
-                          fill: `rgba(${rgb.r},${rgb.g},${rgb.b},0.12)`,
-                        })
-                      } else {
-                        updateGroupStyle(selectedNode.id, { fill: trimmed })
-                      }
-                    }}
-                    placeholder="rgba(59,130,246,0.12)"
-                    showPicker={true}
-                    showAlpha={true}
-                  />
-                </label>
-              </>
-            )}
-          </div>
-        )}
-
-        {selectedEdge && (
-          <div className={styles.form}>
-            <div className={styles.formTitle}>边：{selectedEdge.id}</div>
-            <label className={styles.label}>
-              <div className={styles.labelText}>Label</div>
-              <input
-                className={styles.input}
-                value={(selectedEdge.label as string) ?? ''}
-                onChange={(e) => updateSelectedEdge({ label: e.target.value })}
-              />
-            </label>
-            <label className={styles.label}>
-              <div className={styles.labelText}>文字大小</div>
-              <input
-                className={styles.input}
-                type="number"
-                min={10}
-                max={72}
-                placeholder="12"
-                value={
-                  (selectedEdge as FlowEdge).labelStyle?.fontSize ??
-                  (selectedEdge.data as any)?.labelStyle?.fontSize ??
-                  ''
-                }
-                onChange={(e) => {
-                  const v = e.target.value ? Number(e.target.value) : undefined
-                  const next: EdgeLabelStyle = {
-                    ...(selectedEdge as FlowEdge).labelStyle,
-                    fontSize: Number.isFinite(v) ? v : undefined,
-                    fontWeight: (selectedEdge as FlowEdge).labelStyle?.fontWeight,
-                  }
-                  updateSelectedEdge({
-                    labelStyle: next,
-                    data: { ...(selectedEdge.data ?? {}), labelStyle: next },
-                  } as any)
-                }}
-              />
-            </label>
-            <label className={styles.label}>
-              <div className={styles.labelText}>文字粗细</div>
-              <select
-                className={styles.input}
-                value={
-                  (selectedEdge as FlowEdge).labelStyle?.fontWeight ??
-                  (selectedEdge.data as any)?.labelStyle?.fontWeight ??
-                  '400'
-                }
-                onChange={(e) => {
-                  const next: EdgeLabelStyle = {
-                    ...(selectedEdge as FlowEdge).labelStyle,
-                    fontWeight: e.target.value,
-                    fontSize: (selectedEdge as FlowEdge).labelStyle?.fontSize,
-                    color: (selectedEdge as FlowEdge).labelStyle?.color ?? (selectedEdge.data as any)?.labelStyle?.color,
-                  }
-                  updateSelectedEdge({
-                    labelStyle: next,
-                    data: { ...(selectedEdge.data ?? {}), labelStyle: next },
-                  } as any)
-                }}
-              >
-                <option value="400">常规</option>
-                <option value="500">中等</option>
-                <option value="600">半粗</option>
-                <option value="700">粗体</option>
-                <option value="800">特粗</option>
-              </select>
-            </label>
-            <label className={styles.label}>
-              <div className={styles.labelText}>文字颜色</div>
-              <ColorEditor
-                value={
-                  (selectedEdge as FlowEdge).labelStyle?.color ??
-                  (selectedEdge.data as any)?.labelStyle?.color ??
-                  ''
-                }
-                onChange={(v) => {
-                  const next: EdgeLabelStyle = {
-                    ...(selectedEdge as FlowEdge).labelStyle,
-                    fontSize: (selectedEdge as FlowEdge).labelStyle?.fontSize,
-                    fontWeight: (selectedEdge as FlowEdge).labelStyle?.fontWeight,
-                    color: v,
-                  }
-                  updateSelectedEdge({
-                    labelStyle: next,
-                    data: { ...(selectedEdge.data ?? {}), labelStyle: next },
-                  } as any)
-                }}
-                placeholder="#0f172a"
-                showAlpha={true}
-              />
-            </label>
-            <label className={styles.label}>
-              <div className={styles.labelText}>颜色</div>
-              <ColorEditor
-                value={((selectedEdge.style as any)?.stroke as string) ?? ''}
-                onChange={(color) => {
-                  const data = (selectedEdge.data ?? {}) as any
-                  const arrowStyle = (data.arrowStyle as ArrowStyle | undefined) ?? 'none'
-                  let markerStart = selectedEdge.markerStart as any
-                  let markerEnd = selectedEdge.markerEnd as any
-                  if (arrowStyle === 'start' || arrowStyle === 'both') {
-                    markerStart = {
-                      ...(markerStart ?? {}),
-                      type: MarkerType.ArrowClosed,
-                      color,
-                    }
-                  } else markerStart = undefined
-                  if (arrowStyle === 'end' || arrowStyle === 'both') {
-                    markerEnd = {
-                      ...(markerEnd ?? {}),
-                      type: MarkerType.ArrowClosed,
-                      color,
-                    }
-                  } else markerEnd = undefined
-                  updateSelectedEdge({
-                    style: {
-                      ...(selectedEdge.style ?? {}),
-                      stroke: color,
-                      '--xy-edge-stroke': color,
-                    } as any,
-                    markerStart,
-                    markerEnd,
-                  })
-                }}
-                placeholder="#94a3b8"
-                showAlpha={true}
-              />
-            </label>
-          <label className={styles.label}>
-            <div className={styles.labelText}>粗细</div>
-            <input
-              className={styles.input}
-              type="number"
-              min={1}
-              max={10}
-              step={0.5}
-              placeholder="2"
-              value={
-                ((selectedEdge.style as any)?.strokeWidth as number | undefined) !== undefined
-                  ? String((selectedEdge.style as any)?.strokeWidth as number)
-                  : ''
-              }
-              onChange={(e) => {
-                const raw = e.target.value
-                const num = Number(raw)
-                updateSelectedEdge({
-                  style: {
-                    ...(selectedEdge.style ?? {}),
-                    strokeWidth: !raw ? undefined : Number.isFinite(num) && num > 0 ? num : (selectedEdge.style as any)?.strokeWidth,
-                  },
-                })
-              }}
-            />
-          </label>
-          <label className={styles.label}>
-            <div className={styles.labelText}>箭头</div>
-            <div className={styles.radioGroup}>
-              <label className={styles.radioItem}>
-                <input
-                  type="radio"
-                  name="edge-arrow-style"
-                  checked={(selectedEdge.data as any)?.arrowStyle === 'none' || !(selectedEdge.data as any)?.arrowStyle}
-                  onChange={() =>
-                    updateSelectedEdge({
-                      data: { ...(selectedEdge.data ?? {}), arrowStyle: 'none' },
-                      markerStart: undefined,
-                      markerEnd: undefined,
-                    } as any)
-                  }
-                />
-                <span>无箭头</span>
-              </label>
-              <label className={styles.radioItem}>
-                <input
-                  type="radio"
-                  name="edge-arrow-style"
-                  checked={(selectedEdge.data as any)?.arrowStyle === 'end'}
-                  onChange={() => {
-                    const color =
-                      ((selectedEdge.style as any)?.stroke as string) || DEFAULT_EDGE_COLOR
-                    updateSelectedEdge({
-                      data: { ...(selectedEdge.data ?? {}), arrowStyle: 'end' },
-                      markerStart: undefined,
-                      markerEnd: { type: MarkerType.ArrowClosed, color },
-                      style: { ...(selectedEdge.style ?? {}), stroke: color },
-                    } as any)
-                  }}
-                />
-                <span>终点箭头</span>
-              </label>
-              <label className={styles.radioItem}>
-                <input
-                  type="radio"
-                  name="edge-arrow-style"
-                  checked={(selectedEdge.data as any)?.arrowStyle === 'start'}
-                  onChange={() => {
-                    const color =
-                      ((selectedEdge.style as any)?.stroke as string) || DEFAULT_EDGE_COLOR
-                    updateSelectedEdge({
-                      data: { ...(selectedEdge.data ?? {}), arrowStyle: 'start' },
-                      markerStart: { type: MarkerType.ArrowClosed, color },
-                      markerEnd: undefined,
-                      style: { ...(selectedEdge.style ?? {}), stroke: color },
-                    } as any)
-                  }}
-                />
-                <span>起点箭头</span>
-              </label>
-              <label className={styles.radioItem}>
-                <input
-                  type="radio"
-                  name="edge-arrow-style"
-                  checked={(selectedEdge.data as any)?.arrowStyle === 'both'}
-                  onChange={() => {
-                    const color =
-                      ((selectedEdge.style as any)?.stroke as string) || DEFAULT_EDGE_COLOR
-                    updateSelectedEdge({
-                      data: { ...(selectedEdge.data ?? {}), arrowStyle: 'both' },
-                      markerStart: { type: MarkerType.ArrowClosed, color },
-                      markerEnd: { type: MarkerType.ArrowClosed, color },
-                      style: { ...(selectedEdge.style ?? {}), stroke: color },
-                    } as any)
-                  }}
-                />
-                <span>双向箭头</span>
-              </label>
-            </div>
-          </label>
-            <label className={styles.checkboxRow}>
-              <input
-                type="checkbox"
-                checked={Boolean(selectedEdge.animated)}
-                onChange={(e) => updateSelectedEdge({ animated: e.target.checked })}
-              />
-              <span>Animated</span>
-            </label>
-          </div>
-        )}
-
-        {/* Template modal removed */}
-        </aside>
-      )}
-
       {/* Save Modal */}
       {saveModalOpen && (
         <div className={styles.modalBackdrop} onClick={() => setSaveModalOpen(false)}>
@@ -2974,4 +2641,6 @@ export function FlowEditor(props: FlowEditorProps) {
     </ReactFlowProvider>
   )
 }
+
+export default FlowEditor
 

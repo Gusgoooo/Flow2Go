@@ -94,13 +94,20 @@
   min-height: 1.4em;
 }
 
-/* Left-center position styles */
-.titleLeft {
+/* Left-center: 标题+副标题整体垂直居中，副标题在标题下、左对齐 */
+.titleBlockLeft {
   position: absolute;
   top: 50%;
   left: 12px;
+  right: 8px;
   transform: translateY(-50%);
-  /* 左侧居中但文字保持横向排列 */
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 4px;
+}
+
+.titleLeft {
   font-size: 13px;
   font-weight: 800;
   color: #1e3a8a;
@@ -108,13 +115,10 @@
   line-height: 1.4;
   white-space: pre-wrap;
   word-break: break-word;
+  text-align: left;
 }
 
 .titleInputLeft {
-  position: absolute;
-  top: 50%;
-  left: 12px;
-  transform: translateY(-50%);
   border: none;
   outline: none;
   background: transparent;
@@ -127,13 +131,12 @@
   height: auto;
   overflow: hidden;
   min-height: 1.4em;
+  text-align: left;
+  width: 100%;
+  align-self: stretch;
 }
 
 .subtitleLeft {
-  position: absolute;
-  top: 50%;
-  left: 32px;
-  transform: translateY(-50%);
   font-size: 11px;
   font-weight: 400;
   color: #64748b;
@@ -142,13 +145,10 @@
   white-space: pre-wrap;
   word-break: break-word;
   cursor: text;
+  text-align: left;
 }
 
 .subtitleInputLeft {
-  position: absolute;
-  top: 50%;
-  left: 32px;
-  transform: translateY(-50%);
   border: none;
   outline: none;
   background: transparent;
@@ -161,6 +161,9 @@
   height: auto;
   overflow: hidden;
   min-height: 1.4em;
+  text-align: left;
+  width: 100%;
+  align-self: stretch;
 }
 
 .resizer .react-flow__resize-control {
