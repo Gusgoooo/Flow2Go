@@ -27,6 +27,14 @@ export function TextNode(props: NodeProps) {
     }
   }, [data.label, editing])
 
+  // 全局文字编辑锁：文本节点编辑开启时，压住其它菜单栏
+  useEffect(() => {
+    window.dispatchEvent(new CustomEvent('flow2go:text-editing', { detail: { active: editing } }))
+    return () => {
+      window.dispatchEvent(new CustomEvent('flow2go:text-editing', { detail: { active: false } }))
+    }
+  }, [editing])
+
   // Auto focus and select all when start editing
   useEffect(() => {
     if (editing && inputRef.current) {
@@ -49,6 +57,7 @@ export function TextNode(props: NodeProps) {
 
   const onDoubleClick = useCallback((e: React.MouseEvent) => {
     e.stopPropagation()
+    window.dispatchEvent(new CustomEvent('flow2go:close-popups-for-text'))
     setEditing(true)
   }, [])
 

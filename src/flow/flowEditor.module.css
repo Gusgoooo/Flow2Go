@@ -611,7 +611,6 @@
 .menu {
   position: fixed;
   z-index: 50;
-  transform: translate(-50%, -100%);
   min-width: 210px;
   border: 1px solid #e5e7eb;
   background: rgba(255, 255, 255, 0.98);
@@ -751,6 +750,11 @@
   border: 1px solid #e5e7eb;
   padding: 10px 12px;
   z-index: 60;
+}
+
+/* 确保可编辑边的拖拽把手（EdgeLabelRenderer）不被群组节点盖住而无法拖动 */
+:global(.react-flow__edgelabel-renderer) {
+  z-index: 7;
 }
 
 .muted {

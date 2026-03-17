@@ -61,6 +61,15 @@ export function GroupNode(props: NodeProps) {
     if (!editingSubtitle) setDraftSubtitle(data.subtitle ?? '')
   }, [data.title, data.subtitle, editing, editingSubtitle])
 
+  // 全局文字编辑锁：群组标题/副标题编辑开启时，压住其它菜单栏
+  useEffect(() => {
+    const active = editing || editingSubtitle
+    window.dispatchEvent(new CustomEvent('flow2go:text-editing', { detail: { active } }))
+    return () => {
+      window.dispatchEvent(new CustomEvent('flow2go:text-editing', { detail: { active: false } }))
+    }
+  }, [editing, editingSubtitle])
+
   // 编辑时自动全选文本并调整高度
   useEffect(() => {
     if (editing && inputRef.current) {

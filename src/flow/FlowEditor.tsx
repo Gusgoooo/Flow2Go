@@ -1,6 +1,7 @@
 import {
   useCallback,
   useEffect,
+  useLayoutEffect,
   useMemo,
   useRef,
   useState,
@@ -19,6 +20,7 @@ import {
   addEdge,
   useReactFlow,
   useStoreApi,
+  useUpdateNodeInternals,
   applyEdgeChanges,
   applyNodeChanges,
   MarkerType,
@@ -32,17 +34,13 @@ import {
 } from '@xyflow/react'
 import JSZip from 'jszip'
 import {
-  AlignLeft,
-  AlignCenterHorizontal,
-  AlignRight,
-  AlignCenterVertical,
   AlignHorizontalDistributeCenter,
-  AlignVerticalDistributeCenter,
   SquareDashedKanban,
   Square,
   Type,
 } from 'lucide-react'
 // import { clearPersistedState } from './persistence'  // 已移除清空功能
+import defaultExample from './defaultExample.json'
 import { getProject, saveProject } from './projectStorage'
 import styles from './flowEditor.module.css'
 import { GroupNode, type GroupNodeData } from './GroupNode'
@@ -457,6 +455,8 @@ function EditorInner({ onBackHome, source, previewSnapshot, readOnly: _readOnly 
   const [shapePopup, setShapePopup] = useState<{ nodeId: string; x: number; y: number } | null>(null)
   /** 点击边时弹出的边属性 popup */
   const [edgePopup, setEdgePopup] = useState<{ edgeId: string; x: number; y: number } | null>(null)
+  /** 全局文字编辑锁：任意文字编辑 popup 打开时为 true */
+  const [textEditLock, setTextEditLock] = useState(false)
 
   // 文本编辑时（标题/副标题双击），关闭节点/编组/边等其它浮层，只保留文字编辑工具条
   useEffect(() => {
@@ -469,6 +469,22 @@ function EditorInner({ onBackHome, source, previewSnapshot, readOnly: _readOnly 
     return () => window.removeEventListener('flow2go:close-popups-for-text', handler)
   }, [])
 
+  // 任意文字编辑开始/结束时，锁定/解锁所有选中菜单栏（防止点颜色弹出色板时菜单又回来）
+  useEffect(() => {
+    const handler = (evt: Event) => {
+      const ce = evt as CustomEvent<{ active?: boolean }>
+      const active = Boolean(ce.detail?.active)
+      setTextEditLock(active)
+      if (active) {
+        setShapePopup(null)
+        setEdgePopup(null)
+        setInlineInspector({ kind: null, id: null, x: 0, y: 0 })
+      }
+    }
+    window.addEventListener('flow2go:text-editing', handler as any)
+    return () => window.removeEventListener('flow2go:text-editing', handler as any)
+  }, [])
+
   const initial = useMemo(() => {
     // 预览模式：使用 previewSnapshot
     if (previewSnapshot) {
@@ -477,11 +493,19 @@ function EditorInner({ onBackHome, source, previewSnapshot, readOnly: _readOnly 
         edges: (previewSnapshot.edges as FlowEdge[]) ?? [],
         viewport: previewSnapshot.viewport ?? { x: 0, y: 0, zoom: 1 },
         name: '模板预览',
+        isDefaultExample: false,
       }
     }
     const proj = getProject(projectId)
     if (!proj?.snapshot) {
-      return { nodes: [] as FlowNode[], edges: [] as FlowEdge[], viewport: { x: 0, y: 0, zoom: 1 }, name: 'untitled' }
+      // 用户第一次打开产品：使用默认示例并居中展示
+      return {
+        nodes: (defaultExample.nodes as FlowNode[]) ?? [],
+        edges: (defaultExample.edges as FlowEdge[]) ?? [],
+        viewport: { x: 0, y: 0, zoom: 1 },
+        name: 'untitled',
+        isDefaultExample: true,
+      }
     }
     const snap = proj.snapshot
     return {
@@ -489,6 +513,7 @@ function EditorInner({ onBackHome, source, previewSnapshot, readOnly: _readOnly 
       edges: (snap.edges as FlowEdge[]) ?? [],
       viewport: snap.viewport ?? { x: 0, y: 0, zoom: 1 },
       name: proj.name,
+      isDefaultExample: false,
     }
   }, [projectId, previewSnapshot])
 
@@ -496,6 +521,37 @@ function EditorInner({ onBackHome, source, previewSnapshot, readOnly: _readOnly 
   const [edges, setEdges] = useState<FlowEdge[]>(initial.edges)
   const nodesEdgesRef = useRef({ nodes: initial.nodes, edges: initial.edges })
   nodesEdgesRef.current = { nodes, edges }
+
+  // 传给 React Flow 的节点列表：为群组补全有效宽高，避免 0/undefined 导致框选时 nodeToRect 得到 0×0 矩形被误判为在选区内的“点”
+  const nodesForFlow = useMemo(() => {
+    return nodes.map((n) => {
+      if (n.type !== 'group') return n
+      const w = (n.measured as { width?: number })?.width ?? (n as { width?: number }).width ?? (n.style as { width?: number })?.width
+      const h = (n.measured as { height?: number })?.height ?? (n as { height?: number }).height ?? (n.style as { height?: number })?.height
+      const hasW = typeof w === 'number' && w > 0
+      const hasH = typeof h === 'number' && h > 0
+      if (hasW && hasH) return n
+      const safeW = hasW ? w! : 160
+      const safeH = hasH ? h! : 120
+      return {
+        ...n,
+        width: safeW,
+        height: safeH,
+        style: { ...(n.style as object ?? {}), width: safeW, height: safeH },
+      } as FlowNode
+    })
+  }, [nodes])
+
+  const updateNodeInternals = useUpdateNodeInternals()
+  // 初次渲染或节点集合变化后，延迟强制刷新 React Flow 内部节点尺寸/位置，避免框选时仍用未更新的 measured 导致误选
+  const nodeIdsKey = useMemo(() => nodes.map((n) => n.id).sort().join(','), [nodes])
+  useEffect(() => {
+    const ids = nodes.map((n) => n.id)
+    const t = setTimeout(() => {
+      if (ids.length) updateNodeInternals(ids)
+    }, 120)
+    return () => clearTimeout(t)
+  }, [nodeIdsKey, nodes, updateNodeInternals])
 
   const [assets, setAssets] = useState<AssetItem[]>(() => {
     if (typeof window === 'undefined') return []
@@ -652,10 +708,53 @@ function EditorInner({ onBackHome, source, previewSnapshot, readOnly: _readOnly 
       }
 
   const [menu, setMenu] = useState<MenuState>({ open: false })
+  const [menuFixedPos, setMenuFixedPos] = useState<{ left: number; top: number } | null>(null)
 
   const closeMenu = useCallback(() => setMenu({ open: false }), [])
   const menuRef = useRef<HTMLDivElement | null>(null)
   const canvasRef = useRef<HTMLElement | null>(null)
+
+  // 通用右键菜单定位：根据菜单自身尺寸 + 视口边界动态决定摆放位置，避免固定 transform 或越界导致“被限制在某个位置”
+  useLayoutEffect(() => {
+    if (!menu.open) {
+      setMenuFixedPos(null)
+      return
+    }
+
+    const margin = 8
+    const anchorX = menu.clientX
+    const anchorY = menu.clientY
+
+    const compute = () => {
+      const el = menuRef.current
+      if (!el) return
+
+      const rect = el.getBoundingClientRect()
+      const w = rect.width || 220
+      const h = rect.height || 180
+
+      // 优先向右下展开；若越界则翻转到左/上
+      let left = anchorX + 6
+      let top = anchorY + 6
+
+      if (left + w + margin > window.innerWidth) left = anchorX - w - 6
+      if (top + h + margin > window.innerHeight) top = anchorY - h - 6
+
+      // 最终 clamp 到视口内
+      left = Math.min(Math.max(margin, left), Math.max(margin, window.innerWidth - w - margin))
+      top = Math.min(Math.max(margin, top), Math.max(margin, window.innerHeight - h - margin))
+
+      setMenuFixedPos({ left, top })
+    }
+
+    // 下一帧测量更稳定
+    const raf = requestAnimationFrame(compute)
+    window.addEventListener('resize', compute)
+    return () => {
+      cancelAnimationFrame(raf)
+      window.removeEventListener('resize', compute)
+    }
+  }, [menu.open, menu.open ? menu.clientX : 0, menu.open ? menu.clientY : 0])
 
   useEffect(() => {
     if (!menu.open) return
@@ -673,7 +772,11 @@ function EditorInner({ onBackHome, source, previewSnapshot, readOnly: _readOnly 
   }, [menu.open, closeMenu])
 
   useEffect(() => {
-    rf.setViewport(initial.viewport, { duration: 0 })
+    if (initial.isDefaultExample) {
+      rf.fitView({ padding: 0.2, duration: 0 })
+    } else {
+      rf.setViewport(initial.viewport, { duration: 0 })
+    }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [])
 
@@ -744,6 +847,53 @@ function EditorInner({ onBackHome, source, previewSnapshot, readOnly: _readOnly 
     return { x, y }
   }, [])
 
+  /** 在已有节点列表中找一个与 flowPos 尽量接近且不重叠的位置（用于新节点，减少框选误选） */
+  const findNonOverlappingPosition = useCallback(
+    (
+      flowPos: { x: number; y: number },
+      existingNodes: FlowNode[],
+      newW: number,
+      newH: number,
+    ): { x: number; y: number } => {
+      const byId = new Map(existingNodes.map((n) => [n.id, n]))
+      const margin = GRID[0] * 2 // 16px 间距，与节点明显分离
+      const candidates: { x: number; y: number }[] = [{ x: flowPos.x, y: flowPos.y }]
+      const step = Math.max(newW, newH) + margin
+      for (let i = 1; i <= 4; i++) {
+        const d = step * i
+        candidates.push({ x: flowPos.x + d, y: flowPos.y })
+        candidates.push({ x: flowPos.x, y: flowPos.y + d })
+        candidates.push({ x: flowPos.x + d, y: flowPos.y + d })
+        candidates.push({ x: flowPos.x - d, y: flowPos.y })
+        candidates.push({ x: flowPos.x, y: flowPos.y - d })
+        candidates.push({ x: flowPos.x - d, y: flowPos.y - d })
+      }
+      for (const pos of candidates) {
+        const snapped = snapPos(pos)
+        const nL = snapped.x
+        const nT = snapped.y
+        const nR = nL + newW + margin
+        const nB = nT + newH + margin
+        let overlaps = false
+        for (const n of existingNodes) {
+          const abs = getAbsolutePosition(n, byId)
+          const { w, h } = getNodeSize(n)
+          const l = abs.x - margin
+          const t = abs.y - margin
+          const r = abs.x + w + margin
+          const b = abs.y + h + margin
+          if (nL < r && nR > l && nT < b && nB > t) {
+            overlaps = true
+            break
+          }
+        }
+        if (!overlaps) return snapped
+      }
+      return snapPos(flowPos)
+    },
+    [getAbsolutePosition, getNodeSize, snapPos],
+  )
+
   const sortNodesParentFirst = useCallback((nodeList: FlowNode[]): FlowNode[] => {
     const byId = new Map(nodeList.map((n) => [n.id, n]))
     const visited = new Set<string>()
@@ -769,6 +919,9 @@ function EditorInner({ onBackHome, source, previewSnapshot, readOnly: _readOnly 
     () => (inlineInspector.id && inlineInspector.kind === 'edge' ? edges.find((e) => e.id === inlineInspector.id) : undefined),
     [inlineInspector.id, inlineInspector.kind, edges],
   )
+
+  // 文字编辑模式：由全局事件统一控制（节点/群组/文本/边）
+  const textEditingActive = textEditLock
 
   const assignZIndex = useCallback(
     (all: FlowNode[]) => {
@@ -805,32 +958,32 @@ function EditorInner({ onBackHome, source, previewSnapshot, readOnly: _readOnly 
     [isGroupNode],
   )
 
-  // 前移一层 / 后移一层（暂未在 UI 中使用）
-  // const moveLayerUp = useCallback(
-  //   (nodeId: string) => {
-  //     setNodes((nds) => {
-  //       const updated = nds.map((n) =>
-  //         n.id === nodeId ? { ...n, zIndex: (n.zIndex ?? 0) + 1 } : n,
-  //       )
-  //       pushHistory(updated, edges, 'layer-up')
-  //       return updated
-  //     })
-  //   },
-  //   [edges, pushHistory, setNodes],
-  // )
-  //
-  // const moveLayerDown = useCallback(
-  //   (nodeId: string) => {
-  //     setNodes((nds) => {
-  //       const updated = nds.map((n) =>
-  //         n.id === nodeId ? { ...n, zIndex: Math.max(0, (n.zIndex ?? 0) - 1) } : n,
-  //       )
-  //       pushHistory(updated, edges, 'layer-down')
-  //       return updated
-  //     })
-  //   },
-  //   [edges, pushHistory, setNodes],
-  // )
+  // 节点图层控制（前移一层 / 后移一层）
+  const moveNodeLayerUp = useCallback(
+    (nodeId: string) => {
+      setNodes((nds) => {
+        const updated = nds.map((n) =>
+          n.id === nodeId ? { ...n, zIndex: (n.zIndex ?? 0) + 1 } : n,
+        )
+        pushHistory(updated, edges, 'node-layer-up')
+        return updated
+      })
+    },
+    [edges, pushHistory, setNodes],
+  )
+
+  const moveNodeLayerDown = useCallback(
+    (nodeId: string) => {
+      setNodes((nds) => {
+        const updated = nds.map((n) =>
+          n.id === nodeId ? { ...n, zIndex: Math.max(0, (n.zIndex ?? 0) - 1) } : n,
+        )
+        pushHistory(updated, edges, 'node-layer-down')
+        return updated
+      })
+    },
+    [edges, pushHistory, setNodes],
+  )
 
   // 边的图层控制
   const moveEdgeLayerUp = useCallback(
@@ -861,6 +1014,86 @@ function EditorInner({ onBackHome, source, previewSnapshot, readOnly: _readOnly 
 
   const onNodesChange = useCallback(
     (changes: NodeChange<FlowNode>[]) => {
+      // 多选拖动节点时，让被选中节点之间的连线控制点（waypoints）也随整体平移。
+      // 否则 edge 的可拖拽段会“留在原地”，表现为只能上下调整、无法左右跟随整体移动。
+      const currentNodes = nodesEdgesRef.current.nodes
+      const oldById = new Map(currentNodes.map((n) => [n.id, n]))
+      
+      // Resize（拖拽左上角/边缘把手）时，React Flow 往往会同时发 position + dimensions 变更。
+      // 这时不应该平移 edge.waypoints，否则会出现边的折线“诡异变化/抖动”。
+      const resizingIds = new Set<string>()
+      for (const ch of changes as any[]) {
+        if (ch?.type !== 'dimensions') continue
+        if (typeof ch.id === 'string') resizingIds.add(ch.id)
+      }
+
+      const deltaById = new Map<string, { dx: number; dy: number }>()
+      for (const ch of changes as any[]) {
+        if (ch?.type !== 'position') continue
+        const id = ch.id as string | undefined
+        if (!id) continue
+        if (resizingIds.has(id)) continue
+        const old = oldById.get(id)
+        const nextPos = ch.position as { x: number; y: number } | undefined
+        if (!old || !nextPos) continue
+        const dx = nextPos.x - old.position.x
+        const dy = nextPos.y - old.position.y
+        if (dx !== 0 || dy !== 0) deltaById.set(id, { dx, dy })
+      }
+      if (deltaById.size) {
+        const groupDeltaById = new Map<string, { dx: number; dy: number }>()
+        for (const [id, d] of deltaById) {
+          const n = oldById.get(id)
+          if (n?.type === 'group') groupDeltaById.set(id, d)
+        }
+
+        const isDescendantOf = (nodeId: string, ancestorId: string): boolean => {
+          let cur = oldById.get(nodeId)
+          const seen = new Set<string>()
+          while (cur?.parentId && !seen.has(cur.parentId)) {
+            if (cur.parentId === ancestorId) return true
+            seen.add(cur.parentId)
+            cur = oldById.get(cur.parentId)
+          }
+          return false
+        }
+
+        setEdges((prevEdges) => {
+          let changed = false
+          const nextEdges = prevEdges.map((e) => {
+            // 仅平移“整体一起移动”的边：源和目标节点都在本次移动集合中
+            const d1 = deltaById.get(e.source)
+            const d2 = deltaById.get(e.target)
+            let dx: number | null = null
+            let dy: number | null = null
+            if (d1 && d2) {
+              // 若两端 delta 不一致（理论上多选拖动应一致），以源端为准，避免抖动
+              dx = d1.dx
+              dy = d1.dy
+            } else if (groupDeltaById.size) {
+              // 移动群组时：子节点绝对位置会变，但子节点本身 position 不变，导致 waypoints 需要跟随群组 delta 平移
+              for (const [gid, gd] of groupDeltaById) {
+                const srcIn = e.source === gid || isDescendantOf(e.source, gid)
+                const tgtIn = e.target === gid || isDescendantOf(e.target, gid)
+                if (srcIn && tgtIn) {
+                  dx = gd.dx
+                  dy = gd.dy
+                  break
+                }
+              }
+            }
+            if (dx === null || dy === null) return e
+            const dataAny = (e.data ?? {}) as any
+            const wps = dataAny.waypoints as Array<{ x: number; y: number }> | undefined
+            if (!wps || wps.length === 0) return e
+            changed = true
+            const moved = wps.map((p) => ({ x: p.x + dx, y: p.y + dy }))
+            return { ...e, data: { ...(e.data ?? {}), waypoints: moved } }
+          })
+          return changed ? nextEdges : prevEdges
+        })
+      }
+
       setNodes((prev) => {
         const next = applyNodeChanges(changes, prev)
         pushHistory(next, edges, 'nodes')
@@ -938,8 +1171,8 @@ function EditorInner({ onBackHome, source, previewSnapshot, readOnly: _readOnly 
       idMap.set(nd.id, isGroupNode(nd) ? nowId('g') : nowId('n'))
     })
 
-    // 计算偏移（粘贴时稍微偏移）
-    const offset = { x: GRID[0] * 4, y: GRID[1] * 4 }
+    // 计算偏移（粘贴时明显偏移，避免与原对象过近导致框选误选）
+    const offset = { x: GRID[0] * 10, y: GRID[1] * 10 }
 
     // 创建新节点
     const newNodes: FlowNode[] = clipNodes.map((nd) => {
@@ -1288,11 +1521,13 @@ function EditorInner({ onBackHome, source, previewSnapshot, readOnly: _readOnly 
     img.src = dataUrl
   }, [])
 
-  /** 在画布指定位置添加节点（由右键菜单「添加节点/添加文本」调用） */
+  /** 在画布指定位置添加节点（由右键菜单「添加节点/添加文本」调用）；尽量选不重叠位置，减少框选误选 */
   const addNodeAtPosition = useCallback(
     (nodeType: 'quad' | 'text', flowPos: { x: number; y: number }) => {
-      const position = snapPos(flowPos)
       const id = nowId('n')
+      const defaultSize = nodeType === 'quad' ? { w: 160, h: 44 } : { w: 120, h: 40 }
+      const currentNodes = nodesEdgesRef.current.nodes
+      const position = findNonOverlappingPosition(flowPos, currentNodes, defaultSize.w, defaultSize.h)
       const base: FlowNode = {
         id,
         type: nodeType,
@@ -1305,7 +1540,7 @@ function EditorInner({ onBackHome, source, previewSnapshot, readOnly: _readOnly 
         return next
       })
     },
-    [edges, pushHistory, setNodes, snapPos],
+    [edges, findNonOverlappingPosition, pushHistory, setNodes],
   )
 
   const onDrop = useCallback(
@@ -1625,7 +1860,8 @@ function EditorInner({ onBackHome, source, previewSnapshot, readOnly: _readOnly 
   // ---------- Helpers: grouping ----------
 
   const groupSelection = useCallback(() => {
-    if (selectedNodesNow.length < 2) return
+    // 至少选 1 个节点；选 2 个及以上时打包成群组，只选 1 个时仅当该节点是群组才允许（包装为“第三层群组”等）
+    if (selectedNodesNow.length < 1) return
 
     // 关键逻辑：如果选择里包含群组，它的子节点只作为“群组的一部分”，
     // 不再作为独立顶层元素参与分组/排版，避免被打散到同一层级。
@@ -1646,29 +1882,102 @@ function EditorInner({ onBackHome, source, previewSnapshot, readOnly: _readOnly 
     const picked = selectedNodesNow.filter(
       (n) => isGroupNode(n) || !isUnderSelectedGroup(n),
     )
-    if (picked.length < 2) return
+    if (picked.length < 1) return
+    // 只选一个且不是群组时不允许建群（无法“包装”）
+    if (picked.length === 1 && !isGroupNode(picked[0])) return
 
     const absMap = new Map<string, { x: number; y: number }>()
     for (const n of picked) absMap.set(n.id, getAbsolutePosition(n, byId))
 
-    const bounds = picked.reduce(
+    // 对每个选中项算「自身 + 若是群组则含所有子孙」的绝对边界，避免两层群组时只用群组自身 160×120 导致新群组错位/跑到画布中间
+    const getAbsoluteBounds = (node: FlowNode): { minX: number; minY: number; maxX: number; maxY: number } => {
+      const pos = absMap.get(node.id) ?? getAbsolutePosition(node, byId)
+      const { w, h } = getNodeSize(node)
+      let minX = pos.x
+      let minY = pos.y
+      let maxX = pos.x + w
+      let maxY = pos.y + h
+      if (isGroupNode(node)) {
+        const children = nodes.filter((nd) => nd.parentId === node.id)
+        for (const c of children) {
+          const cb = getAbsoluteBounds(c)
+          minX = Math.min(minX, cb.minX)
+          minY = Math.min(minY, cb.minY)
+          maxX = Math.max(maxX, cb.maxX)
+          maxY = Math.max(maxY, cb.maxY)
+        }
+      }
+      return { minX, minY, maxX, maxY }
+    }
+
+    // 先用节点（含子孙）的绝对边界作为基础 bounds
+    let bounds = picked.reduce(
       (acc, n) => {
-        const pos = absMap.get(n.id)!
-        const { w, h } = getNodeSize(n)
-        acc.minX = Math.min(acc.minX, pos.x)
-        acc.minY = Math.min(acc.minY, pos.y)
-        acc.maxX = Math.max(acc.maxX, pos.x + w)
-        acc.maxY = Math.max(acc.maxY, pos.y + h)
+        const b = getAbsoluteBounds(n)
+        acc.minX = Math.min(acc.minX, b.minX)
+        acc.minY = Math.min(acc.minY, b.minY)
+        acc.maxX = Math.max(acc.maxX, b.maxX)
+        acc.maxY = Math.max(acc.maxY, b.maxY)
         return acc
       },
       { minX: Infinity, minY: Infinity, maxX: -Infinity, maxY: -Infinity },
     )
 
+    // 把“群组内相关边”的路径也纳入 bounds（至少包含用户拖拽出来的 waypoints）
+    // 这样建群组时容器边缘能把边也包住。
+    const childIds = new Set<string>()
+    const byParent = new Map<string, FlowNode[]>()
+    for (const nd of nodes) {
+      if (!nd.parentId) continue
+      const arr = byParent.get(nd.parentId) ?? []
+      arr.push(nd)
+      byParent.set(nd.parentId, arr)
+    }
+    const collect = (id: string) => {
+      if (childIds.has(id)) return
+      childIds.add(id)
+      const kids = byParent.get(id)
+      if (!kids) return
+      for (const k of kids) collect(k.id)
+    }
+    for (const n of picked) collect(n.id)
+
+    const relatedEdges = edges.filter((e) => childIds.has(e.source) && childIds.has(e.target))
+    let hasEdgeGeometry = false
+    for (const e of relatedEdges) {
+      const wps = ((e.data ?? {}) as any)?.waypoints as Array<{ x: number; y: number }> | undefined
+      if (!wps || wps.length === 0) continue
+      hasEdgeGeometry = true
+      for (const p of wps) {
+        bounds.minX = Math.min(bounds.minX, p.x)
+        bounds.minY = Math.min(bounds.minY, p.y)
+        bounds.maxX = Math.max(bounds.maxX, p.x)
+        bounds.maxY = Math.max(bounds.maxY, p.y)
+      }
+    }
+    // 默认正交线会有 24px 外扩（EditableSmoothStepEdge），给一个安全 padding，确保未保存 waypoints 时也能包住边
+    if (relatedEdges.length > 0) {
+      const pad = hasEdgeGeometry ? 24 : 32
+      bounds = {
+        minX: bounds.minX - pad,
+        minY: bounds.minY - pad,
+        maxX: bounds.maxX + pad,
+        maxY: bounds.maxY + pad,
+      }
+    }
+
     const groupId = nowId('g')
     const title = `群组 ${groupId.slice(-4)}`
     const titleH = title.trim() ? GROUP_TITLE_H : 0
 
-    const parents = new Set(picked.map((n) => n.parentId).filter(Boolean) as string[])
+    // 计算 commonParentId 时，必须排除“父节点也在 picked 里”的情况，
+    // 否则会出现：新群组 parentId=父群组，但父群组又被 reparent 到新群组下面 -> 层级循环，表现为跳走/无法拖动
+    const pickedIds = new Set(picked.map((n) => n.id))
+    const parents = new Set(
+      picked
+        .map((n) => n.parentId)
+        .filter((pid): pid is string => Boolean(pid) && !pickedIds.has(pid as string)),
+    )
     const commonParentId = parents.size === 1 ? [...parents][0] : undefined
 
     const groupAbsX = bounds.minX - GROUP_PADDING
@@ -1677,10 +1986,16 @@ function EditorInner({ onBackHome, source, previewSnapshot, readOnly: _readOnly 
     const groupH = bounds.maxY - bounds.minY + GROUP_PADDING * 2 + titleH
 
     let groupPos: { x: number; y: number }
+    let effectiveParentId: string | undefined = commonParentId
     if (commonParentId) {
       const pp = byId.get(commonParentId)
-      const ppAbs = pp ? getAbsolutePosition(pp, byId) : { x: 0, y: 0 }
-      groupPos = { x: groupAbsX - ppAbs.x, y: groupAbsY - ppAbs.y }
+      if (pp) {
+        const ppAbs = getAbsolutePosition(pp, byId)
+        groupPos = { x: groupAbsX - ppAbs.x, y: groupAbsY - ppAbs.y }
+      } else {
+        effectiveParentId = undefined
+        groupPos = { x: groupAbsX, y: groupAbsY }
+      }
     } else {
       groupPos = { x: groupAbsX, y: groupAbsY }
     }
@@ -1689,7 +2004,7 @@ function EditorInner({ onBackHome, source, previewSnapshot, readOnly: _readOnly 
       id: groupId,
       type: 'group',
       position: groupPos,
-      ...(commonParentId ? { parentId: commonParentId } : {}),
+      ...(effectiveParentId ? { parentId: effectiveParentId } : {}),
       width: groupW,
       height: groupH,
       data: {
@@ -1743,89 +2058,7 @@ function EditorInner({ onBackHome, source, previewSnapshot, readOnly: _readOnly 
     return () => window.removeEventListener('flow2go:group-title', handler as any)
   }, [updateGroupStyle])
 
-  const align = useCallback(
-    (mode: 'left' | 'hcenter' | 'right' | 'top' | 'vcenter' | 'bottom' | 'hspace' | 'vspace') => {
-      const picked = selectedNodesNow.filter((n) => n.type !== 'group')
-      if (picked.length < 2) return
-
-      const widths = new Map(picked.map((n) => [n.id, n.measured?.width ?? n.width ?? 180]))
-      const heights = new Map(picked.map((n) => [n.id, n.measured?.height ?? n.height ?? 44]))
-
-      const xs = picked.map((n) => n.position.x)
-      const ys = picked.map((n) => n.position.y)
-      const rights = picked.map((n) => n.position.x + (widths.get(n.id) ?? 0))
-      const bottoms = picked.map((n) => n.position.y + (heights.get(n.id) ?? 0))
-
-      const targetLeft = Math.min(...xs)
-      const targetTop = Math.min(...ys)
-      const targetRight = Math.max(...rights)
-      const targetBottom = Math.max(...bottoms)
-      const targetHCenter = (targetLeft + targetRight) / 2
-      const targetVCenter = (targetTop + targetBottom) / 2
-
-      const items = picked
-        .map((n) => {
-          const w = widths.get(n.id) ?? 180
-          const h = heights.get(n.id) ?? 44
-          return {
-            id: n.id,
-            w,
-            h,
-            x: n.position.x,
-            y: n.position.y,
-            cx: n.position.x + w / 2,
-            cy: n.position.y + h / 2,
-          }
-        })
-        .sort((a, b) => (mode === 'hspace' ? a.cx - b.cx : a.cy - b.cy))
-
-      setNodes((nds) => {
-        const next = nds.map((n) => {
-          if (!picked.some((p) => p.id === n.id)) return n
-          const w = widths.get(n.id) ?? 180
-          const h = heights.get(n.id) ?? 44
-
-          if (mode === 'left') return { ...n, position: snapPos({ x: targetLeft, y: n.position.y }) }
-          if (mode === 'right') return { ...n, position: snapPos({ x: targetRight - w, y: n.position.y }) }
-          if (mode === 'hcenter') return { ...n, position: snapPos({ x: targetHCenter - w / 2, y: n.position.y }) }
-          if (mode === 'top') return { ...n, position: snapPos({ x: n.position.x, y: targetTop }) }
-          if (mode === 'bottom') return { ...n, position: snapPos({ x: n.position.x, y: targetBottom - h }) }
-          if (mode === 'vcenter') return { ...n, position: snapPos({ x: n.position.x, y: targetVCenter - h / 2 }) }
-
-          if (mode === 'hspace' && items.length >= 3) {
-            const idx = items.findIndex((it) => it.id === n.id)
-            if (idx <= 0 || idx >= items.length - 1) return n
-            const first = items[0]
-            const last = items[items.length - 1]
-            const span = last.cx - first.cx
-            if (span <= 0) return n
-            const step = span / (items.length - 1)
-            const newCx = first.cx + step * idx
-            const newX = newCx - w / 2
-            return { ...n, position: snapPos({ x: newX, y: n.position.y }) }
-          }
-
-          if (mode === 'vspace' && items.length >= 3) {
-            const idx = items.findIndex((it) => it.id === n.id)
-            if (idx <= 0 || idx >= items.length - 1) return n
-            const first = items[0]
-            const last = items[items.length - 1]
-            const span = last.cy - first.cy
-            if (span <= 0) return n
-            const step = span / (items.length - 1)
-            const newCy = first.cy + step * idx
-            const newY = newCy - h / 2
-            return { ...n, position: snapPos({ x: n.position.x, y: newY }) }
-          }
-
-          return n
-        })
-        pushHistory(next, edges, `align:${mode}`)
-        return next
-      })
-    },
-    [edges, pushHistory, selectedNodesNow, snapPos],
-  )
+  // 已移除快速对齐功能（左/右/居中/顶/底/等间距等），避免错误对齐导致布局错乱
 
   const runLayout = useCallback(
     (dir: LayoutDirection) => {
@@ -1957,13 +2190,13 @@ function EditorInner({ onBackHome, source, previewSnapshot, readOnly: _readOnly 
     [],
   )
 
-  // 框选时会出现 selection-rect 覆盖层，可能吃掉右键事件；这里用 capture 阶段兜底。
-  // 只有在没有选中任何节点或边时，右击空白画布才打开 pane 菜单。
+  // 框选时会出现 selection-rect 覆盖层，可能吃掉右键事件；这里用 capture 阶段兜底。右击空白画布打开画布菜单；右击在节点/边上时不处理，交给 onNodeContextMenu/onEdgeContextMenu，才能显示「前移一层/后移一层」等。
   const onCanvasContextMenuCapture = useCallback(
     (evt: React.MouseEvent) => {
+      const el = evt.target as Element | null
+      if (el?.closest?.('.react-flow__node') || el?.closest?.('.react-flow__edge')) return
       evt.preventDefault()
       evt.stopPropagation()
-      if (selectedNodesNow.length > 0 || selectedEdgesNow.length > 0) return
       const rect = canvasRef.current?.getBoundingClientRect()
       if (!rect) return
       const x = evt.clientX - rect.left
@@ -1971,11 +2204,12 @@ function EditorInner({ onBackHome, source, previewSnapshot, readOnly: _readOnly 
       const flowPos = rf.screenToFlowPosition({ x: evt.clientX, y: evt.clientY })
       setMenu({ open: true, x, y, clientX: evt.clientX, clientY: evt.clientY, kind: 'pane', flowPos })
     },
-    [rf, selectedNodesNow.length, selectedEdgesNow.length],
+    [rf],
   )
 
   const onNodeContextMenu = useCallback(
     (evt: MouseEvent | React.MouseEvent, node: FlowNode) => {
+      if (textEditLock) return
       ;(evt as any).preventDefault?.()
       const rect = canvasRef.current?.getBoundingClientRect()
       if (!rect) return
@@ -1984,13 +2218,20 @@ function EditorInner({ onBackHome, source, previewSnapshot, readOnly: _readOnly 
       const cx = (evt as any).clientX
       const cy = (evt as any).clientY
       const flowPos = rf.screenToFlowPosition({ x: cx, y: cy })
+      // 多选时，右击任意已选节点也弹出“多选菜单”（包含群组/对齐等），避免只能看到单节点菜单导致“群组选项没了”
+      const hasMultiSelection = selectedNodesNow.length >= 2 || selectedEdgesNow.length >= 1
+      if (hasMultiSelection && node.selected) {
+        setMenu({ open: true, x, y, clientX: cx, clientY: cy, kind: 'pane', flowPos })
+        return
+      }
       setMenu({ open: true, x, y, clientX: cx, clientY: cy, kind: 'node', nodeId: node.id, nodeType: node.type, flowPos })
     },
-    [rf],
+    [rf, selectedEdgesNow.length, selectedNodesNow],
   )
 
   const onEdgeContextMenu = useCallback(
     (evt: MouseEvent | React.MouseEvent, edge: FlowEdge) => {
+      if (textEditLock) return
       ;(evt as any).preventDefault?.()
       const rect = canvasRef.current?.getBoundingClientRect()
       if (!rect) return
@@ -1999,14 +2240,33 @@ function EditorInner({ onBackHome, source, previewSnapshot, readOnly: _readOnly 
       const cx = (evt as any).clientX
       const cy = (evt as any).clientY
       const flowPos = rf.screenToFlowPosition({ x: cx, y: cy })
+      // 多选时，右击任意已选边也弹出“多选菜单”（包含群组/对齐等）
+      const hasMultiSelection = selectedNodesNow.length >= 2 || selectedEdgesNow.length >= 1
+      if (hasMultiSelection && edge.selected) {
+        setMenu({ open: true, x, y, clientX: cx, clientY: cy, kind: 'pane', flowPos })
+        return
+      }
       setMenu({ open: true, x, y, clientX: cx, clientY: cy, kind: 'edge', edgeId: edge.id, flowPos })
     },
-    [rf],
+    [rf, selectedEdgesNow.length, selectedNodesNow],
   )
+
+  // 用于区分“单击边打开菜单”和“双击边编辑文字”
+  const edgeClickTimerRef = useRef<number | null>(null)
+  const edgeLastDoubleClickAtRef = useRef<number>(0)
 
   const onEdgeDoubleClick = useCallback(
     (evt: React.MouseEvent, edge: FlowEdge) => {
       evt.stopPropagation()
+      edgeLastDoubleClickAtRef.current = Date.now()
+      // 双击时只保留文字编辑工具条：关闭边菜单/其它浮层，并取消可能的单击延迟打开
+      if (edgeClickTimerRef.current) {
+        window.clearTimeout(edgeClickTimerRef.current)
+        edgeClickTimerRef.current = null
+      }
+      setEdgePopup(null)
+      setShapePopup(null)
+      setInlineInspector({ kind: null, id: null, x: 0, y: 0 })
       setEdges((eds) =>
         eds.map((e) =>
           e.id === edge.id
@@ -2018,9 +2278,10 @@ function EditorInner({ onBackHome, source, previewSnapshot, readOnly: _readOnly 
     [setEdges],
   )
 
-  /** 单击节点时：quad 或 group 弹出对应属性工具栏；popup 在节点上方居中、间距 12px。编组内节点用 store 中的 positionAbsolute 才能得到正确屏幕坐标 */
+  /** 单击节点时：quad 或 group 弹出对应属性工具栏；popup 在节点上方居中、间距 8px。编组内节点用 store 中的 positionAbsolute 才能得到正确屏幕坐标 */
   const onNodeClick = useCallback(
     (_evt: React.MouseEvent, node: FlowNode) => {
+      if (textEditLock) return
       if (node.type !== 'quad' && node.type !== 'group') return
       setEdgePopup(null)
       const state = storeApi.getState()
@@ -2031,16 +2292,39 @@ function EditorInner({ onBackHome, source, previewSnapshot, readOnly: _readOnly 
       const w = (node.measured as { width?: number })?.width ?? (node as { width?: number }).width ?? (node.style as { width?: number })?.width ?? 160
       const centerX = topLeft.x + Number(w) / 2
       const top = topLeft.y
-      setShapePopup({ nodeId: node.id, x: centerX, y: top - 12 })
+      setShapePopup({ nodeId: node.id, x: centerX, y: top - 8 })
     },
-    [rf, storeApi],
+    [rf, storeApi, textEditLock],
   )
 
-  /** 单击边时：弹出边属性 popup，在点击位置上方 12px 居中 */
+  /** 单击边时：弹出边属性 popup，在点击位置上方 8px 居中 */
   const onEdgeClick = useCallback((evt: React.MouseEvent, edge: FlowEdge) => {
+    if (textEditLock) return
+    // 双击链路中 React 仍可能触发 click；或用户慢双击导致 click 定时器抢先弹出。
+    // 规则：双击期间/双击后短窗口内，绝不弹出边属性菜单；编辑文字期间也绝不弹出。
+    if (evt.detail >= 2) return
+    if ((edge.data as any)?.editingLabel) return
+    if (Date.now() - edgeLastDoubleClickAtRef.current < 420) return
+
     setShapePopup(null)
-    setEdgePopup({ edgeId: edge.id, x: evt.clientX, y: evt.clientY - 12 })
-  }, [])
+    if (edgeClickTimerRef.current) {
+      window.clearTimeout(edgeClickTimerRef.current)
+      edgeClickTimerRef.current = null
+    }
+    // 延迟打开：若紧接着发生双击，会在 onEdgeDoubleClick 中取消
+    const cx = evt.clientX
+    const cy = evt.clientY
+    edgeClickTimerRef.current = window.setTimeout(() => {
+      // 定时器触发时再次检查：若已进入文字编辑（双击成功），不弹出边属性菜单
+      const nowEdge = nodesEdgesRef.current.edges.find((e) => e.id === edge.id) as any
+      if (nowEdge?.data?.editingLabel) {
+        edgeClickTimerRef.current = null
+        return
+      }
+      setEdgePopup({ edgeId: edge.id, x: cx, y: cy - 8 })
+      edgeClickTimerRef.current = null
+    }, 260)
+  }, [textEditLock])
 
 
   // selectedNode / selectedEdge 已在上方派生
@@ -2108,7 +2392,10 @@ function EditorInner({ onBackHome, source, previewSnapshot, readOnly: _readOnly 
         return
       }
       if (e.key.toLowerCase() === 'g') {
-        if (selectedNodesNow.length >= 2) {
+        const canGroup =
+          selectedNodesNow.length >= 2 ||
+          (selectedNodesNow.length === 1 && isGroupNode(selectedNodesNow[0]))
+        if (canGroup) {
           e.preventDefault()
           groupSelection()
         }
@@ -2155,8 +2442,9 @@ function EditorInner({ onBackHome, source, previewSnapshot, readOnly: _readOnly 
         onContextMenuCapture={onCanvasContextMenuCapture}
       >
         <ReactFlow
-          nodes={nodes}
+          nodes={nodesForFlow}
           edges={edges}
+          nodeOrigin={[0, 0]}
           onNodesChange={isPreview ? undefined : onNodesChange}
           onEdgesChange={isPreview ? undefined : onEdgesChange}
           onConnect={isPreview ? undefined : onConnect}
@@ -2239,7 +2527,7 @@ function EditorInner({ onBackHome, source, previewSnapshot, readOnly: _readOnly 
           <div
             ref={menuRef}
             className={styles.menu}
-            style={{ left: menu.clientX, top: menu.clientY - 12 }}
+            style={menuFixedPos ? { left: menuFixedPos.left, top: menuFixedPos.top } : { left: menu.clientX, top: menu.clientY }}
             onMouseDown={(e) => e.stopPropagation()}
             onClick={(e) => e.stopPropagation()}
           >
@@ -2279,7 +2567,9 @@ function EditorInner({ onBackHome, source, previewSnapshot, readOnly: _readOnly 
                 </button>
               </>
             )}
-            {menu.kind === 'pane' && selectedNodesNow.length >= 2 && (
+            {menu.kind === 'pane' &&
+              (selectedNodesNow.length >= 2 ||
+                (selectedNodesNow.length === 1 && isGroupNode(selectedNodesNow[0]))) && (
               <>
                 <button className={styles.menuItem} type="button" onClick={() => (groupSelection(), closeMenu())}>
                   <span className={styles.menuLabel}>
@@ -2299,74 +2589,7 @@ function EditorInner({ onBackHome, source, previewSnapshot, readOnly: _readOnly 
                   </span>
                   <span className={styles.menuKbd}></span>
                 </button>
-                <button className={styles.menuItem} type="button" onClick={() => (align('left'), closeMenu())}>
-                  <span className={styles.menuLabel}>
-                    <span className={styles.menuIcon}>
-                      <AlignLeft size={14} />
-                    </span>
-                    <span>左对齐</span>
-                  </span>
-                  <span className={styles.menuKbd}></span>
-                </button>
-                <button className={styles.menuItem} type="button" onClick={() => (align('hcenter'), closeMenu())}>
-                  <span className={styles.menuLabel}>
-                    <span className={styles.menuIcon}>
-                      <AlignCenterHorizontal size={14} />
-                    </span>
-                    <span>水平居中</span>
-                  </span>
-                  <span className={styles.menuKbd}></span>
-                </button>
-                <button className={styles.menuItem} type="button" onClick={() => (align('right'), closeMenu())}>
-                  <span className={styles.menuLabel}>
-                    <span className={styles.menuIcon}>
-                      <AlignRight size={14} />
-                    </span>
-                    <span>右对齐</span>
-                  </span>
-                  <span className={styles.menuKbd}></span>
-                </button>
-                <button className={styles.menuItem} type="button" onClick={() => (align('top'), closeMenu())}>
-                  <span className={styles.menuLabel}>
-                    <span className={styles.menuIcon}>⯅</span>
-                    <span>顶对齐</span>
-                  </span>
-                  <span className={styles.menuKbd}></span>
-                </button>
-                <button className={styles.menuItem} type="button" onClick={() => (align('vcenter'), closeMenu())}>
-                  <span className={styles.menuLabel}>
-                    <span className={styles.menuIcon}>
-                      <AlignCenterVertical size={14} />
-                    </span>
-                    <span>垂直居中</span>
-                  </span>
-                  <span className={styles.menuKbd}></span>
-                </button>
-                <button className={styles.menuItem} type="button" onClick={() => (align('bottom'), closeMenu())}>
-                  <span className={styles.menuLabel}>
-                    <span className={styles.menuIcon}>⯆</span>
-                    <span>底对齐</span>
-                  </span>
-                  <span className={styles.menuKbd}></span>
-                </button>
-                <button className={styles.menuItem} type="button" onClick={() => (align('hspace'), closeMenu())}>
-                  <span className={styles.menuLabel}>
-                    <span className={styles.menuIcon}>
-                      <AlignHorizontalDistributeCenter size={14} />
-                    </span>
-                    <span>水平等距</span>
-                  </span>
-                  <span className={styles.menuKbd}></span>
-                </button>
-                <button className={styles.menuItem} type="button" onClick={() => (align('vspace'), closeMenu())}>
-                  <span className={styles.menuLabel}>
-                    <span className={styles.menuIcon}>
-                      <AlignVerticalDistributeCenter size={14} />
-                    </span>
-                    <span>垂直等距</span>
-                  </span>
-                  <span className={styles.menuKbd}></span>
-                </button>
+                {/* 已移除快速对齐功能（左/右/居中/顶/底/等间距等） */}
                 <button className={styles.menuItemDanger} type="button" onClick={() => (deleteSelection(), closeMenu())}>
                   <span>删除</span>
                   <span className={styles.menuKbd}>Del</span>
@@ -2390,6 +2613,22 @@ function EditorInner({ onBackHome, source, previewSnapshot, readOnly: _readOnly 
                 >
                   <span>删除节点</span>
                   <span className={styles.menuKbd}>Del</span>
+                </button>
+                <button
+                  className={styles.menuItem}
+                  type="button"
+                  onClick={() => (menu.nodeId ? moveNodeLayerUp(menu.nodeId) : undefined, closeMenu())}
+                >
+                  <span>前移一层</span>
+                  <span className={styles.menuKbd}></span>
+                </button>
+                <button
+                  className={styles.menuItem}
+                  type="button"
+                  onClick={() => (menu.nodeId ? moveNodeLayerDown(menu.nodeId) : undefined, closeMenu())}
+                >
+                  <span>后移一层</span>
+                  <span className={styles.menuKbd}></span>
                 </button>
               </>
             )}
@@ -2444,7 +2683,7 @@ function EditorInner({ onBackHome, source, previewSnapshot, readOnly: _readOnly 
           </div>
         )}
 
-        {shapePopup && (() => {
+        {!textEditingActive && shapePopup && (() => {
           const popupNode = nodes.find((n) => n.id === shapePopup.nodeId)
           if (!popupNode) return null
           if (popupNode.type === 'quad') {
@@ -2495,12 +2734,11 @@ function EditorInner({ onBackHome, source, previewSnapshot, readOnly: _readOnly 
                     updateGroupStyle(shapePopup.nodeId, { fill: '' })
                     return
                   }
+                  // 纯 hex 表示用户将透明度拖到 100%，直接使用该颜色（不强制 0.12）
                   const hex = trimmed.startsWith('#') ? trimmed : `#${trimmed}`
                   const rgb = hexToRgbColor(hex)
                   if (rgb) {
-                    updateGroupStyle(shapePopup.nodeId, {
-                      fill: `rgba(${rgb.r},${rgb.g},${rgb.b},0.12)`,
-                    })
+                    updateGroupStyle(shapePopup.nodeId, { fill: hex })
                   } else {
                     updateGroupStyle(shapePopup.nodeId, { fill: trimmed })
                   }
@@ -2512,7 +2750,7 @@ function EditorInner({ onBackHome, source, previewSnapshot, readOnly: _readOnly 
           return null
         })()}
 
-        {edgePopup && (() => {
+        {!textEditingActive && edgePopup && (() => {
           const popupEdge = edges.find((e) => e.id === edgePopup.edgeId)
           if (!popupEdge) return null
           return (
@@ -2525,6 +2763,7 @@ function EditorInner({ onBackHome, source, previewSnapshot, readOnly: _readOnly 
           )
         })()}
 
+        {!textEditingActive && (
         <InlineInspector
           anchor={inlineInspector.kind ? { x: inlineInspector.x, y: inlineInspector.y } : null}
           kind={inlineInspector.kind}
@@ -2584,6 +2823,7 @@ function EditorInner({ onBackHome, source, previewSnapshot, readOnly: _readOnly 
           }
           onClose={() => setInlineInspector({ kind: null, id: null, x: 0, y: 0 })}
         />
+        )}
 
         <input
           ref={fileInputRef}

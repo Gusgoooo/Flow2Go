@@ -304,6 +304,14 @@ export function EditableSmoothStepEdge(props: EdgeProps) {
     }
   }, [editing])
 
+  // 全局文字编辑锁：边文字编辑开启时，压住其它菜单栏
+  useEffect(() => {
+    window.dispatchEvent(new CustomEvent('flow2go:text-editing', { detail: { active: editing } }))
+    return () => {
+      window.dispatchEvent(new CustomEvent('flow2go:text-editing', { detail: { active: false } }))
+    }
+  }, [editing])
+
   // 拖拽某个线段（移动该线段两端的中间点）
   const handleSegmentDrag = useCallback(
     (segIndex: number, seg: { isVertical: boolean }) => (e: React.MouseEvent) => {

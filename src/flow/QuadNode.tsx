@@ -46,6 +46,16 @@ export function QuadNode(props: NodeProps) {
     }
   }, [data.label, data.subtitle, data.title, editingSubtitle, editingTitle])
 
+  // 全局文字编辑锁：任何标题/副标题编辑开启时，压住其它菜单栏
+  useEffect(() => {
+    const active = editingTitle || editingSubtitle
+    window.dispatchEvent(new CustomEvent('flow2go:text-editing', { detail: { active } }))
+    return () => {
+      // 组件卸载时确保解锁（避免残留锁）
+      window.dispatchEvent(new CustomEvent('flow2go:text-editing', { detail: { active: false } }))
+    }
+  }, [editingTitle, editingSubtitle])
+
   // 编辑时自动全选文本并调整高度
   useEffect(() => {
     if (editingTitle && titleInputRef.current) {
