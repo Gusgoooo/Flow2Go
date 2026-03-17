@@ -187,7 +187,7 @@ export function QuadNode(props: NodeProps) {
       onDoubleClick={onDoubleClick}
     >
       <NodeResizer
-        minWidth={120}
+        minWidth={80}
         minHeight={44}
         handleStyle={{ width: 12, height: 12, borderRadius: 9999 }}
         isVisible={Boolean((props as any).selected)}

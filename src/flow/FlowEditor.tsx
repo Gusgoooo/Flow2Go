@@ -502,7 +502,7 @@ function EditorInner({ onBackHome, source, previewSnapshot, readOnly: _readOnly 
       return {
         nodes: (defaultExample.nodes as FlowNode[]) ?? [],
         edges: (defaultExample.edges as FlowEdge[]) ?? [],
-        viewport: { x: 0, y: 0, zoom: 1 },
+        viewport: (defaultExample as any).viewport ?? { x: 0, y: 0, zoom: 1 },
         name: 'untitled',
         isDefaultExample: true,
       }
@@ -1095,7 +1095,40 @@ function EditorInner({ onBackHome, source, previewSnapshot, readOnly: _readOnly 
       }
 
       setNodes((prev) => {
-        const next = applyNodeChanges(changes, prev)
+        let next = applyNodeChanges(changes, prev)
+
+        // 群组 resize（尤其拖左上角把手）时，React Flow 会改变群组的 position。
+        // 为了实现“调整群组大小不影响内部边/节点位置”，需要把群组的位移反向分摊给【直接子节点】，
+        // 让子树整体绝对位置不变（只改变群组边框）。注意：不能对所有子孙都反向移动，否则嵌套群组会被重复补偿而错位。
+        if (resizingIds.size) {
+          const prevById = new Map(prev.map((n) => [n.id, n]))
+          const nextById = new Map(next.map((n) => [n.id, n]))
+
+          // 只处理群组节点的 resize
+          const groupDeltaById = new Map<string, { dx: number; dy: number }>()
+          for (const id of resizingIds) {
+            const before = prevById.get(id)
+            const after = nextById.get(id)
+            if (!before || !after) continue
+            if (before.type !== 'group' || after.type !== 'group') continue
+            const dx = after.position.x - before.position.x
+            const dy = after.position.y - before.position.y
+            if (dx !== 0 || dy !== 0) groupDeltaById.set(id, { dx, dy })
+          }
+
+          if (groupDeltaById.size) {
+            next = next.map((n) => {
+              // 只对被 resize 群组的【直接子节点】做反向移动；群组自身保持变更后的 position/dimensions
+              const pid = n.parentId
+              if (pid && groupDeltaById.has(pid)) {
+                const d = groupDeltaById.get(pid)!
+                return { ...n, position: { x: n.position.x - d.dx, y: n.position.y - d.dy } }
+              }
+              return n
+            })
+          }
+        }
+
         pushHistory(next, edges, 'nodes')
         return next
       })
