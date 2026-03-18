@@ -55,6 +55,7 @@ import { findBestParentFrame, getNodeAbsolutePosition, getNodeSizeLike, isFrameN
 import { NodeEditPopup } from './NodeEditPopup'
 import { GroupEditPopup } from './GroupEditPopup'
 import { EdgeEditPopup } from './EdgeEditPopup'
+import { AssetEditPopup } from './AssetEditPopup'
 // overview 示例入口已移除
 
 export type AssetItem = {
@@ -2474,7 +2475,7 @@ function EditorInner({ onBackHome, source, previewSnapshot, readOnly: _readOnly 
   const onNodeClick = useCallback(
     (_evt: React.MouseEvent, node: FlowNode) => {
       if (textEditLock) return
-      if (node.type !== 'quad' && node.type !== 'group') return
+      if (node.type !== 'quad' && node.type !== 'group' && node.type !== 'asset') return
       setEdgePopup(null)
       const state = storeApi.getState()
       const internalNode = state.nodeLookup.get(node.id)
@@ -2955,6 +2956,20 @@ function EditorInner({ onBackHome, source, previewSnapshot, readOnly: _readOnly 
                     updateGroupStyle(shapePopup.nodeId, { fill: trimmed })
                   }
                 }}
+                onClose={() => setShapePopup(null)}
+              />
+            )
+          }
+          if (popupNode.type === 'asset') {
+            return (
+              <AssetEditPopup
+                node={popupNode as FlowNode as Node<any>}
+                anchor={{ x: shapePopup.x, y: shapePopup.y }}
+                onUpdate={(patch) =>
+                  setNodes((nds) =>
+                    nds.map((n) => (n.id === shapePopup.nodeId ? { ...n, data: { ...(n.data ?? {}), ...patch } } : n)),
+                  )
+                }
                 onClose={() => setShapePopup(null)}
               />
             )

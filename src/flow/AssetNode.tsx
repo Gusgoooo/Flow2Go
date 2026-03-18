@@ -11,6 +11,10 @@ export type AssetNodeData = {
   colorOverride?: GradientValue
   /** 旋转角度（度数），顺时针，默认 0 */
   rotation?: number
+  /** 水平翻转 */
+  flipX?: boolean
+  /** 垂直翻转 */
+  flipY?: boolean
 }
 
 const DEFAULT_WIDTH = 120
@@ -27,6 +31,8 @@ export function AssetNode(props: NodeProps) {
   const colorOverride = data.colorOverride
    // 旋转角度（度数）
   const rotation = Number.isFinite(data.rotation) ? (data.rotation as number) : 0
+  const flipX = Boolean(data.flipX)
+  const flipY = Boolean(data.flipY)
 
   const onResize = useCallback(
     (_event: unknown, params: { x: number; y: number; width: number; height: number }) => {
@@ -77,7 +83,10 @@ export function AssetNode(props: NodeProps) {
         width: w,
         height: h,
         position: 'relative',
-        transform: rotation ? `rotate(${rotation}deg)` : undefined,
+        transform:
+          flipX || flipY || rotation
+            ? `${rotation ? `rotate(${rotation}deg) ` : ''}scale(${flipX ? -1 : 1}, ${flipY ? -1 : 1})`
+            : undefined,
         transformOrigin: 'center center',
       }}
     >
