@@ -169,8 +169,6 @@ function Sidebar({
   const [aiPrompt, setAiPrompt] = useState('')
   const [aiGenerating, setAiGenerating] = useState(false)
   const [aiError, setAiError] = useState<string | null>(null)
-  // 使用环境变量中的 API Key
-  const envKey = import.meta.env.VITE_OPENROUTER_API_KEY || ''
   const [openRouterKey, setOpenRouterKey] = useState<string>(() => {
     try {
       return localStorage.getItem('flow2go-openrouter-key') || ''
@@ -185,10 +183,22 @@ function Sidebar({
       return 'openai/gpt-4o-mini'
     }
   })
-  const apiKey = (envKey || openRouterKey).trim()
+  const apiKey = openRouterKey.trim()
   const diagramAbortRef = useRef<AbortController | null>(null)
   const [aiDiagramGenerating, setAiDiagramGenerating] = useState(false)
   const [aiDiagramError, setAiDiagramError] = useState<string | null>(null)
+
+  useEffect(() => {
+    try {
+      localStorage.setItem('flow2go-openrouter-key', openRouterKey)
+    } catch {}
+  }, [openRouterKey])
+
+  useEffect(() => {
+    try {
+      localStorage.setItem('flow2go-openrouter-model', openRouterModel)
+    } catch {}
+  }, [openRouterModel])
 
   useEffect(() => {
     if (!editingTitle) setDraftTitle(fileName)
@@ -291,14 +301,6 @@ function Sidebar({
     setAiDiagramGenerating(true)
     setAiDiagramError(null)
     try {
-      if (!envKey) {
-        try {
-          localStorage.setItem('flow2go-openrouter-key', openRouterKey.trim())
-        } catch {}
-      }
-      try {
-        localStorage.setItem('flow2go-openrouter-model', openRouterModel)
-      } catch {}
       await onGenerateAiDiagram({ prompt: p, apiKey: apiKey.trim(), model: openRouterModel, signal: ac.signal })
     } catch (err) {
       if ((err as any)?.name === 'AbortError') return
@@ -307,7 +309,7 @@ function Sidebar({
       setAiDiagramGenerating(false)
       diagramAbortRef.current = null
     }
-  }, [aiPrompt, aiDiagramGenerating, envKey, openRouterKey, openRouterModel, apiKey, onGenerateAiDiagram])
+  }, [aiPrompt, aiDiagramGenerating, openRouterModel, apiKey, onGenerateAiDiagram])
 
   return (
     <aside className={`${styles.sidebar} ${containerClassName ?? ''}`}>
@@ -455,6 +457,18 @@ function Sidebar({
             <div className={styles.aiNote}>
               输入描述，AI 将生成简约风格的透明背景图标
             </div>
+            <div className={styles.aiApiKeySection}>
+              <div className={styles.aiNote}>OpenRouter API Key（仅保存在本地浏览器）</div>
+              <input
+                className={styles.aiApiKeyInput}
+                value={openRouterKey}
+                onChange={(e) => setOpenRouterKey(e.target.value)}
+                placeholder="sk-or-..."
+              />
+              <div className={styles.aiHint}>
+                {apiKey ? '✓ 已配置（localStorage）' : '未配置：需要先填写才能使用 AI'}
+              </div>
+            </div>
             <textarea
               className={styles.aiPromptInput}
               placeholder="描述你想要的图标，例如：一个蓝色的用户头像图标"
@@ -473,9 +487,6 @@ function Sidebar({
             {aiError && (
               <div className={styles.aiError}>{aiError}</div>
             )}
-            {apiKey && (
-              <div className={styles.aiHint}>✓ API Key 已配置</div>
-            )}
           </div>
         )}
 
@@ -483,17 +494,18 @@ function Sidebar({
           <div className={styles.aiSection}>
             <div className={styles.aiNote}>输入描述，AI 将生成一份可应用到画布的“草稿图”（可撤销）。</div>
 
-            {!envKey && (
-              <div className={styles.aiApiKeySection}>
-                <div className={styles.aiNote}>OpenRouter API Key（仅保存在本地）</div>
-                <input
-                  className={styles.aiApiKeyInput}
-                  value={openRouterKey}
-                  onChange={(e) => setOpenRouterKey(e.target.value)}
-                  placeholder="sk-or-..."
-                />
+            <div className={styles.aiApiKeySection}>
+              <div className={styles.aiNote}>OpenRouter API Key（仅保存在本地浏览器）</div>
+              <input
+                className={styles.aiApiKeyInput}
+                value={openRouterKey}
+                onChange={(e) => setOpenRouterKey(e.target.value)}
+                placeholder="sk-or-..."
+              />
+              <div className={styles.aiHint}>
+                {apiKey ? '✓ 已配置（localStorage）' : '未配置：需要先填写才能使用 AI'}
               </div>
-            )}
+            </div>
 
             <div className={styles.aiApiKeySection}>
               <div className={styles.aiNote}>模型</div>

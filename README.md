@@ -21,6 +21,11 @@ npm run dev
 
 打开 `http://localhost:5173`。
 
+## AI（可选）
+
+如果你要用「生成图标 / 生成草稿图」等 AI 能力，请在侧边栏对应面板里**手动填写 OpenRouter API Key**。
+该 Key 会**仅保存在你的浏览器 localStorage** 中（清除浏览器数据会丢失）。
+
 ## 构建
 
 ```bash
@@ -31,18 +36,11 @@ npm run build
 
 ## Docker（可选）
 
-### 开发模式（热更新）
-
-```bash
-docker compose up --build flow2go-dev
-```
-
-打开 `http://localhost:5173`。
-
 ### 生产模式（Nginx 静态托管）
 
 ```bash
-docker compose up --build flow2go-prod
+docker build -t flow2go .
+docker run --rm -p 8080:80 flow2go
 ```
 
 打开 `http://localhost:8080`。
