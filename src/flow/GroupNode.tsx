@@ -23,7 +23,6 @@ export function GroupNode(props: NodeProps) {
   const stroke = data.stroke ?? '#3b82f6'
   const strokeWidth = data.strokeWidth
   const fill = data.fill ?? 'rgba(59, 130, 246, 0.10)'
-  const selected = (props as any).selected
   const rf = useReactFlow()
   const inputRef = useRef<HTMLTextAreaElement>(null)
 

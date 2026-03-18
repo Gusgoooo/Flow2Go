@@ -133,7 +133,6 @@ export function QuadNode(props: NodeProps) {
   const title = data.title ?? data.label ?? ''
   const subtitle = data.subtitle ?? ''
   const showSubtitle = !!data.showSubtitle
-  const selected = (props as any).selected
   const labelStyle = {
     fontSize: data.labelFontSize ?? 12,
     fontWeight: data.labelFontWeight ?? '700',
