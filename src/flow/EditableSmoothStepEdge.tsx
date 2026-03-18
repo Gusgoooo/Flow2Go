@@ -473,7 +473,7 @@ export function EditableSmoothStepEdge(props: EdgeProps) {
                 cursor: seg.isVertical ? 'ew-resize' : 'ns-resize',
                 pointerEvents: 'all',
                 background: (selected || isHovered) ? 'rgba(59, 130, 246, 0.2)' : 'transparent',
-                borderRadius: 4,
+                borderRadius: 12,
                 transition: 'background 0.15s',
                 display: 'flex',
                 alignItems: 'center',
@@ -489,7 +489,7 @@ export function EditableSmoothStepEdge(props: EdgeProps) {
                     width: seg.isVertical ? 4 : 24,
                     height: seg.isVertical ? 24 : 4,
                     background: '#3b82f6',
-                    borderRadius: 2,
+                    borderRadius: 12,
                     opacity: 0.8,
                   }}
                 />
@@ -603,7 +603,7 @@ export function EditableSmoothStepEdge(props: EdgeProps) {
                   fontWeight: labelFontWeight,
                   color: labelColor,
                   padding: '2px 4px',
-                  borderRadius: 6,
+                  borderRadius: 12,
                   border: '1px solid #e5e7eb',
                   background: '#ffffff',
                   minWidth: 60,
@@ -642,7 +642,7 @@ export function EditableSmoothStepEdge(props: EdgeProps) {
             <span
               style={{
                 padding: '2px 4px',
-                borderRadius: 6,
+                borderRadius: 12,
                 background: '#f8fafc',
                 border: '1px solid #e5e7eb',
                 fontSize: labelFontSize,

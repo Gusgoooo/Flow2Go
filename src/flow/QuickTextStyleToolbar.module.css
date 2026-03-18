@@ -3,7 +3,7 @@
   align-items: center;
   gap: 10px;
   padding: 8px 10px;
-  border-radius: 10px;
+  border-radius: 12px;
   border: 1px solid #e5e7eb;
   background: rgba(255, 255, 255, 0.98);
   box-shadow: 0 8px 24px rgba(15, 23, 42, 0.12);
@@ -25,14 +25,14 @@
 .input {
   width: 52px;
   border: 1px solid #e5e7eb;
-  border-radius: 8px;
+  border-radius: 12px;
   padding: 4px 6px;
   font-size: 12px;
 }
 
 .select {
   border: 1px solid #e5e7eb;
-  border-radius: 8px;
+  border-radius: 12px;
   padding: 4px 8px;
   font-size: 12px;
   min-width: 72px;
@@ -43,7 +43,7 @@
   height: 28px;
   padding: 0;
   border: 1px solid #e5e7eb;
-  border-radius: 6px;
+  border-radius: 12px;
   cursor: pointer;
   background: transparent;
 }

@@ -35,6 +35,7 @@ import {
 import JSZip from 'jszip'
 import {
   AlignHorizontalDistributeCenter,
+  InspectionPanel,
   SquareDashedKanban,
   Square,
   Type,
@@ -50,6 +51,7 @@ import { EditableSmoothStepEdge } from './EditableSmoothStepEdge'
 import { AssetNode } from './AssetNode'
 import { TextNode } from './TextNode'
 import { InlineInspector } from './InlineInspector'
+import { findBestParentFrame, getNodeAbsolutePosition, getNodeSizeLike, isFrameNode } from './frameUtils'
 import { NodeEditPopup } from './NodeEditPopup'
 import { GroupEditPopup } from './GroupEditPopup'
 import { EdgeEditPopup } from './EdgeEditPopup'
@@ -832,25 +834,12 @@ function EditorInner({ onBackHome, source, previewSnapshot, readOnly: _readOnly 
   )
 
   const getNodeSize = useCallback((n: FlowNode) => {
-    const w = (n.measured as any)?.width ?? (n as any).width ?? (n.style as any)?.width ?? 160
-    const h = (n.measured as any)?.height ?? (n as any).height ?? (n.style as any)?.height ?? 44
-    return { w, h }
+    const { width, height } = getNodeSizeLike(n as any)
+    return { w: width, h: height }
   }, [])
 
   const getAbsolutePosition = useCallback((node: FlowNode, byId: Map<string, FlowNode>): { x: number; y: number } => {
-    let x = node.position.x
-    let y = node.position.y
-    let pid = node.parentId
-    const seen = new Set<string>()
-    while (pid && !seen.has(pid)) {
-      seen.add(pid)
-      const p = byId.get(pid)
-      if (!p) break
-      x += p.position.x
-      y += p.position.y
-      pid = p.parentId
-    }
-    return { x, y }
+    return getNodeAbsolutePosition(node as any, byId as any)
   }, [])
 
   /** 在已有节点列表中找一个与 flowPos 尽量接近且不重叠的位置（用于新节点，减少框选误选） */
@@ -1293,7 +1282,7 @@ function EditorInner({ onBackHome, source, previewSnapshot, readOnly: _readOnly 
   )
 
   const onNodeDragStop = useCallback(
-    (_evt: React.MouseEvent, draggedNode: FlowNode) => {
+    (evt: React.MouseEvent, draggedNode: FlowNode) => {
       // Option+拖动复制：原节点保持在拖动后的位置，副本留在原位置
       const copyInfo = copyDragRef.current
       if (copyInfo && copyInfo.nodeId === draggedNode.id) {
@@ -1341,88 +1330,183 @@ function EditorInner({ onBackHome, source, previewSnapshot, readOnly: _readOnly 
         return
       }
 
+      // 用光标位置表达“是否要拖入画框”的意图：光标在画框内部 => 拖入；光标在父画框外部 => 拖出
+      const cursorFlow = rf.screenToFlowPosition({ x: (evt as any).clientX, y: (evt as any).clientY })
+
       setNodes((nds) => {
         const byId = new Map(nds.map((nd) => [nd.id, nd]))
         const node = byId.get(draggedNode.id)
         if (!node) return nds
 
-        const absPos = getAbsolutePosition(node, byId)
-        const { w, h } = getNodeSize(node)
+        const movedIds = new Set<string>()
+        if (node.selected) {
+          // 复合拖动：把所有被选中的节点都纳入拖出判定（否则只处理 draggedNode 会残留 parentId）
+          for (const n of nds) if (n.selected) movedIds.add(n.id)
+        } else {
+          movedIds.add(node.id)
+        }
 
-        if (node.parentId) {
-          const parent = byId.get(node.parentId)
-          if (parent) {
-            const pAbs = getAbsolutePosition(parent, byId)
-            const pw = getNodeSize(parent).w
-            const ph = getNodeSize(parent).h
-            const ix = Math.min(absPos.x + w, pAbs.x + pw) - Math.max(absPos.x, pAbs.x)
-            const iy = Math.min(absPos.y + h, pAbs.y + ph) - Math.max(absPos.y, pAbs.y)
-            if (ix <= 0 || iy <= 0) {
-              let next = nds.map((nd) =>
-                nd.id === node.id ? { ...nd, parentId: undefined, position: absPos } : nd,
-              )
-              next = sortNodesParentFirst(next)
-              next = assignZIndex(next)
-              pushHistory(next, edges, 'drag-out')
-              return next
+        // 光标所在的最合适目标画框（用于“拖出子画框但仍落在父画框内 => 重挂载到父画框”）
+        const excludeFramesForCursor = new Set<string>(movedIds)
+        const cursorTargetFrame = findBestParentFrame(
+          { x: cursorFlow.x, y: cursorFlow.y, width: 0, height: 0 } as any,
+          nds as any,
+          byId as any,
+          excludeFramesForCursor,
+        ) as FlowNode | null
+        const canAdoptToCursorFrame = cursorTargetFrame && isFrameNode(cursorTargetFrame)
+        const cursorFrameAbs = canAdoptToCursorFrame ? getAbsolutePosition(cursorTargetFrame!, byId) : null
+
+        const shouldDetachFromParent = (n: FlowNode): { detach: boolean; absPos: { x: number; y: number } } => {
+          const absPos = getAbsolutePosition(n, byId)
+          if (!n.parentId) return { detach: false, absPos }
+          const parent = byId.get(n.parentId)
+          if (!parent) return { detach: true, absPos }
+          const pAbs = getAbsolutePosition(parent, byId)
+          const pw = getNodeSize(parent).w
+          const ph = getNodeSize(parent).h
+          const cursorInsideParent =
+            cursorFlow.x >= pAbs.x &&
+            cursorFlow.x <= pAbs.x + pw &&
+            cursorFlow.y >= pAbs.y &&
+            cursorFlow.y <= pAbs.y + ph
+          return { detach: !cursorInsideParent, absPos }
+        }
+
+        const wouldCreateCycle = (childId: string, nextParentId: string): boolean => {
+          if (childId === nextParentId) return true
+          let cur = byId.get(nextParentId)
+          const seen = new Set<string>()
+          while (cur?.parentId && !seen.has(cur.parentId)) {
+            if (cur.parentId === childId) return true
+            seen.add(cur.parentId)
+            cur = byId.get(cur.parentId)
+          }
+          return false
+        }
+
+        let changed = false
+        let next = nds.map((nd) => {
+          if (!movedIds.has(nd.id)) return nd
+          if (!nd.parentId) return nd
+          const { detach, absPos } = shouldDetachFromParent(nd)
+          if (!detach) return nd
+          changed = true
+          const { parentId: _pid, extent: _extent, ...rest } = nd as any
+
+          // 重要：如果光标落在某个祖先/外层画框内，则直接重挂载到该画框（Figma 行为）
+          if (
+            canAdoptToCursorFrame &&
+            cursorTargetFrame &&
+            cursorFrameAbs &&
+            !wouldCreateCycle(nd.id, cursorTargetFrame.id)
+          ) {
+            return {
+              ...rest,
+              parentId: cursorTargetFrame.id,
+              position: { x: absPos.x - cursorFrameAbs.x, y: absPos.y - cursorFrameAbs.y },
             }
           }
-        } else if (!isGroupNode(node)) {
-          const groups = nds.filter((nd) => isGroupNode(nd) && nd.id !== node.id)
-          const centerX = absPos.x + w / 2
-          const centerY = absPos.y + h / 2
 
-          let bestGroup: FlowNode | null = null
-          let bestDepth = -1
-          let bestArea = Infinity
+          // 否则脱离到根层（全局坐标）
+          return { ...rest, parentId: undefined, position: absPos }
+        })
 
-          const depthOfGroup = (g: FlowNode): number => {
-            let depth = 0
-            let cur: FlowNode | undefined = g
+        if (changed) {
+          next = sortNodesParentFirst(next)
+          next = assignZIndex(next)
+          pushHistory(next, edges, movedIds.size > 1 ? 'drag-out-multi' : 'drag-out')
+          return next
+        }
+
+        // 统一的“拖入 Frame”逻辑：适用于拖动普通节点/素材节点/子群组/复合内容。
+        // 关键点：只重挂载 movedIds 中的【顶层节点】（其祖先不在 movedIds 中），避免把子孙打散到同一层。
+        const all = nds as FlowNode[]
+        // 拖入判定时必须排除“本次正在移动的 frame/群组”，否则容易把被拖动的群组自身当成最内层命中的 frame，
+        // 导致无法真正挂载进外层画框（你提到的 B/C 编组再拖进 A 的场景）。
+        const excludeFramesForDragIn = new Set<string>(movedIds)
+        // 以“光标落点”表达用户意图：光标在画框内 => 拖入该画框（Figma 行为）
+        const bestFrame = findBestParentFrame(
+          { x: cursorFlow.x, y: cursorFlow.y, width: 0, height: 0 } as any,
+          all as any,
+          byId as any,
+          excludeFramesForDragIn,
+        ) as FlowNode | null
+        if (bestFrame && isFrameNode(bestFrame)) {
+          const frameAbs = getAbsolutePosition(bestFrame, byId)
+          const frameSize = getNodeSize(bestFrame)
+          const frameRect = { x: frameAbs.x, y: frameAbs.y, width: frameSize.w, height: frameSize.h }
+          const cursorInsideFrame =
+            cursorFlow.x >= frameRect.x &&
+            cursorFlow.x <= frameRect.x + frameRect.width &&
+            cursorFlow.y >= frameRect.y &&
+            cursorFlow.y <= frameRect.y + frameRect.height
+          // 光标不在画框内部，则不触发拖入逻辑（避免“松手时元素在框外但仍被挂入/挂不出来”）
+          if (!cursorInsideFrame) return nds
+
+          const wouldCreateCycle = (childId: string, nextParentId: string): boolean => {
+            let cur = byId.get(nextParentId)
             const seen = new Set<string>()
             while (cur?.parentId && !seen.has(cur.parentId)) {
+              if (cur.parentId === childId) return true
               seen.add(cur.parentId)
-              const p = byId.get(cur.parentId)
-              if (!p || !isGroupNode(p)) break
-              depth += 1
-              cur = p
+              cur = byId.get(cur.parentId)
             }
-            return depth
+            return nextParentId === childId
           }
 
-          for (const g of groups) {
-            const gAbs = getAbsolutePosition(g, byId)
-            const gw = getNodeSize(g).w
-            const gh = getNodeSize(g).h
-
-            const centerInside =
-              centerX >= gAbs.x &&
-              centerX <= gAbs.x + gw &&
-              centerY >= gAbs.y &&
-              centerY <= gAbs.y + gh
-            if (!centerInside) continue
-
-            const depth = depthOfGroup(g)
-            const area = gw * gh
-            if (depth > bestDepth || (depth === bestDepth && area < bestArea)) {
-              bestDepth = depth
-              bestArea = area
-              bestGroup = g
+          const isTopLevelMoved = (id: string): boolean => {
+            let cur = byId.get(id)
+            const seen = new Set<string>()
+            while (cur?.parentId && !seen.has(cur.parentId)) {
+              if (movedIds.has(cur.parentId)) return false
+              seen.add(cur.parentId)
+              cur = byId.get(cur.parentId)
             }
+            return true
           }
 
-          if (bestGroup) {
-            const gAbs = getAbsolutePosition(bestGroup, byId)
-            const relPos = { x: absPos.x - gAbs.x, y: absPos.y - gAbs.y }
-            let next = nds.map((nd) =>
-              nd.id === node.id ? { ...nd, parentId: bestGroup!.id, position: relPos } : nd,
-            )
-            next = sortNodesParentFirst(next)
-            next = assignZIndex(next)
-            pushHistory(next, edges, 'drag-in')
-            return next
+          const movedTopSet = new Set([...movedIds].filter(isTopLevelMoved))
+
+          const absCache = new Map<string, { x: number; y: number }>()
+          const getAbs = (n: FlowNode) => {
+            const cached = absCache.get(n.id)
+            if (cached) return cached
+            const v = getAbsolutePosition(n, byId)
+            absCache.set(n.id, v)
+            return v
+          }
+
+          let changedIn = false
+          let nextIn = nds.map((nd) => {
+            if (!movedTopSet.has(nd.id)) return nd
+            if (nd.id === bestFrame.id) return nd
+            if (wouldCreateCycle(nd.id, bestFrame.id)) return nd
+
+            const abs = getAbs(nd)
+            // 已经用 cursorInsideFrame 表达意图，这里不要再用“节点中心点是否在框内”做二次过滤：
+            // 画框很大/只拖进去一部分时，中心点可能仍在外侧，会导致“拖进画框却不成为子集”
+
+            // 若已经在该 frame 下且 position 已是局部坐标，保持不动
+            if (nd.parentId === bestFrame.id) return nd
+
+            changedIn = true
+            return {
+              ...nd,
+              parentId: bestFrame.id,
+              // 只建立真实父子关系（局部坐标系）；不要用 extent 约束，否则会无法拖出画框
+              position: { x: abs.x - frameRect.x, y: abs.y - frameRect.y },
+            } as any
+          })
+
+          if (changedIn) {
+            nextIn = sortNodesParentFirst(nextIn)
+            nextIn = assignZIndex(nextIn)
+            pushHistory(nextIn, edges, movedTopSet.size > 1 ? 'drag-in-multi' : 'drag-in')
+            return nextIn
           }
         }
+
         return nds
       })
     },
@@ -1580,6 +1664,41 @@ function EditorInner({ onBackHome, source, previewSnapshot, readOnly: _readOnly 
       })
     },
     [edges, findNonOverlappingPosition, pushHistory, setNodes],
+  )
+
+  /** 新增画框（Frame）：本质是一个空的 group 节点（中等大小），用于承载任意子节点 */
+  const addFrameAtPosition = useCallback(
+    (flowPos: { x: number; y: number }) => {
+      const id = nowId('g')
+      const w = 640
+      const h = 420
+      // 让鼠标点落在 frame 的左上内侧一点，符合 figma “创建 frame” 的直觉
+      const pos = snapPos({ x: flowPos.x - 24, y: flowPos.y - 24 })
+      const frameNode: FlowNode = {
+        id,
+        type: 'group',
+        position: pos,
+        width: w,
+        height: h,
+        data: {
+          title: '画框',
+          stroke: '#e2e8f0',
+          fill: 'rgba(226, 232, 240, 0.20)',
+          titleFontSize: 14,
+          titleColor: '#64748b',
+          // 预留：后续可扩展 frame 的 padding/header/overflow 等
+          role: 'frame',
+        } as any,
+        draggable: true,
+        style: { width: w, height: h },
+      }
+      setNodes((nds) => {
+        const next = nds.concat(frameNode)
+        pushHistory(next, edges, 'add-frame')
+        return next
+      })
+    },
+    [edges, pushHistory, setNodes, snapPos],
   )
 
   const onDrop = useCallback(
@@ -2049,6 +2168,7 @@ function EditorInner({ onBackHome, source, previewSnapshot, readOnly: _readOnly 
       data: {
         title,
         stroke: '#3b82f6',
+        strokeWidth: 1,
         fill: 'rgba(59, 130, 246, 0.10)',
       } satisfies GroupNodeData,
       draggable: true,
@@ -2192,6 +2312,39 @@ function EditorInner({ onBackHome, source, previewSnapshot, readOnly: _readOnly 
         return next
       })
       setEdges((eds) => eds.filter((e) => e.source !== nodeId && e.target !== nodeId))
+    },
+    [edges, getAbsolutePosition, pushHistory, sortNodesParentFirst],
+  )
+
+  const deleteFrameKeepContents = useCallback(
+    (frameId: string) => {
+      setNodes((nds) => {
+        const byId = new Map(nds.map((nd) => [nd.id, nd]))
+        const frame = byId.get(frameId)
+        if (!frame) return nds
+
+        const newParentId = frame.parentId
+        const newParent = newParentId ? byId.get(newParentId) : undefined
+        const newParentAbs = newParent ? getAbsolutePosition(newParent, byId) : null
+
+        let next = nds.map((n) => {
+          if (n.parentId !== frameId) return n
+          const absPos = getAbsolutePosition(n, byId)
+          if (newParentId && newParentAbs) {
+            return {
+              ...n,
+              parentId: newParentId,
+              position: { x: absPos.x - newParentAbs.x, y: absPos.y - newParentAbs.y },
+            }
+          }
+          return { ...n, parentId: undefined, position: absPos }
+        })
+
+        next = next.filter((n) => n.id !== frameId)
+        next = sortNodesParentFirst(next)
+        pushHistory(next, edges, 'del-frame-keep')
+        return next
+      })
     },
     [edges, getAbsolutePosition, pushHistory, sortNodesParentFirst],
   )
@@ -2592,6 +2745,22 @@ function EditorInner({ onBackHome, source, previewSnapshot, readOnly: _readOnly 
                   className={styles.menuItem}
                   type="button"
                   onClick={() => {
+                    addFrameAtPosition(menu.flowPos)
+                    closeMenu()
+                  }}
+                >
+                  <span className={styles.menuLabel}>
+                    <span className={styles.menuIcon}>
+                      <InspectionPanel size={14} />
+                    </span>
+                    <span>新增画框</span>
+                  </span>
+                  <span className={styles.menuKbd}></span>
+                </button>
+                <button
+                  className={styles.menuItem}
+                  type="button"
+                  onClick={() => {
                     addNodeAtPosition('text', menu.flowPos)
                     closeMenu()
                   }}
@@ -2763,6 +2932,10 @@ function EditorInner({ onBackHome, source, previewSnapshot, readOnly: _readOnly 
                 node={popupNode as FlowNode as Node<GroupNodeData>}
                 anchor={{ x: shapePopup.x, y: shapePopup.y }}
                 onUpdate={(patch) => updateGroupStyle(shapePopup.nodeId, patch)}
+                onDeleteFrameKeepContents={() => {
+                  deleteFrameKeepContents(shapePopup.nodeId)
+                  setShapePopup(null)
+                }}
                 onFillChange={(v) => {
                   const trimmed = v.trim()
                   if (trimmed.startsWith('rgba')) {

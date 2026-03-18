@@ -73,7 +73,7 @@
 .titleInput {
   flex: 1;
   min-width: 0;
-  border-radius: 8px;
+  border-radius: 12px;
   border: 1px solid #e5e7eb;
   padding: 4px 8px;
   font-size: 14px;
@@ -105,7 +105,7 @@
 .paletteItem {
   user-select: none;
   padding: 10px 12px;
-  border-radius: 10px;
+  border-radius: 12px;
   border: 1px solid #e5e7eb;
   background: #f8fafc;
   cursor: grab;
@@ -129,7 +129,7 @@
   width: 100%;
   padding: 8px 12px;
   border: 1px dashed #cbd5e1;
-  border-radius: 10px;
+  border-radius: 12px;
   background: #f8fafc;
   font-size: 13px;
   color: #64748b;
@@ -150,7 +150,7 @@
 }
 
 .assetCard {
-  border-radius: 6px;
+  border-radius: 12px;
   border: 1px solid #e5e7eb;
   background: #fff;
   overflow: hidden;
@@ -172,7 +172,7 @@
   right: 2px;
   width: 20px;
   height: 20px;
-  border-radius: 4px;
+  border-radius: 12px;
   border: none;
   background: rgba(255, 255, 255, 0.9);
   color: #64748b;
@@ -201,7 +201,7 @@
   right: 2px;
   background: #fff;
   border: 1px solid #e5e7eb;
-  border-radius: 6px;
+  border-radius: 12px;
   box-shadow: 0 4px 12px rgba(15, 23, 42, 0.1);
   z-index: 10;
   min-width: 60px;
@@ -217,7 +217,7 @@
   color: #dc2626;
   text-align: left;
   cursor: pointer;
-  border-radius: 4px;
+  border-radius: 12px;
 }
 
 .assetCardDropdownItem:hover {
@@ -256,7 +256,7 @@
   gap: 0;
   margin-bottom: 10px;
   background: #f1f5f9;
-  border-radius: 8px;
+  border-radius: 12px;
   padding: 2px;
 }
 
@@ -268,7 +268,7 @@
   font-size: 12px;
   color: #64748b;
   cursor: pointer;
-  border-radius: 6px;
+  border-radius: 12px;
   transition: all 0.15s ease;
 }
 
@@ -298,7 +298,7 @@
   width: 100%;
   padding: 10px 12px;
   border: 1px solid #e5e7eb;
-  border-radius: 10px;
+  border-radius: 12px;
   font-size: 13px;
   color: #0f172a;
   resize: none;
@@ -315,7 +315,7 @@
   width: 100%;
   padding: 10px 12px;
   border: none;
-  border-radius: 10px;
+  border-radius: 12px;
   background: #3b82f6;
   color: #fff;
   font-size: 13px;
@@ -338,7 +338,7 @@
   color: #dc2626;
   background: #fef2f2;
   padding: 8px 10px;
-  border-radius: 6px;
+  border-radius: 12px;
 }
 
 .aiHint {
@@ -371,7 +371,7 @@
   gap: 6px;
   padding: 8px;
   background: #f8fafc;
-  border-radius: 8px;
+  border-radius: 12px;
   border: 1px solid #e5e7eb;
 }
 
@@ -379,7 +379,7 @@
   width: 100%;
   padding: 8px 10px;
   border: 1px solid #e5e7eb;
-  border-radius: 6px;
+  border-radius: 12px;
   font-size: 12px;
   font-family: monospace;
 }
@@ -490,7 +490,7 @@
   border: 1px solid #fecaca;
   background: #fff1f2;
   color: #9f1239;
-  border-radius: 10px;
+  border-radius: 12px;
   padding: 8px 10px;
   font-size: 13px;
   cursor: pointer;
@@ -541,7 +541,7 @@
 .modal {
   width: 400px;
   max-width: 90vw;
-  border-radius: 16px;
+  border-radius: 12px;
   background: #fff;
   box-shadow: 0 25px 50px rgba(15, 23, 42, 0.25);
   padding: 24px;
@@ -625,7 +625,7 @@
   justify-content: space-between;
   gap: 10px;
   padding: 8px 10px;
-  border-radius: 10px;
+  border-radius: 12px;
   border: none;
   background: transparent;
   cursor: pointer;
@@ -657,7 +657,7 @@
   justify-content: space-between;
   gap: 10px;
   padding: 8px 10px;
-  border-radius: 10px;
+  border-radius: 12px;
   border: none;
   background: transparent;
   cursor: pointer;
@@ -684,7 +684,7 @@
   padding: 6px 8px;
   background: rgba(255, 255, 255, 0.98);
   border: 1px solid #e5e7eb;
-  border-radius: 10px;
+  border-radius: 12px;
   box-shadow: 0 12px 28px rgba(15, 23, 42, 0.18);
 }
 
@@ -692,7 +692,7 @@
   padding: 6px 10px;
   font-size: 12px;
   border: 1px solid #e5e7eb;
-  border-radius: 6px;
+  border-radius: 12px;
   background: #fff;
   color: #0f172a;
   cursor: pointer;
@@ -745,7 +745,7 @@
   min-width: 220px;
   max-width: 280px;
   background: rgba(255, 255, 255, 0.98);
-  border-radius: 10px;
+  border-radius: 12px;
   box-shadow: 0 18px 40px rgba(15, 23, 42, 0.2);
   border: 1px solid #e5e7eb;
   padding: 10px 12px;
@@ -793,7 +793,7 @@
 
 .input {
   border: 1px solid #e5e7eb;
-  border-radius: 10px;
+  border-radius: 12px;
   padding: 9px 10px;
   font-size: 13px;
 }
@@ -822,7 +822,7 @@
 
 .select {
   border: 1px solid #e5e7eb;
-  border-radius: 10px;
+  border-radius: 12px;
   padding: 9px 10px;
   font-size: 13px;
   background: #ffffff;

@@ -1,5 +1,6 @@
 import { useRef, useEffect } from 'react'
 import { type Node } from '@xyflow/react'
+import { Trash2 } from 'lucide-react'
 import { ColorEditor } from './ColorEditor'
 import type { GroupNodeData } from './GroupNode'
 import styles from './NodeEditPopup.module.css'
@@ -10,10 +11,12 @@ type Props = {
   onUpdate: (patch: Partial<GroupNodeData>) => void
   /** 底色变更时调用（父层可在此做 12% 默认透明度等） */
   onFillChange?: (value: string) => void
+  /** 仅画框：删除画框但保留内部元素 */
+  onDeleteFrameKeepContents?: () => void
   onClose: () => void
 }
 
-export function GroupEditPopup({ node, anchor, onUpdate, onFillChange, onClose }: Props) {
+export function GroupEditPopup({ node, anchor, onUpdate, onFillChange, onDeleteFrameKeepContents, onClose }: Props) {
   const data = node.data ?? {}
   const ref = useRef<HTMLDivElement | null>(null)
 
@@ -128,6 +131,28 @@ export function GroupEditPopup({ node, anchor, onUpdate, onFillChange, onClose }
           focusRetainDataAttr="data-node-edit-popup"
         />
       </label>
+
+      {(data as any)?.role === 'frame' && onDeleteFrameKeepContents && (
+        <button
+          type="button"
+          title="删除画框，保留画框内元素"
+          onClick={() => onDeleteFrameKeepContents()}
+          style={{
+            width: 28,
+            height: 28,
+            borderRadius: 12,
+            border: '1px solid #e5e7eb',
+            background: '#fff1f2',
+            color: '#b91c1c',
+            cursor: 'pointer',
+            display: 'inline-flex',
+            alignItems: 'center',
+            justifyContent: 'center',
+          }}
+        >
+          <Trash2 size={16} />
+        </button>
+      )}
     </div>
   )
 }

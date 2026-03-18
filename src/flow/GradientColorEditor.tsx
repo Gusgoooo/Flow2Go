@@ -114,7 +114,7 @@ export function GradientColorEditor({ value, onChange }: Props) {
         style={{
           display: 'flex',
           background: '#f1f5f9',
-          borderRadius: 8,
+          borderRadius: 12,
           padding: 3,
           marginBottom: 12,
         }}
@@ -125,7 +125,7 @@ export function GradientColorEditor({ value, onChange }: Props) {
           style={{
             flex: 1,
             padding: '6px 12px',
-            borderRadius: 6,
+            borderRadius: 12,
             border: 'none',
             background: type === 'solid' ? '#fff' : 'transparent',
             color: type === 'solid' ? '#0f172a' : '#64748b',
@@ -144,7 +144,7 @@ export function GradientColorEditor({ value, onChange }: Props) {
           style={{
             flex: 1,
             padding: '6px 12px',
-            borderRadius: 6,
+            borderRadius: 12,
             border: 'none',
             background: type === 'linear' ? '#fff' : 'transparent',
             color: type === 'linear' ? '#0f172a' : '#64748b',
@@ -163,7 +163,7 @@ export function GradientColorEditor({ value, onChange }: Props) {
       <div
         style={{
           height: 32,
-          borderRadius: 8,
+          borderRadius: 12,
           border: '1px solid #e2e8f0',
           background: previewBg,
           marginBottom: 12,
@@ -180,7 +180,7 @@ export function GradientColorEditor({ value, onChange }: Props) {
               style={{
                 flex: 1,
                 padding: '6px 10px',
-                borderRadius: 8,
+                borderRadius: 12,
                 border: activeStop === 'start' ? '2px solid #3b82f6' : '1px solid #e2e8f0',
                 background: hexToRgba(color, alpha),
                 cursor: 'pointer',
@@ -197,7 +197,7 @@ export function GradientColorEditor({ value, onChange }: Props) {
               style={{
                 flex: 1,
                 padding: '6px 10px',
-                borderRadius: 8,
+                borderRadius: 12,
                 border: activeStop === 'end' ? '2px solid #3b82f6' : '1px solid #e2e8f0',
                 background: hexToRgba(endColor, endAlpha),
                 cursor: 'pointer',
@@ -219,7 +219,7 @@ export function GradientColorEditor({ value, onChange }: Props) {
               style={{
                 width: '100%',
                 padding: '8px 10px',
-                borderRadius: 8,
+                borderRadius: 12,
                 border: '1px solid #e2e8f0',
                 fontSize: 13,
                 cursor: 'pointer',
@@ -298,7 +298,7 @@ export function GradientColorEditor({ value, onChange }: Props) {
         style={{
           marginTop: 8,
           padding: '8px 12px',
-          borderRadius: 8,
+          borderRadius: 12,
           border: '1px solid #e2e8f0',
           background: '#f8fafc',
           cursor: 'pointer',

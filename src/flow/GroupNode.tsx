@@ -34,7 +34,8 @@ export function GroupNode(props: NodeProps) {
   if (strokeWidth === 0) {
     groupStyle.border = 'none'
   } else {
-    groupStyle.borderColor = selected ? 'rgba(0,0,0,0.8)' : stroke
+    // 选中时不强制黑色描边：保持用户设置的 stroke 颜色
+    groupStyle.borderColor = stroke
     if (strokeWidth !== undefined) groupStyle.borderWidth = strokeWidth
   }
 

@@ -168,8 +168,7 @@ export function QuadNode(props: NodeProps) {
     if (strokeWidth !== undefined) nodeStyle.borderWidth = strokeWidth
   }
 
-  // 选中时使用黑色描边
-  if (selected) nodeStyle.borderColor = 'rgba(0,0,0,0.8)'
+  // 选中时不强制黑色描边：保持用户设置的 stroke 颜色
 
   // 填充色
   if (nodeColor) {

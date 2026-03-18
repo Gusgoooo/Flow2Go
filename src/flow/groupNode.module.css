@@ -1,7 +1,7 @@
 .group {
   height: 100%;
   width: 100%;
-  border-radius: 14px;
+  border-radius: 12px;
   border: 2px solid #3b82f6;
   background: rgba(59, 130, 246, 0.1);
   /* 不能 hidden，否则会把 NodeResizer 的外侧控制点裁掉 */
