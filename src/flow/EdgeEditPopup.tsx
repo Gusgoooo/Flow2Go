@@ -1,5 +1,5 @@
 import { useRef, useEffect } from 'react'
-import { type Edge } from '@xyflow/react'
+import { MarkerType, type Edge } from '@xyflow/react'
 import { ColorEditor } from './ColorEditor'
 import styles from './NodeEditPopup.module.css'
 
@@ -17,8 +17,9 @@ type Props = {
 
 export function EdgeEditPopup({ edge, anchor, onUpdate, onClose }: Props) {
   const ref = useRef<HTMLDivElement | null>(null)
-  const data = (edge.data ?? {}) as { labelStyle?: EdgeLabelStyle }
-  const labelStyle = (edge as FlowEdge).labelStyle ?? data?.labelStyle ?? {}
+  const data = (edge.data ?? {}) as { labelStyle?: EdgeLabelStyle; arrowStyle?: 'none' | 'end' | 'start' | 'both' }
+  const arrowStyle = (data.arrowStyle ?? 'end') as 'none' | 'end' | 'start' | 'both'
+  const showLabel = Boolean((edge.label as any) && String(edge.label).trim().length > 0)
 
   useEffect(() => {
     const handler = (e: MouseEvent) => {
@@ -32,6 +33,23 @@ export function EdgeEditPopup({ edge, anchor, onUpdate, onClose }: Props) {
   }, [onClose])
 
   const strokeColor = ((edge.style as any)?.stroke as string) ?? ''
+  const effectiveStroke = strokeColor || DEFAULT_EDGE_COLOR
+
+  const applyArrowStyle = (next: 'none' | 'end' | 'start' | 'both') => {
+    const markerStart =
+      next === 'start' || next === 'both'
+        ? ({ type: MarkerType.ArrowClosed, color: effectiveStroke } as any)
+        : undefined
+    const markerEnd =
+      next === 'end' || next === 'both'
+        ? ({ type: MarkerType.ArrowClosed, color: effectiveStroke } as any)
+        : undefined
+    onUpdate({
+      data: { ...(edge.data ?? {}), arrowStyle: next } as any,
+      markerStart,
+      markerEnd,
+    } as any)
+  }
 
   return (
     <div
@@ -41,66 +59,20 @@ export function EdgeEditPopup({ edge, anchor, onUpdate, onClose }: Props) {
       onMouseDown={(e) => e.stopPropagation()}
       data-edge-edit-popup
     >
-      <label className={styles.item}>
-        <span className={styles.itemLabel}>文字</span>
+      <label className={styles.itemCheck} title="双击边文字可直接编辑">
         <input
-          className={styles.input}
-          style={{ width: '100%', minWidth: 160 }}
-          value={(edge.label as string) ?? ''}
-          onChange={(e) => onUpdate({ label: e.target.value })}
-          placeholder="Label"
-        />
-      </label>
-
-      <label className={styles.item}>
-        <span className={styles.itemLabel}>字号</span>
-        <input
-          className={styles.inputNum}
-          type="number"
-          min={10}
-          max={72}
-          placeholder="12"
-          value={labelStyle.fontSize ?? ''}
+          type="checkbox"
+          checked={showLabel}
           onChange={(e) => {
-            const v = e.target.value ? Number(e.target.value) : undefined
-            const next: EdgeLabelStyle = { ...labelStyle, fontSize: Number.isFinite(v) ? v : undefined }
-            onUpdate({ labelStyle: next, data: { ...(edge.data ?? {}), labelStyle: next } } as any)
+            if (e.target.checked) {
+              // 默认给一个占位，用户再双击修改
+              onUpdate({ label: (edge.label as string) ?? '标签' } as any)
+            } else {
+              onUpdate({ label: undefined } as any)
+            }
           }}
         />
-      </label>
-
-      <label className={styles.item}>
-        <span className={styles.itemLabel}>字重</span>
-        <select
-          className={styles.select}
-          value={labelStyle.fontWeight ?? '400'}
-          onChange={(e) => {
-            const next: EdgeLabelStyle = { ...labelStyle, fontWeight: e.target.value }
-            onUpdate({ labelStyle: next, data: { ...(edge.data ?? {}), labelStyle: next } } as any)
-          }}
-        >
-          <option value="400">常规</option>
-          <option value="500">中等</option>
-          <option value="600">半粗</option>
-          <option value="700">粗体</option>
-        </select>
-      </label>
-
-      <label className={styles.item}>
-        <span className={styles.itemLabel}>字色</span>
-        <ColorEditor
-          value={labelStyle.color ?? ''}
-          onChange={(v) => {
-            const next: EdgeLabelStyle = { ...labelStyle, color: v }
-            onUpdate({ labelStyle: next, data: { ...(edge.data ?? {}), labelStyle: next } } as any)
-          }}
-          placeholder="#0f172a"
-          showAlpha={true}
-          showPicker={true}
-          compact={true}
-          portalPicker={true}
-          focusRetainDataAttr="data-edge-edit-popup"
-        />
+        <span className={styles.itemLabel}>Label</span>
       </label>
 
       <label className={styles.item}>
@@ -116,10 +88,21 @@ export function EdgeEditPopup({ edge, anchor, onUpdate, onClose }: Props) {
       </label>
 
       <label className={styles.item}>
+        <span className={styles.itemLabel}>箭头</span>
+        <select className={styles.select} value={arrowStyle} onChange={(e) => applyArrowStyle(e.target.value as any)}>
+          <option value="none">无</option>
+          <option value="end">终点</option>
+          <option value="start">起点</option>
+          <option value="both">双向</option>
+        </select>
+      </label>
+
+      <label className={styles.item}>
         <span className={styles.itemLabel}>颜色</span>
         <ColorEditor
           value={strokeColor}
           onChange={(color) => {
+            // 线条颜色变更时，同步更新已有的箭头颜色
             const markerStart = edge.markerStart ? { ...(edge.markerStart as any), color } : edge.markerStart
             const markerEnd = edge.markerEnd ? { ...(edge.markerEnd as any), color } : edge.markerEnd
             onUpdate({
