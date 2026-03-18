@@ -2660,7 +2660,11 @@ function EditorInner({ onBackHome, source, previewSnapshot, readOnly: _readOnly 
           selectionMode={SelectionMode.Full}
           multiSelectionKeyCode={isPreview ? [] : 'Shift'}
           panOnScroll
-          zoomOnScroll={false}
+          // 触摸板/滚轮体验：
+          // - 开启 preventScrolling 避免页面滚动/浏览器手势抢事件
+          // - 开启 zoomOnScroll：Mac 触摸板 pinch 往往以 wheel+ctrlKey 形式触发；只开 zoomOnPinch 在部分环境会失效
+          preventScrolling
+          zoomOnScroll
           zoomOnPinch
           snapToGrid={!isPreview}
           snapGrid={GRID}
