@@ -56,6 +56,7 @@ import { NodeEditPopup } from './NodeEditPopup'
 import { GroupEditPopup } from './GroupEditPopup'
 import { EdgeEditPopup } from './EdgeEditPopup'
 import { AssetEditPopup } from './AssetEditPopup'
+import { openRouterGenerateDiagram, normalizeAiDiagramToSnapshot, type AiDiagramDraft } from './aiDiagram'
 // overview 示例入口已移除
 
 export type AssetItem = {
@@ -139,6 +140,10 @@ function Sidebar({
   onAddAsset,
   onDeleteAsset,
   onAddAiAsset,
+  onGenerateAiDiagram,
+  aiDiagramDraft,
+  onApplyAiDiagramDraft,
+  onDiscardAiDiagramDraft,
   fileName,
   onRenameFile,
   onBackHome,
@@ -148,6 +153,10 @@ function Sidebar({
   onAddAsset: (files: FileList | null) => void
   onDeleteAsset: (assetId: string) => void
   onAddAiAsset: (dataUrl: string, name: string) => void
+  onGenerateAiDiagram: (args: { prompt: string; apiKey: string; model: string; signal: AbortSignal }) => Promise<void>
+  aiDiagramDraft: AiDiagramDraft | null
+  onApplyAiDiagramDraft: () => void
+  onDiscardAiDiagramDraft: () => void
   fileName: string
   onRenameFile?: (name: string) => void
   onBackHome?: () => void
@@ -156,12 +165,30 @@ function Sidebar({
   const [editingTitle, setEditingTitle] = useState(false)
   const [draftTitle, setDraftTitle] = useState(fileName)
   const [menuOpen, setMenuOpen] = useState<string | null>(null) // asset id or null
-  const [assetTab, setAssetTab] = useState<'library' | 'ai'>('library')
+  const [assetTab, setAssetTab] = useState<'library' | 'ai' | 'aiDiagram'>('library')
   const [aiPrompt, setAiPrompt] = useState('')
   const [aiGenerating, setAiGenerating] = useState(false)
   const [aiError, setAiError] = useState<string | null>(null)
   // 使用环境变量中的 API Key
-  const apiKey = import.meta.env.VITE_OPENROUTER_API_KEY || ''
+  const envKey = import.meta.env.VITE_OPENROUTER_API_KEY || ''
+  const [openRouterKey, setOpenRouterKey] = useState<string>(() => {
+    try {
+      return localStorage.getItem('flow2go-openrouter-key') || ''
+    } catch {
+      return ''
+    }
+  })
+  const [openRouterModel, setOpenRouterModel] = useState<string>(() => {
+    try {
+      return localStorage.getItem('flow2go-openrouter-model') || 'openai/gpt-4o-mini'
+    } catch {
+      return 'openai/gpt-4o-mini'
+    }
+  })
+  const apiKey = (envKey || openRouterKey).trim()
+  const diagramAbortRef = useRef<AbortController | null>(null)
+  const [aiDiagramGenerating, setAiDiagramGenerating] = useState(false)
+  const [aiDiagramError, setAiDiagramError] = useState<string | null>(null)
 
   useEffect(() => {
     if (!editingTitle) setDraftTitle(fileName)
@@ -204,7 +231,7 @@ function Sidebar({
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
-          'Authorization': `Bearer ${apiKey}`,
+          'Authorization': `Bearer ${apiKey.trim()}`,
           'HTTP-Referer': window.location.origin,
           'X-Title': 'Flow2Go',
         },
@@ -250,6 +277,37 @@ function Sidebar({
       setAiGenerating(false)
     }
   }, [aiPrompt, aiGenerating, onAddAiAsset, apiKey])
+
+  const generateAiDiagram = useCallback(async () => {
+    const p = aiPrompt.trim()
+    if (!p || aiDiagramGenerating) return
+    if (!apiKey.trim()) {
+      setAiDiagramError('请先配置 OpenRouter API Key')
+      return
+    }
+    if (diagramAbortRef.current) diagramAbortRef.current.abort()
+    const ac = new AbortController()
+    diagramAbortRef.current = ac
+    setAiDiagramGenerating(true)
+    setAiDiagramError(null)
+    try {
+      if (!envKey) {
+        try {
+          localStorage.setItem('flow2go-openrouter-key', openRouterKey.trim())
+        } catch {}
+      }
+      try {
+        localStorage.setItem('flow2go-openrouter-model', openRouterModel)
+      } catch {}
+      await onGenerateAiDiagram({ prompt: p, apiKey: apiKey.trim(), model: openRouterModel, signal: ac.signal })
+    } catch (err) {
+      if ((err as any)?.name === 'AbortError') return
+      setAiDiagramError(err instanceof Error ? err.message : '生成失败')
+    } finally {
+      setAiDiagramGenerating(false)
+      diagramAbortRef.current = null
+    }
+  }, [aiPrompt, aiDiagramGenerating, envKey, openRouterKey, openRouterModel, apiKey, onGenerateAiDiagram])
 
   return (
     <aside className={`${styles.sidebar} ${containerClassName ?? ''}`}>
@@ -312,6 +370,14 @@ function Sidebar({
             onClick={() => setAssetTab('ai')}
           >
             AI生成
+          </button>
+          <button
+            type="button"
+            className={`${styles.assetTabBtn} ${assetTab === 'aiDiagram' ? styles.assetTabBtnActive : ''}`}
+            onClick={() => setAssetTab('aiDiagram')}
+            title="AI 生成整张图"
+          >
+            AI图
           </button>
         </div>
 
@@ -409,6 +475,83 @@ function Sidebar({
             )}
             {apiKey && (
               <div className={styles.aiHint}>✓ API Key 已配置</div>
+            )}
+          </div>
+        )}
+
+        {assetTab === 'aiDiagram' && (
+          <div className={styles.aiSection}>
+            <div className={styles.aiNote}>输入描述，AI 将生成一份可应用到画布的“草稿图”（可撤销）。</div>
+
+            {!envKey && (
+              <div className={styles.aiApiKeySection}>
+                <div className={styles.aiNote}>OpenRouter API Key（仅保存在本地）</div>
+                <input
+                  className={styles.aiApiKeyInput}
+                  value={openRouterKey}
+                  onChange={(e) => setOpenRouterKey(e.target.value)}
+                  placeholder="sk-or-..."
+                />
+              </div>
+            )}
+
+            <div className={styles.aiApiKeySection}>
+              <div className={styles.aiNote}>模型</div>
+              <input
+                className={styles.aiApiKeyInput}
+                value={openRouterModel}
+                onChange={(e) => setOpenRouterModel(e.target.value)}
+                placeholder="openai/gpt-4o-mini"
+              />
+            </div>
+
+            <textarea
+              className={styles.aiPromptInput}
+              placeholder="描述你想生成的整张图，例如：一个包含登录、鉴权、下单、支付的流程图，分成两个画框：前端/后端"
+              value={aiPrompt}
+              onChange={(e) => setAiPrompt(e.target.value)}
+              rows={5}
+            />
+
+            <div style={{ display: 'flex', gap: 8 }}>
+              <button
+                type="button"
+                className={styles.aiGenerateBtn}
+                disabled={aiDiagramGenerating || !aiPrompt.trim() || !apiKey}
+                onClick={generateAiDiagram}
+              >
+                {aiDiagramGenerating ? '生成中...' : '生成草稿'}
+              </button>
+              <button
+                type="button"
+                className={styles.btnSecondary}
+                disabled={!aiDiagramGenerating}
+                onClick={() => diagramAbortRef.current?.abort()}
+              >
+                取消
+              </button>
+            </div>
+
+            {aiDiagramError && <div className={styles.aiError}>{aiDiagramError}</div>}
+
+            {aiDiagramDraft && (
+              <div className={styles.aiApiKeySection}>
+                <div className={styles.aiNote}>
+                  草稿已生成：nodes {(aiDiagramDraft.nodes as any[])?.length ?? 0} / edges {(aiDiagramDraft.edges as any[])?.length ?? 0}
+                </div>
+                <div style={{ display: 'flex', gap: 8 }}>
+                  <button type="button" className={styles.aiGenerateBtn} onClick={onApplyAiDiagramDraft}>
+                    应用到画布
+                  </button>
+                  <button type="button" className={styles.btnSecondary} onClick={onDiscardAiDiagramDraft}>
+                    丢弃草稿
+                  </button>
+                </div>
+                <details style={{ marginTop: 8 }}>
+                  <summary className={styles.aiNote}>查看 JSON</summary>
+                  <textarea className={styles.aiPromptInput} readOnly rows={10} value={aiDiagramDraft.rawText} />
+                </details>
+              </div>
             )}
           </div>
         )}
@@ -530,6 +673,9 @@ function EditorInner({ onBackHome, source, previewSnapshot, readOnly: _readOnly 
   const [edges, setEdges] = useState<FlowEdge[]>(initial.edges)
   const nodesEdgesRef = useRef({ nodes: initial.nodes, edges: initial.edges })
   nodesEdgesRef.current = { nodes, edges }
+
+  // ---------- AI：生成整张图（草稿 -> 应用） ----------
+  const [aiDiagramDraft, setAiDiagramDraft] = useState<AiDiagramDraft | null>(null)
 
   // 传给 React Flow 的节点列表：为群组补全有效宽高，避免 0/undefined 导致框选时 nodeToRect 得到 0×0 矩形被误判为在选区内的“点”
   const nodesForFlow = useMemo(() => {
@@ -674,6 +820,36 @@ function EditorInner({ onBackHome, source, previewSnapshot, readOnly: _readOnly 
     },
     [rf, snapshotSig],
   )
+
+  // ---------- AI：生成整张图（草稿 -> 应用） ----------
+  const generateAiDiagramDraft = useCallback(
+    async (args: { prompt: string; apiKey: string; model: string; signal: AbortSignal }) => {
+      const draft = await openRouterGenerateDiagram({
+        apiKey: args.apiKey,
+        model: args.model,
+        prompt: args.prompt,
+        signal: args.signal,
+      })
+      setAiDiagramDraft(draft)
+    },
+    [],
+  )
+
+  const discardAiDiagramDraft = useCallback(() => {
+    setAiDiagramDraft(null)
+  }, [])
+
+  const applyAiDiagramDraft = useCallback(() => {
+    if (!aiDiagramDraft) return
+    const snap = normalizeAiDiagramToSnapshot(aiDiagramDraft)
+    const nextNodes = (snap.nodes ?? []) as FlowNode[]
+    const nextEdges = (snap.edges ?? []) as FlowEdge[]
+    setNodes(nextNodes)
+    setEdges(nextEdges)
+    pushHistory(nextNodes, nextEdges, 'ai-apply')
+    setAiDiagramDraft(null)
+    if (snap.viewport) rf.setViewport(snap.viewport, { duration: 0 })
+  }, [aiDiagramDraft, pushHistory, rf])
 
   // const _canUndo = historyRef.current.past.length > 0
   // const canRedo = historyRef.current.future.length > 0  // 已移除重做按钮
@@ -2621,6 +2797,10 @@ function EditorInner({ onBackHome, source, previewSnapshot, readOnly: _readOnly 
           onAddAsset={onAddAsset}
           onDeleteAsset={onDeleteAsset}
           onAddAiAsset={onAddAiAsset}
+          onGenerateAiDiagram={generateAiDiagramDraft}
+          aiDiagramDraft={aiDiagramDraft}
+          onApplyAiDiagramDraft={applyAiDiagramDraft}
+          onDiscardAiDiagramDraft={discardAiDiagramDraft}
           fileName={fileName}
           onRenameFile={onRenameFile}
           onBackHome={onBackHome ? handleBackHome : undefined}

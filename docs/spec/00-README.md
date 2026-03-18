@@ -12,6 +12,8 @@
   - 数据模型、模块职责、关键算法、落地实现约束（React Flow / 本地坐标系 / marker 等）
 - `04-QA.md`
   - 可执行验收用例清单（按场景逐条勾选）
+- `05-AI-DiagramGeneration.md`
+  - AI 生成整张图（OpenRouter BYOK）：草稿/预览/应用流程、数据协议、本地归一化与验收
 
 ### 术语对照
 
