@@ -140,7 +140,6 @@ function Sidebar({
   onAddAsset,
   onDeleteAsset,
   onAddAiAsset,
-  onGenerateAiDiagram,
   fileName,
   onRenameFile,
   onBackHome,
@@ -150,7 +149,6 @@ function Sidebar({
   onAddAsset: (files: FileList | null) => void
   onDeleteAsset: (assetId: string) => void
   onAddAiAsset: (dataUrl: string, name: string) => void
-  onGenerateAiDiagram: (args: { prompt: string; apiKey: string; model: string; signal: AbortSignal }) => Promise<void>
   fileName: string
   onRenameFile?: (name: string) => void
   onBackHome?: () => void
@@ -170,32 +168,13 @@ function Sidebar({
       return ''
     }
   })
-  const [openRouterModel, setOpenRouterModel] = useState<string>(() => {
-    try {
-      return localStorage.getItem('flow2go-openrouter-model') || 'openai/gpt-4o-mini'
-    } catch {
-      return 'openai/gpt-4o-mini'
-    }
-  })
   const apiKey = openRouterKey.trim()
-  const diagramAbortRef = useRef<AbortController | null>(null)
-  const [aiDiagramDialogOpen, setAiDiagramDialogOpen] = useState(false)
-  const [aiDiagramPrompt, setAiDiagramPrompt] = useState('')
-  const [aiDiagramGenerating, setAiDiagramGenerating] = useState(false)
-  const [aiDiagramError, setAiDiagramError] = useState<string | null>(null)
-  const aiDiagramInputRef = useRef<HTMLTextAreaElement | null>(null)
 
   useEffect(() => {
     try {
       localStorage.setItem('flow2go-openrouter-key', openRouterKey)
     } catch {}
   }, [openRouterKey])
-
-  useEffect(() => {
-    try {
-      localStorage.setItem('flow2go-openrouter-model', openRouterModel)
-    } catch {}
-  }, [openRouterModel])
 
   useEffect(() => {
     if (!editingTitle) setDraftTitle(fileName)
@@ -285,87 +264,6 @@ function Sidebar({
     }
   }, [aiPrompt, aiGenerating, onAddAiAsset, apiKey])
 
-  const openAiDiagramDialog = useCallback(() => {
-    setAiDiagramDialogOpen(true)
-    setAiDiagramError(null)
-    setTimeout(() => aiDiagramInputRef.current?.focus(), 50)
-  }, [])
-
-  const closeAiDiagramDialog = useCallback(() => {
-    if (aiDiagramGenerating) return
-    setAiDiagramDialogOpen(false)
-    setAiDiagramError(null)
-  }, [aiDiagramGenerating])
-
-  const recommendedAiDiagramPrompts = useMemo(
-    () => [
-      {
-        label: '登录/下单/支付',
-        prompt:
-          '生成一张电商业务流程图，包含：登录、鉴权、浏览商品、加入购物车、下单、支付、发货、售后。分成两个画框：前端（用户侧）/后端（服务侧），并用箭头表示主要调用链路与状态流转。',
-      },
-      {
-        label: '需求到上线',
-        prompt:
-          '生成一张软件研发流程图，包含：需求评审、排期、设计、开发、自测、联调、测试、灰度、上线、监控回滚。要求有一个“角色/泳道”：产品/研发/测试/运维，节点简洁清晰。',
-      },
-      {
-        label: '微服务架构',
-        prompt:
-          '生成一张微服务架构图，包含：API Gateway、Auth、User、Order、Payment、Inventory、Notification、DB、Cache、Message Queue。标出主要请求路径与异步事件流（MQ）。',
-      },
-      {
-        label: '项目计划',
-        prompt:
-          '生成一张项目里程碑计划图，包含：Kickoff、需求冻结、MVP、Beta、GA、复盘。每个里程碑下列出2-3个关键交付物，用边连接顺序与依赖。',
-      },
-    ],
-    [],
-  )
-
-  const generateAiDiagram = useCallback(async () => {
-    const p = aiDiagramPrompt.trim()
-    if (!p || aiDiagramGenerating) return
-    if (!apiKey.trim()) {
-      setAiDiagramError('请先配置 OpenRouter API Key')
-      return
-    }
-    if (diagramAbortRef.current) diagramAbortRef.current.abort()
-    const ac = new AbortController()
-    diagramAbortRef.current = ac
-    setAiDiagramGenerating(true)
-    setAiDiagramError(null)
-    try {
-      await onGenerateAiDiagram({ prompt: p, apiKey: apiKey.trim(), model: openRouterModel, signal: ac.signal })
-      setAiDiagramDialogOpen(false)
-      setAiDiagramPrompt('')
-    } catch (err) {
-      if ((err as any)?.name === 'AbortError') return
-      setAiDiagramError(err instanceof Error ? err.message : '生成失败')
-    } finally {
-      setAiDiagramGenerating(false)
-      diagramAbortRef.current = null
-    }
-  }, [aiDiagramPrompt, aiDiagramGenerating, openRouterModel, apiKey, onGenerateAiDiagram])
-
-  useEffect(() => {
-    if (!aiDiagramDialogOpen) return
-    const onKeyDown = (e: KeyboardEvent) => {
-      if (e.key === 'Escape') {
-        e.preventDefault()
-        closeAiDiagramDialog()
-        return
-      }
-      const mod = e.metaKey || e.ctrlKey
-      if (mod && e.key === 'Enter') {
-        e.preventDefault()
-        generateAiDiagram()
-      }
-    }
-    window.addEventListener('keydown', onKeyDown)
-    return () => window.removeEventListener('keydown', onKeyDown)
-  }, [aiDiagramDialogOpen, closeAiDiagramDialog, generateAiDiagram])
-
   return (
     <aside className={`${styles.sidebar} ${containerClassName ?? ''}`}>
       <div className={styles.sidebarInner}>
@@ -427,14 +325,6 @@ function Sidebar({
             onClick={() => setAssetTab('ai')}
           >
             AI生成
-          </button>
-          <button
-            type="button"
-            className={styles.assetTabBtn}
-            onClick={openAiDiagramDialog}
-            title="AI 生成整张图"
-          >
-            AI图
           </button>
         </div>
 
@@ -542,114 +432,6 @@ function Sidebar({
             {aiError && (
               <div className={styles.aiError}>{aiError}</div>
             )}
-          </div>
-        )}
-
-        {aiDiagramDialogOpen && (
-          <div
-            className={styles.aiDialogOverlay}
-            role="dialog"
-            aria-modal="true"
-            onMouseDown={(e) => {
-              if (e.target === e.currentTarget) closeAiDiagramDialog()
-            }}
-          >
-            <div className={styles.aiDialog} onMouseDown={(e) => e.stopPropagation()}>
-              <div className={styles.aiDialogHeader}>
-                <div className={styles.aiDialogTitle}>AI 生成整张图</div>
-                <button type="button" className={styles.aiDialogCloseBtn} onClick={closeAiDiagramDialog} aria-label="关闭">
-                  ×
-                </button>
-              </div>
-
-              <div className={styles.aiDialogBody}>
-                <div className={styles.aiDialogSubTitle}>描述你想要生成的内容</div>
-                <textarea
-                  ref={aiDiagramInputRef}
-                  className={styles.aiDialogInput}
-                  placeholder="例如：一个包含登录、鉴权、下单、支付的流程图，分成两个画框：前端/后端"
-                  value={aiDiagramPrompt}
-                  onChange={(e) => setAiDiagramPrompt(e.target.value)}
-                  rows={6}
-                  disabled={aiDiagramGenerating}
-                />
-
-                <div className={styles.aiDialogChips}>
-                  {recommendedAiDiagramPrompts.map((c) => (
-                    <button
-                      key={c.label}
-                      type="button"
-                      className={styles.aiDialogChip}
-                      disabled={aiDiagramGenerating}
-                      onClick={() => {
-                        setAiDiagramPrompt(c.prompt)
-                        setTimeout(() => aiDiagramInputRef.current?.focus(), 0)
-                      }}
-                      title={c.prompt}
-                    >
-                      {c.label}
-                    </button>
-                  ))}
-                </div>
-
-                <details className={styles.aiDialogSettings}>
-                  <summary>设置</summary>
-                  <div className={styles.aiDialogSettingsGrid}>
-                    <label className={styles.aiDialogLabel}>
-                      <div className={styles.aiDialogLabelText}>OpenRouter API Key（仅本地保存）</div>
-                      <input
-                        className={styles.aiDialogTextInput}
-                        value={openRouterKey}
-                        onChange={(e) => setOpenRouterKey(e.target.value)}
-                        placeholder="sk-or-..."
-                        disabled={aiDiagramGenerating}
-                      />
-                      <div className={styles.aiHint}>
-                        {apiKey ? '✓ 已配置（localStorage）' : '未配置：需要先填写才能生成'}
-                      </div>
-                    </label>
-
-                    <label className={styles.aiDialogLabel}>
-                      <div className={styles.aiDialogLabelText}>模型</div>
-                      <input
-                        className={styles.aiDialogTextInput}
-                        value={openRouterModel}
-                        onChange={(e) => setOpenRouterModel(e.target.value)}
-                        placeholder="openai/gpt-4o-mini"
-                        disabled={aiDiagramGenerating}
-                      />
-                    </label>
-                  </div>
-                </details>
-
-                {aiDiagramError && <div className={styles.aiError}>{aiDiagramError}</div>}
-              </div>
-
-              <div className={styles.aiDialogFooter}>
-                <button
-                  type="button"
-                  className={styles.btnSecondary}
-                  disabled={!aiDiagramGenerating}
-                  onClick={() => diagramAbortRef.current?.abort()}
-                >
-                  取消
-                </button>
-                <button
-                  type="button"
-                  className={styles.aiGenerateBtn}
-                  disabled={aiDiagramGenerating || !aiDiagramPrompt.trim() || !apiKey}
-                  onClick={generateAiDiagram}
-                >
-                  {aiDiagramGenerating ? '生成中...' : '生成'}
-                </button>
-              </div>
-
-              {aiDiagramGenerating && (
-                <div className={styles.aiDialogLoading}>
-                  <div className={styles.aiDialogLoadingCard}>正在生成…</div>
-                </div>
-              )}
-            </div>
           </div>
         )}
       </div>
@@ -772,6 +554,39 @@ function EditorInner({ onBackHome, source, previewSnapshot, readOnly: _readOnly 
   nodesEdgesRef.current = { nodes, edges }
 
   // ---------- AI：生成整张图（直接应用到画布） ----------
+  const [aiDiagramDialogOpen, setAiDiagramDialogOpen] = useState(false)
+  const [aiDiagramPrompt, setAiDiagramPrompt] = useState('')
+  const [aiDiagramGenerating, setAiDiagramGenerating] = useState(false)
+  const [aiDiagramError, setAiDiagramError] = useState<string | null>(null)
+  const aiDiagramInputRef = useRef<HTMLTextAreaElement | null>(null)
+  const aiDiagramAbortRef = useRef<AbortController | null>(null)
+  const [openRouterKey, setOpenRouterKey] = useState<string>(() => {
+    try {
+      return localStorage.getItem('flow2go-openrouter-key') || ''
+    } catch {
+      return ''
+    }
+  })
+  const [openRouterModel, setOpenRouterModel] = useState<string>(() => {
+    try {
+      return localStorage.getItem('flow2go-openrouter-model') || 'openai/gpt-4o-mini'
+    } catch {
+      return 'openai/gpt-4o-mini'
+    }
+  })
+  const apiKey = openRouterKey.trim()
+
+  useEffect(() => {
+    try {
+      localStorage.setItem('flow2go-openrouter-key', openRouterKey)
+    } catch {}
+  }, [openRouterKey])
+
+  useEffect(() => {
+    try {
+      localStorage.setItem('flow2go-openrouter-model', openRouterModel)
+    } catch {}
+  }, [openRouterModel])
 
   // 传给 React Flow 的节点列表：为群组补全有效宽高，避免 0/undefined 导致框选时 nodeToRect 得到 0×0 矩形被误判为在选区内的“点”
   const nodesForFlow = useMemo(() => {
@@ -935,6 +750,87 @@ function EditorInner({ onBackHome, source, previewSnapshot, readOnly: _readOnly 
     },
     [pushHistory, rf],
   )
+
+  const recommendedAiDiagramPrompts = useMemo(
+    () => [
+      {
+        label: '登录/下单/支付',
+        prompt:
+          '生成一张电商业务流程图，包含：登录、鉴权、浏览商品、加入购物车、下单、支付、发货、售后。分成两个画框：前端（用户侧）/后端（服务侧），并用箭头表示主要调用链路与状态流转。',
+      },
+      {
+        label: '需求到上线',
+        prompt:
+          '生成一张软件研发流程图，包含：需求评审、排期、设计、开发、自测、联调、测试、灰度、上线、监控回滚。要求有一个“角色/泳道”：产品/研发/测试/运维，节点简洁清晰。',
+      },
+      {
+        label: '微服务架构',
+        prompt:
+          '生成一张微服务架构图，包含：API Gateway、Auth、User、Order、Payment、Inventory、Notification、DB、Cache、Message Queue。标出主要请求路径与异步事件流（MQ）。',
+      },
+      {
+        label: '项目计划',
+        prompt:
+          '生成一张项目里程碑计划图，包含：Kickoff、需求冻结、MVP、Beta、GA、复盘。每个里程碑下列出2-3个关键交付物，用边连接顺序与依赖。',
+      },
+    ],
+    [],
+  )
+
+  const openAiDiagramDialog = useCallback(() => {
+    setAiDiagramDialogOpen(true)
+    setAiDiagramError(null)
+    setTimeout(() => aiDiagramInputRef.current?.focus(), 50)
+  }, [])
+
+  const closeAiDiagramDialog = useCallback(() => {
+    if (aiDiagramGenerating) return
+    setAiDiagramDialogOpen(false)
+    setAiDiagramError(null)
+  }, [aiDiagramGenerating])
+
+  const runAiDiagram = useCallback(async () => {
+    const p = aiDiagramPrompt.trim()
+    if (!p || aiDiagramGenerating) return
+    if (!apiKey) {
+      setAiDiagramError('请先配置 OpenRouter API Key')
+      return
+    }
+    aiDiagramAbortRef.current?.abort()
+    const ac = new AbortController()
+    aiDiagramAbortRef.current = ac
+    setAiDiagramGenerating(true)
+    setAiDiagramError(null)
+    try {
+      await generateAiDiagramAndApply({ prompt: p, apiKey, model: openRouterModel, signal: ac.signal })
+      setAiDiagramDialogOpen(false)
+      setAiDiagramPrompt('')
+    } catch (err) {
+      if ((err as any)?.name === 'AbortError') return
+      setAiDiagramError(err instanceof Error ? err.message : '生成失败')
+    } finally {
+      setAiDiagramGenerating(false)
+      aiDiagramAbortRef.current = null
+    }
+  }, [aiDiagramPrompt, aiDiagramGenerating, apiKey, generateAiDiagramAndApply, openRouterModel])
+
+  useEffect(() => {
+    if (!aiDiagramDialogOpen) return
+    const onKeyDown = (e: KeyboardEvent) => {
+      if (e.key === 'Escape') {
+        e.preventDefault()
+        closeAiDiagramDialog()
+        return
+      }
+      const mod = e.metaKey || e.ctrlKey
+      if (mod && e.key === 'Enter') {
+        e.preventDefault()
+        runAiDiagram()
+      }
+    }
+    window.addEventListener('keydown', onKeyDown)
+    return () => window.removeEventListener('keydown', onKeyDown)
+  }, [aiDiagramDialogOpen, closeAiDiagramDialog, runAiDiagram])
 
   // const _canUndo = historyRef.current.past.length > 0
   // const canRedo = historyRef.current.future.length > 0  // 已移除重做按钮
@@ -2882,12 +2778,116 @@ function EditorInner({ onBackHome, source, previewSnapshot, readOnly: _readOnly 
           onAddAsset={onAddAsset}
           onDeleteAsset={onDeleteAsset}
           onAddAiAsset={onAddAiAsset}
-          onGenerateAiDiagram={generateAiDiagramAndApply}
           fileName={fileName}
           onRenameFile={onRenameFile}
           onBackHome={onBackHome ? handleBackHome : undefined}
           containerClassName={styles.assetsPopup}
         />
+      )}
+
+      {!isPreview && aiDiagramDialogOpen && (
+        <div
+          className={styles.aiDialogOverlay}
+          role="dialog"
+          aria-modal="true"
+          onMouseDown={(e) => {
+            if (e.target === e.currentTarget) closeAiDiagramDialog()
+          }}
+        >
+          <div className={styles.aiDialog} onMouseDown={(e) => e.stopPropagation()}>
+            <div className={styles.aiDialogHeader}>
+              <div className={styles.aiDialogTitle}>AI 生成整张图</div>
+              <button type="button" className={styles.aiDialogCloseBtn} onClick={closeAiDiagramDialog} aria-label="关闭">
+                ×
+              </button>
+            </div>
+
+            <div className={styles.aiDialogBody}>
+              <div className={styles.aiDialogSubTitle}>描述你想要生成的内容</div>
+              <textarea
+                ref={aiDiagramInputRef}
+                className={styles.aiDialogInput}
+                placeholder="例如：一个包含登录、鉴权、下单、支付的流程图，分成两个画框：前端/后端"
+                value={aiDiagramPrompt}
+                onChange={(e) => setAiDiagramPrompt(e.target.value)}
+                rows={8}
+                disabled={aiDiagramGenerating}
+              />
+
+              <div className={styles.aiDialogChips}>
+                {recommendedAiDiagramPrompts.map((c) => (
+                  <button
+                    key={c.label}
+                    type="button"
+                    className={styles.aiDialogChip}
+                    disabled={aiDiagramGenerating}
+                    onClick={() => {
+                      setAiDiagramPrompt(c.prompt)
+                      setTimeout(() => aiDiagramInputRef.current?.focus(), 0)
+                    }}
+                    title={c.prompt}
+                  >
+                    {c.label}
+                  </button>
+                ))}
+              </div>
+
+              <details className={styles.aiDialogSettings}>
+                <summary>设置</summary>
+                <div className={styles.aiDialogSettingsGrid}>
+                  <label className={styles.aiDialogLabel}>
+                    <div className={styles.aiDialogLabelText}>OpenRouter API Key（仅本地保存）</div>
+                    <input
+                      className={styles.aiDialogTextInput}
+                      value={openRouterKey}
+                      onChange={(e) => setOpenRouterKey(e.target.value)}
+                      placeholder="sk-or-..."
+                      disabled={aiDiagramGenerating}
+                    />
+                    <div className={styles.aiHint}>{apiKey ? '✓ 已配置（localStorage）' : '未配置：需要先填写才能生成'}</div>
+                  </label>
+                  <label className={styles.aiDialogLabel}>
+                    <div className={styles.aiDialogLabelText}>模型</div>
+                    <input
+                      className={styles.aiDialogTextInput}
+                      value={openRouterModel}
+                      onChange={(e) => setOpenRouterModel(e.target.value)}
+                      placeholder="openai/gpt-4o-mini"
+                      disabled={aiDiagramGenerating}
+                    />
+                  </label>
+                </div>
+              </details>
+
+              {aiDiagramError && <div className={styles.aiError}>{aiDiagramError}</div>}
+            </div>
+
+            <div className={styles.aiDialogFooter}>
+              <button
+                type="button"
+                className={styles.btnSecondary}
+                disabled={!aiDiagramGenerating}
+                onClick={() => aiDiagramAbortRef.current?.abort()}
+              >
+                取消
+              </button>
+              <button
+                type="button"
+                className={styles.aiGenerateBtn}
+                disabled={aiDiagramGenerating || !aiDiagramPrompt.trim() || !apiKey}
+                onClick={runAiDiagram}
+              >
+                {aiDiagramGenerating ? '生成中...' : '生成'}
+              </button>
+            </div>
+
+            {aiDiagramGenerating && (
+              <div className={styles.aiDialogLoading}>
+                <div className={styles.aiDialogLoadingCard}>正在生成…</div>
+              </div>
+            )}
+          </div>
+        </div>
       )}
 
       <main
@@ -2948,6 +2948,9 @@ function EditorInner({ onBackHome, source, previewSnapshot, readOnly: _readOnly 
 
           {!isPreview && (
             <Panel position="top-right" className={styles.topPanel}>
+              <button className={styles.assetsBtn} type="button" onClick={openAiDiagramDialog}>
+                AI生成
+              </button>
               <button
                 className={styles.assetsBtn}
                 type="button"
