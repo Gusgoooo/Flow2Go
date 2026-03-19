@@ -24,7 +24,6 @@ import {
   applyEdgeChanges,
   applyNodeChanges,
   MarkerType,
-  BezierEdge,
   type Connection,
   type Edge,
   type Node,
@@ -48,6 +47,7 @@ import { GroupNode, type GroupNodeData } from './GroupNode'
 import { autoLayout, type LayoutDirection } from './layout'
 import { QuadNode } from './QuadNode'
 import { EditableSmoothStepEdge } from './EditableSmoothStepEdge'
+import { EditableBezierEdge } from './EditableBezierEdge'
 import { AssetNode } from './AssetNode'
 import { TextNode } from './TextNode'
 import { InlineInspector } from './InlineInspector'
@@ -56,7 +56,11 @@ import { NodeEditPopup } from './NodeEditPopup'
 import { GroupEditPopup } from './GroupEditPopup'
 import { EdgeEditPopup } from './EdgeEditPopup'
 import { AssetEditPopup } from './AssetEditPopup'
-import { openRouterGenerateDiagram, normalizeAiDiagramToSnapshot } from './aiDiagram'
+import {
+  openRouterGenerateDiagram,
+  normalizeAiDiagramToSnapshot,
+  type AiDiagramDraft,
+} from './aiDiagram'
 // overview 示例入口已移除
 
 export type AssetItem = {
@@ -140,6 +144,7 @@ function Sidebar({
   onAddAsset,
   onDeleteAsset,
   onAddAiAsset,
+  aiDiagramDraft,
   fileName,
   onRenameFile,
   onBackHome,
@@ -149,6 +154,7 @@ function Sidebar({
   onAddAsset: (files: FileList | null) => void
   onDeleteAsset: (assetId: string) => void
   onAddAiAsset: (dataUrl: string, name: string) => void
+  aiDiagramDraft: AiDiagramDraft | null
   fileName: string
   onRenameFile?: (name: string) => void
   onBackHome?: () => void
@@ -169,12 +175,30 @@ function Sidebar({
     }
   })
   const apiKey = openRouterKey.trim()
+  const [dslModalOpen, setDslModalOpen] = useState(false)
+
+  const [sidebarWidth, setSidebarWidth] = useState<number>(() => {
+    try {
+      const raw = localStorage.getItem('flow2go:sidebarWidth')
+      const n = raw ? Number(raw) : NaN
+      return Number.isFinite(n) ? n : 280
+    } catch {
+      return 280
+    }
+  })
+  const sidebarResizeRef = useRef<{ active: boolean; startX: number; startWidth: number } | null>(null)
 
   useEffect(() => {
     try {
       localStorage.setItem('flow2go-openrouter-key', openRouterKey)
     } catch {}
   }, [openRouterKey])
+
+  useEffect(() => {
+    try {
+      localStorage.setItem('flow2go:sidebarWidth', String(sidebarWidth))
+    } catch {}
+  }, [sidebarWidth])
 
   useEffect(() => {
     if (!editingTitle) setDraftTitle(fileName)
@@ -265,7 +289,61 @@ function Sidebar({
   }, [aiPrompt, aiGenerating, onAddAiAsset, apiKey])
 
   return (
-    <aside className={`${styles.sidebar} ${containerClassName ?? ''}`}>
+    <aside
+      className={`${styles.sidebar} ${containerClassName ?? ''}`}
+      style={{ width: Math.max(240, Math.min(520, sidebarWidth)) }}
+    >
+      <div
+        role="separator"
+        aria-orientation="vertical"
+        title="拖动调整侧边栏宽度"
+        onPointerDown={(e) => {
+          e.preventDefault()
+          e.stopPropagation()
+          ;(e.currentTarget as HTMLElement).setPointerCapture?.(e.pointerId)
+          sidebarResizeRef.current = { active: true, startX: e.clientX, startWidth: sidebarWidth }
+        }}
+        onPointerMove={(e) => {
+          const ref = sidebarResizeRef.current
+          if (!ref?.active) return
+          const delta = e.clientX - ref.startX
+          const next = Math.max(240, Math.min(520, ref.startWidth + delta))
+          setSidebarWidth(next)
+        }}
+        onPointerUp={(e) => {
+          e.preventDefault()
+          e.stopPropagation()
+          const ref = sidebarResizeRef.current
+          if (ref) ref.active = false
+          ;(e.currentTarget as HTMLElement).releasePointerCapture?.(e.pointerId)
+        }}
+        style={{
+          position: 'absolute',
+          top: 0,
+          right: 0,
+          bottom: 0,
+          width: 10,
+          cursor: 'ew-resize',
+          // 放在容器内部，避免被 overflow:hidden 裁剪
+          background: 'linear-gradient(to left, rgba(148,163,184,0.20), rgba(148,163,184,0.00))',
+          zIndex: 999,
+          pointerEvents: 'auto',
+        }}
+      />
+      <div
+        aria-hidden="true"
+        style={{
+          position: 'absolute',
+          top: 12,
+          right: 3,
+          bottom: 12,
+          width: 2,
+          borderRadius: 2,
+          background: 'rgba(148, 163, 184, 0.22)',
+          zIndex: 998,
+          pointerEvents: 'none',
+        }}
+      />
       <div className={styles.sidebarInner}>
         <div className={styles.sidebarHeader}>
           <div className={styles.titleRow}>
@@ -434,7 +512,74 @@ function Sidebar({
             )}
           </div>
         )}
+
+        {/* AI图入口已移除：改为顶栏全屏模态 */}
       </div>
+
+      {dslModalOpen && aiDiagramDraft && (
+        <div
+          role="dialog"
+          aria-modal="true"
+          onClick={() => setDslModalOpen(false)}
+          style={{
+            position: 'fixed',
+            inset: 0,
+            background: 'rgba(2, 6, 23, 0.55)',
+            zIndex: 9999,
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'center',
+            padding: 16,
+          }}
+        >
+          <div
+            onClick={(e) => e.stopPropagation()}
+            style={{
+              width: 'min(860px, 96vw)',
+              maxHeight: '86vh',
+              background: '#0b1220',
+              border: '1px solid rgba(148, 163, 184, 0.25)',
+              borderRadius: 12,
+              padding: 12,
+              color: '#e2e8f0',
+              boxShadow: '0 24px 80px rgba(0,0,0,0.45)',
+              display: 'flex',
+              flexDirection: 'column',
+              gap: 10,
+            }}
+          >
+            <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 8 }}>
+              <div style={{ fontSize: 14, fontWeight: 600 }}>自然语言 → Mermaid DSL</div>
+              <div style={{ display: 'flex', gap: 8 }}>
+                <button
+                  type="button"
+                  className={styles.btnSecondary}
+                  onClick={async () => {
+                    try {
+                      await navigator.clipboard.writeText(aiDiagramDraft.rawText || '')
+                    } catch {}
+                  }}
+                >
+                  复制
+                </button>
+                <button type="button" className={styles.btnSecondary} onClick={() => setDslModalOpen(false)}>
+                  关闭
+                </button>
+              </div>
+            </div>
+            <textarea
+              className={styles.aiPromptInput}
+              readOnly
+              rows={18}
+              value={aiDiagramDraft.rawText}
+              style={{ flex: 1, minHeight: 280 }}
+            />
+            <div className={styles.aiNote} style={{ opacity: 0.9 }}>
+              提示：这里展示的是模型输出的 Mermaid DSL 原文（已用于本地映射 nodes/edges）。
+            </div>
+          </div>
+        </div>
+      )}
 
         </div>
         <div className={styles.sidebarFooter}>
@@ -468,6 +613,24 @@ function EditorInner({ onBackHome, source, previewSnapshot, readOnly: _readOnly 
   const projectId = source.projectId
   const isPreview = !!previewSnapshot || !!_readOnly
   const [assetsPopupOpen, setAssetsPopupOpen] = useState(false)
+  const [aiModalOpen, setAiModalOpen] = useState(false)
+  const [aiModalPrompt, setAiModalPrompt] = useState('')
+  const [aiModalGenerating, setAiModalGenerating] = useState(false)
+  const [aiModalError, setAiModalError] = useState<string | null>(null)
+  const [aiModalModel, setAiModalModel] = useState<string>(() => {
+    try {
+      return localStorage.getItem('flow2go-openrouter-model') || 'openai/gpt-5.4-nano'
+    } catch {
+      return 'openai/gpt-5.4-nano'
+    }
+  })
+  const [aiModalKey, setAiModalKey] = useState<string>(() => {
+    try {
+      return localStorage.getItem('flow2go-openrouter-key') || ''
+    } catch {
+      return ''
+    }
+  })
 
   const [inlineInspector, setInlineInspector] = useState<{
     kind: 'node' | 'group' | 'edge' | null
@@ -553,40 +716,8 @@ function EditorInner({ onBackHome, source, previewSnapshot, readOnly: _readOnly 
   const nodesEdgesRef = useRef({ nodes: initial.nodes, edges: initial.edges })
   nodesEdgesRef.current = { nodes, edges }
 
-  // ---------- AI：生成整张图（直接应用到画布） ----------
-  const [aiDiagramDialogOpen, setAiDiagramDialogOpen] = useState(false)
-  const [aiDiagramPrompt, setAiDiagramPrompt] = useState('')
-  const [aiDiagramGenerating, setAiDiagramGenerating] = useState(false)
-  const [aiDiagramError, setAiDiagramError] = useState<string | null>(null)
-  const aiDiagramInputRef = useRef<HTMLTextAreaElement | null>(null)
-  const aiDiagramAbortRef = useRef<AbortController | null>(null)
-  const [openRouterKey, setOpenRouterKey] = useState<string>(() => {
-    try {
-      return localStorage.getItem('flow2go-openrouter-key') || ''
-    } catch {
-      return ''
-    }
-  })
-  const [openRouterModel, setOpenRouterModel] = useState<string>(() => {
-    try {
-      return localStorage.getItem('flow2go-openrouter-model') || 'openai/gpt-4o-mini'
-    } catch {
-      return 'openai/gpt-4o-mini'
-    }
-  })
-  const apiKey = openRouterKey.trim()
-
-  useEffect(() => {
-    try {
-      localStorage.setItem('flow2go-openrouter-key', openRouterKey)
-    } catch {}
-  }, [openRouterKey])
-
-  useEffect(() => {
-    try {
-      localStorage.setItem('flow2go-openrouter-model', openRouterModel)
-    } catch {}
-  }, [openRouterModel])
+  // ---------- AI：生成整张图（草稿 -> 应用） ----------
+  const [aiDiagramDraft, setAiDiagramDraft] = useState<AiDiagramDraft | null>(null)
 
   // 传给 React Flow 的节点列表：为群组补全有效宽高，避免 0/undefined 导致框选时 nodeToRect 得到 0×0 矩形被误判为在选区内的“点”
   const nodesForFlow = useMemo(() => {
@@ -686,6 +817,7 @@ function EditorInner({ onBackHome, source, previewSnapshot, readOnly: _readOnly 
     }
     proj.updatedAt = Date.now()
     saveProject(proj)
+    setHasUnsavedChanges(false)
   }, [projectId, rf])
 
   // 项目：防抖自动保存（约 1s）
@@ -732,14 +864,8 @@ function EditorInner({ onBackHome, source, previewSnapshot, readOnly: _readOnly 
     [rf, snapshotSig],
   )
 
-  const generateAiDiagramAndApply = useCallback(
-    async (args: { prompt: string; apiKey: string; model: string; signal: AbortSignal }) => {
-      const draft = await openRouterGenerateDiagram({
-        apiKey: args.apiKey,
-        model: args.model,
-        prompt: args.prompt,
-        signal: args.signal,
-      })
+  const applyAiDraftDirect = useCallback(
+    (draft: AiDiagramDraft) => {
       const snap = normalizeAiDiagramToSnapshot(draft)
       const nextNodes = (snap.nodes ?? []) as FlowNode[]
       const nextEdges = (snap.edges ?? []) as FlowEdge[]
@@ -750,87 +876,6 @@ function EditorInner({ onBackHome, source, previewSnapshot, readOnly: _readOnly 
     },
     [pushHistory, rf],
   )
-
-  const recommendedAiDiagramPrompts = useMemo(
-    () => [
-      {
-        label: '登录/下单/支付',
-        prompt:
-          '生成一张电商业务流程图，包含：登录、鉴权、浏览商品、加入购物车、下单、支付、发货、售后。分成两个画框：前端（用户侧）/后端（服务侧），并用箭头表示主要调用链路与状态流转。',
-      },
-      {
-        label: '需求到上线',
-        prompt:
-          '生成一张软件研发流程图，包含：需求评审、排期、设计、开发、自测、联调、测试、灰度、上线、监控回滚。要求有一个“角色/泳道”：产品/研发/测试/运维，节点简洁清晰。',
-      },
-      {
-        label: '微服务架构',
-        prompt:
-          '生成一张微服务架构图，包含：API Gateway、Auth、User、Order、Payment、Inventory、Notification、DB、Cache、Message Queue。标出主要请求路径与异步事件流（MQ）。',
-      },
-      {
-        label: '项目计划',
-        prompt:
-          '生成一张项目里程碑计划图，包含：Kickoff、需求冻结、MVP、Beta、GA、复盘。每个里程碑下列出2-3个关键交付物，用边连接顺序与依赖。',
-      },
-    ],
-    [],
-  )
-
-  const openAiDiagramDialog = useCallback(() => {
-    setAiDiagramDialogOpen(true)
-    setAiDiagramError(null)
-    setTimeout(() => aiDiagramInputRef.current?.focus(), 50)
-  }, [])
-
-  const closeAiDiagramDialog = useCallback(() => {
-    if (aiDiagramGenerating) return
-    setAiDiagramDialogOpen(false)
-    setAiDiagramError(null)
-  }, [aiDiagramGenerating])
-
-  const runAiDiagram = useCallback(async () => {
-    const p = aiDiagramPrompt.trim()
-    if (!p || aiDiagramGenerating) return
-    if (!apiKey) {
-      setAiDiagramError('请先配置 OpenRouter API Key')
-      return
-    }
-    aiDiagramAbortRef.current?.abort()
-    const ac = new AbortController()
-    aiDiagramAbortRef.current = ac
-    setAiDiagramGenerating(true)
-    setAiDiagramError(null)
-    try {
-      await generateAiDiagramAndApply({ prompt: p, apiKey, model: openRouterModel, signal: ac.signal })
-      setAiDiagramDialogOpen(false)
-      setAiDiagramPrompt('')
-    } catch (err) {
-      if ((err as any)?.name === 'AbortError') return
-      setAiDiagramError(err instanceof Error ? err.message : '生成失败')
-    } finally {
-      setAiDiagramGenerating(false)
-      aiDiagramAbortRef.current = null
-    }
-  }, [aiDiagramPrompt, aiDiagramGenerating, apiKey, generateAiDiagramAndApply, openRouterModel])
-
-  useEffect(() => {
-    if (!aiDiagramDialogOpen) return
-    const onKeyDown = (e: KeyboardEvent) => {
-      if (e.key === 'Escape') {
-        e.preventDefault()
-        closeAiDiagramDialog()
-        return
-      }
-      const mod = e.metaKey || e.ctrlKey
-      if (mod && e.key === 'Enter') {
-        e.preventDefault()
-        runAiDiagram()
-      }
-    }
-    window.addEventListener('keydown', onKeyDown)
-    return () => window.removeEventListener('keydown', onKeyDown)
-  }, [aiDiagramDialogOpen, closeAiDiagramDialog, runAiDiagram])
 
   // const _canUndo = historyRef.current.past.length > 0
   // const canRedo = historyRef.current.future.length > 0  // 已移除重做按钮
@@ -2073,7 +2118,7 @@ function EditorInner({ onBackHome, source, previewSnapshot, readOnly: _readOnly 
 
         // 先还原边和节点
         const nextNodes = parsed.nodes
-        const nextEdges = parsed.edges.map((e) => ({ ...e, type: 'smoothstep' as const }))
+        const nextEdges = parsed.edges.map((e) => ({ ...e, type: (e.type ?? 'bezier') as any }))
         setNodes(nextNodes)
         setEdges(nextEdges)
         if (parsed.viewport) rf.setViewport(parsed.viewport, { duration: 0 })
@@ -2689,7 +2734,7 @@ function EditorInner({ onBackHome, source, previewSnapshot, readOnly: _readOnly 
   )
 
   const edgeTypes = useMemo(
-    () => ({ smoothstep: EditableSmoothStepEdge, bezier: BezierEdge }),
+    () => ({ smoothstep: EditableSmoothStepEdge, bezier: EditableBezierEdge }),
     [],
   )
 
@@ -2778,116 +2823,12 @@ function EditorInner({ onBackHome, source, previewSnapshot, readOnly: _readOnly 
           onAddAsset={onAddAsset}
           onDeleteAsset={onDeleteAsset}
           onAddAiAsset={onAddAiAsset}
+          aiDiagramDraft={aiDiagramDraft}
           fileName={fileName}
           onRenameFile={onRenameFile}
           onBackHome={onBackHome ? handleBackHome : undefined}
           containerClassName={styles.assetsPopup}
         />
-      )}
-
-      {!isPreview && aiDiagramDialogOpen && (
-        <div
-          className={styles.aiDialogOverlay}
-          role="dialog"
-          aria-modal="true"
-          onMouseDown={(e) => {
-            if (e.target === e.currentTarget) closeAiDiagramDialog()
-          }}
-        >
-          <div className={styles.aiDialog} onMouseDown={(e) => e.stopPropagation()}>
-            <div className={styles.aiDialogHeader}>
-              <div className={styles.aiDialogTitle}>AI 生成整张图</div>
-              <button type="button" className={styles.aiDialogCloseBtn} onClick={closeAiDiagramDialog} aria-label="关闭">
-                ×
-              </button>
-            </div>
-
-            <div className={styles.aiDialogBody}>
-              <div className={styles.aiDialogSubTitle}>描述你想要生成的内容</div>
-              <textarea
-                ref={aiDiagramInputRef}
-                className={styles.aiDialogInput}
-                placeholder="例如：一个包含登录、鉴权、下单、支付的流程图，分成两个画框：前端/后端"
-                value={aiDiagramPrompt}
-                onChange={(e) => setAiDiagramPrompt(e.target.value)}
-                rows={8}
-                disabled={aiDiagramGenerating}
-              />
-
-              <div className={styles.aiDialogChips}>
-                {recommendedAiDiagramPrompts.map((c) => (
-                  <button
-                    key={c.label}
-                    type="button"
-                    className={styles.aiDialogChip}
-                    disabled={aiDiagramGenerating}
-                    onClick={() => {
-                      setAiDiagramPrompt(c.prompt)
-                      setTimeout(() => aiDiagramInputRef.current?.focus(), 0)
-                    }}
-                    title={c.prompt}
-                  >
-                    {c.label}
-                  </button>
-                ))}
-              </div>
-
-              <details className={styles.aiDialogSettings}>
-                <summary>设置</summary>
-                <div className={styles.aiDialogSettingsGrid}>
-                  <label className={styles.aiDialogLabel}>
-                    <div className={styles.aiDialogLabelText}>OpenRouter API Key（仅本地保存）</div>
-                    <input
-                      className={styles.aiDialogTextInput}
-                      value={openRouterKey}
-                      onChange={(e) => setOpenRouterKey(e.target.value)}
-                      placeholder="sk-or-..."
-                      disabled={aiDiagramGenerating}
-                    />
-                    <div className={styles.aiHint}>{apiKey ? '✓ 已配置（localStorage）' : '未配置：需要先填写才能生成'}</div>
-                  </label>
-                  <label className={styles.aiDialogLabel}>
-                    <div className={styles.aiDialogLabelText}>模型</div>
-                    <input
-                      className={styles.aiDialogTextInput}
-                      value={openRouterModel}
-                      onChange={(e) => setOpenRouterModel(e.target.value)}
-                      placeholder="openai/gpt-4o-mini"
-                      disabled={aiDiagramGenerating}
-                    />
-                  </label>
-                </div>
-              </details>
-
-              {aiDiagramError && <div className={styles.aiError}>{aiDiagramError}</div>}
-            </div>
-
-            <div className={styles.aiDialogFooter}>
-              <button
-                type="button"
-                className={styles.btnSecondary}
-                disabled={!aiDiagramGenerating}
-                onClick={() => aiDiagramAbortRef.current?.abort()}
-              >
-                取消
-              </button>
-              <button
-                type="button"
-                className={styles.aiGenerateBtn}
-                disabled={aiDiagramGenerating || !aiDiagramPrompt.trim() || !apiKey}
-                onClick={runAiDiagram}
-              >
-                {aiDiagramGenerating ? '生成中...' : '生成'}
-              </button>
-            </div>
-
-            {aiDiagramGenerating && (
-              <div className={styles.aiDialogLoading}>
-                <div className={styles.aiDialogLoadingCard}>正在生成…</div>
-              </div>
-            )}
-          </div>
-        </div>
       )}
 
       <main
@@ -2936,8 +2877,8 @@ function EditorInner({ onBackHome, source, previewSnapshot, readOnly: _readOnly 
           nodesConnectable={isPreview ? false : !spacePressed}
           elementsSelectable={isPreview ? false : !spacePressed}
           defaultEdgeOptions={{
-            type: 'smoothstep',
-            style: { stroke: DEFAULT_EDGE_COLOR, strokeWidth: 3 },
+            type: 'bezier',
+            style: { stroke: DEFAULT_EDGE_COLOR, strokeWidth: 1.5 },
             markerEnd: { ...DEFAULT_MARKER_END },
           }}
           proOptions={{ hideAttribution: true }}
@@ -2948,7 +2889,14 @@ function EditorInner({ onBackHome, source, previewSnapshot, readOnly: _readOnly 
 
           {!isPreview && (
             <Panel position="top-right" className={styles.topPanel}>
-              <button className={styles.assetsBtn} type="button" onClick={openAiDiagramDialog}>
+              <button
+                className={styles.assetsBtn}
+                type="button"
+                onClick={() => {
+                  setAiModalError(null)
+                  setAiModalOpen(true)
+                }}
+              >
                 AI生成
               </button>
               <button
@@ -2968,22 +2916,279 @@ function EditorInner({ onBackHome, source, previewSnapshot, readOnly: _readOnly 
               <button
                 className={styles.assetsBtn}
                 type="button"
-                onClick={() => {
-                  // 模板库：后续在前端补充模板数据
-                }}
-              >
-                模板库
-              </button>
-              <button
-                className={styles.saveBar}
-                type="button"
                 onClick={openSaveModal}
+                title="导出 zip（project.json + assets）"
               >
                 保存
               </button>
             </Panel>
           )}
         </ReactFlow>
+
+        {aiModalOpen && (
+          <div
+            role="dialog"
+            aria-modal="true"
+            onClick={() => setAiModalOpen(false)}
+            style={{
+              position: 'fixed',
+              inset: 0,
+              background: 'rgba(203, 203, 203, 0.5)',
+              backdropFilter: 'blur(10px)',
+              WebkitBackdropFilter: 'blur(10px)',
+              zIndex: 30000,
+              display: 'flex',
+              alignItems: 'center',
+              justifyContent: 'center',
+              padding: 16,
+            }}
+          >
+            <div
+              onClick={(e) => e.stopPropagation()}
+              style={{
+                width: 'min(980px, 96vw)',
+                maxHeight: '90vh',
+                background: '#0b1220',
+                border: '1px solid rgba(148, 163, 184, 0.28)',
+                borderRadius: 14,
+                boxShadow: '0 28px 90px rgba(0,0,0,0.35)',
+                color: '#e2e8f0',
+                display: 'flex',
+                flexDirection: 'column',
+                overflow: 'hidden',
+              }}
+            >
+              <div style={{ padding: '12px 14px', display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 10, borderBottom: '1px solid rgba(148,163,184,0.18)' }}>
+                <div style={{ fontSize: 14, fontWeight: 800 }}>AI 生成</div>
+                <div style={{ display: 'flex', gap: 8 }}>
+                  <button type="button" className={styles.btnSecondary} onClick={() => setAiModalOpen(false)}>
+                    关闭
+                  </button>
+                </div>
+              </div>
+
+              <div style={{ padding: 14, display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12, overflow: 'auto' }}>
+                <div style={{ display: 'flex', flexDirection: 'column', gap: 8, minWidth: 0 }}>
+                  <div style={{ fontSize: 12, fontWeight: 800, color: '#cbd5e1' }}>Prompt</div>
+                  <textarea
+                    value={aiModalPrompt}
+                    onChange={(e) => setAiModalPrompt(e.target.value)}
+                    rows={10}
+                    placeholder="描述你想生成的图，例如：一个树状结构的解决方案分层图..."
+                    style={{
+                      width: '100%',
+                      borderRadius: 10,
+                      border: '1px solid rgba(148,163,184,0.22)',
+                      padding: 10,
+                      background: '#0a0f1a',
+                      color: '#e2e8f0',
+                      resize: 'vertical',
+                      fontSize: 13,
+                      lineHeight: 1.55,
+                    }}
+                  />
+
+                  <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
+                    {[
+                      {
+                        short: '前后端链路',
+                        full: [
+                          '请帮我生成一个“前端-接口层-后端服务-数据/外部依赖”的完整调用链路图。',
+                          '业务：用户在 Web 端完成登录后创建订单并支付，包含鉴权、表单校验、下单、支付回调、状态更新与结果展示。',
+                          '要求：至少包含前端、Gateway/BFF、后端服务、数据库/缓存/第三方支付；必须有异常分支（鉴权失败/支付失败）；主链路清晰，跨层连线要有动作语义。',
+                          '标题要求：所有画框与节点标题必须自然完整，不截断，不附加类型后缀（如｜T、｜Type）。',
+                        ].join('\n'),
+                      },
+                      {
+                        short: '数据管道',
+                        full: [
+                          '请帮我生成一个数据管道（Data Pipeline）结构图。',
+                          '主题：电商行为数据到实时指标看板。',
+                          '描述：多源采集（埋点/订单/支付/客服），经过采集、清洗去重、转换建模、入仓/特征库、对外服务（BI/API/下游应用）。',
+                          '要求：必须包含数据质量/监控/告警链路；至少一条主数据流 + 一条治理辅助线；分层清晰，适合大画布扩展。',
+                          '标题要求：所有画框与节点标题必须自然完整，不截断，不附加类型后缀（如｜T、｜Type）。',
+                        ].join('\n'),
+                      },
+                      {
+                        short: '多Agent工作流',
+                        full: [
+                          '请帮我生成一个多 Agent 协作工作流图（Agent Workflow）。',
+                          '场景：根据用户需求生成产品 PRD，并输出可执行的研发任务拆解。',
+                          '要求：包含 Planner/Orchestrator、至少 2 个 Specialist Agents（例如：需求分析、技术方案、测试策略）、Tools/RAG/Memory、Reviewer/Verifier、最终输出，并至少一条反馈回路（review 失败回到 planner）。',
+                          '标题要求：所有画框与节点标题必须自然完整，不截断，不附加类型后缀（如｜T、｜Type）。',
+                        ].join('\n'),
+                      },
+                      {
+                        short: '审批流',
+                        full: [
+                          '请帮我生成一个企业审批流（Approval Workflow）流程图。',
+                          '主题：采购申请审批。',
+                          '要求：按角色分组（申请人/直属经理/财务/系统通知/归档）；至少 2 级审批；至少 1 个判断节点（金额阈值/合规）；至少 1 条退回补充分支；最后有通知与归档记录。',
+                          '标题要求：所有画框与节点标题必须自然完整，不截断，不附加类型后缀（如｜T、｜Type）。',
+                        ].join('\n'),
+                      },
+                      {
+                        short: '系统架构',
+                        full: [
+                          '请帮我生成一张系统架构图（System Architecture）。',
+                          '主题：SaaS 多租户平台。',
+                          '要求：分层包含 Users/Entry、Access Layer、Core Business Services（至少 3 个）、Platform Capabilities、Data Layer、Infrastructure/External；体现一条主访问链路 + 一条底层支撑链路（监控/日志/队列/缓存）。',
+                          '标题要求：所有画框与节点标题必须自然完整，不截断，不附加类型后缀（如｜T、｜Type）。',
+                        ].join('\n'),
+                      },
+                      {
+                        short: '用户旅程',
+                        full: [
+                          '请帮我生成一张用户旅程图（User Journey）。',
+                          '主题：新用户从了解产品到完成首次付费并复购。',
+                          '要求：至少 4 个阶段（Awareness/Onboarding/Usage/Retention）；每阶段包含用户目标、行为、触点、系统响应；全图包含至少 2 个痛点与 2 个机会点，并有一条清晰主旅程线。',
+                          '标题要求：所有画框与节点标题必须自然完整，不截断，不附加类型后缀（如｜T、｜Type）。',
+                        ].join('\n'),
+                      },
+                      {
+                        short: '业务大图',
+                        full: [
+                          '请为以下内容生成一张适合 Flow2Go 大图画布展示的层级结构图（业务大图）。',
+                          '',
+                          '【主题】',
+                          'Flow2Go 商业化与产品全景',
+                          '',
+                          '【内容说明】',
+                          '- 我希望得到一张“战略全景 + 能力地图 + 路线图”的业务大图，用于汇报与持续迭代。',
+                          '- 内容需要有清晰层级（章节 → 模块 → 子模块 → 要点），信息密度较高，但不能拥挤。',
+                          '- 多个章节必须从上到下排列，章节之间保持统一节奏间距。',
+                          '',
+                          '【章节建议（你可以补齐/调整中间层）】',
+                          '1) 战略目标｜北极星',
+                          '- 北极星指标｜年度目标',
+                          '- 目标拆解｜增长飞轮',
+                          '- 约束条件｜风险假设',
+                          '',
+                          '2) 业务域全景｜收入链路',
+                          '- 获客｜转化｜留存｜复购',
+                          '- 定价包装｜权益体系｜渠道策略',
+                          '- 增长实验｜投放策略｜内容策略',
+                          '',
+                          '3) 产品能力地图｜核心能力',
+                          '- AI 生图与 Mermaid→Flow2Go（提示词/模板/解析/转译/应用/布局）',
+                          '- 画布编辑能力（节点/编组/撤销/导入导出/素材）',
+                          '- 协作与沉淀（模板/资产复用/版本/审阅）',
+                          '- 可观测与质量（日志/告警/性能/错误收敛）',
+                          '',
+                          '4) 系统与数据支撑｜平台能力',
+                          '- OpenRouter 调用治理（key 管理/限流/成本/重试）',
+                          '- 数据资产（项目/快照/导出 zip/素材库）',
+                          '- 安全与合规（权限/审计/数据隔离）',
+                          '',
+                          '5) 路线图｜里程碑',
+                          '- 近 1 个月：可用性与体验（布局稳定/保存导出/模板选择）',
+                          '- 近 3 个月：协作与资产化（模板库/共享/版本）',
+                          '- 近 6 个月：平台化（插件/生态/企业能力）',
+                          '',
+                          '【强制要求】',
+                          '- 这是层级大图，不是流程图；少箭头少连线，优先用分组表达“包含/归属”。',
+                          '- 不要生成任何连线（edges = 0）。',
+                          '- 参考样式请从样式1/样式2/样式3/样式4中自动选择一个最合适的。',
+                          '- 必须使用嵌套 subgraph 来表达层级（章节 → 模块 → 子模块 → 要点）。',
+                          '- 每个 quad 标题尽量不超过 5 个字（必要时用 V2 主标题｜副标题）。',
+                          '- 用分组与层级表达关系，不要使用边连接。',
+                          '- 标题必须自然完整，不要截断，不要附加类型尾缀（如｜T、｜Type）。',
+                          '- 结构配额器：请混合出现 3 层嵌套、2 层嵌套、1 层嵌套三种样式，避免只输出单一深度。',
+                        ].join('\n'),
+                      },
+                    ].map((c) => (
+                      <button
+                        key={c.short}
+                        type="button"
+                        disabled={aiModalGenerating}
+                        onClick={() => setAiModalPrompt(c.full)}
+                        style={{
+                          borderRadius: 999,
+                          padding: '6px 10px',
+                          border: '1px solid rgba(148,163,184,0.22)',
+                          background: 'rgba(148,163,184,0.08)',
+                          color: '#e2e8f0',
+                          fontSize: 12,
+                          cursor: aiModalGenerating ? 'not-allowed' : 'pointer',
+                          userSelect: 'none',
+                        }}
+                        title="点击填入推荐 Prompt（可再编辑）"
+                      >
+                        {c.short}
+                      </button>
+                    ))}
+                  </div>
+
+                  {aiModalError && <div className={styles.aiError}>{aiModalError}</div>}
+
+                  <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
+                    <button
+                      type="button"
+                      className={styles.aiGenerateBtn}
+                      disabled={aiModalGenerating || !aiModalPrompt.trim()}
+                      onClick={async () => {
+                        const p = aiModalPrompt.trim()
+                        if (!p) return
+                        if (!aiModalKey.trim()) {
+                          setAiModalError('请先填写 OpenRouter API Key')
+                          return
+                        }
+                        setAiModalGenerating(true)
+                        setAiModalError(null)
+                        try {
+                          const ac = new AbortController()
+                          const draft = await openRouterGenerateDiagram({
+                            apiKey: aiModalKey.trim(),
+                            model: aiModalModel.trim() || 'openai/gpt-5.4-nano',
+                            prompt: p,
+                            signal: ac.signal,
+                          })
+                          setAiDiagramDraft(draft)
+                          applyAiDraftDirect(draft)
+                          setAiModalOpen(false)
+                        } catch (e) {
+                          setAiModalError(e instanceof Error ? e.message : '生成失败')
+                        } finally {
+                          setAiModalGenerating(false)
+                        }
+                      }}
+                    >
+                      {aiModalGenerating ? '生成中…' : '生成并应用'}
+                    </button>
+                    <button type="button" className={styles.btnSecondary} onClick={() => setAiModalPrompt('')} disabled={aiModalGenerating}>
+                      清空
+                    </button>
+                  </div>
+                </div>
+
+                <div style={{ display: 'flex', flexDirection: 'column', gap: 10, minWidth: 0 }}>
+                  <div style={{ fontSize: 12, fontWeight: 800, color: '#cbd5e1' }}>OpenRouter API Key / Model</div>
+                  <input
+                    className={styles.aiApiKeyInput}
+                    value={aiModalKey}
+                    onChange={(e) => {
+                      setAiModalKey(e.target.value)
+                      try { localStorage.setItem('flow2go-openrouter-key', e.target.value) } catch {}
+                    }}
+                    placeholder="sk-or-..."
+                  />
+                  <input
+                    className={styles.aiApiKeyInput}
+                    value={aiModalModel}
+                    onChange={(e) => {
+                      setAiModalModel(e.target.value)
+                      try { localStorage.setItem('flow2go-openrouter-model', e.target.value) } catch {}
+                    }}
+                    placeholder="openai/gpt-5.4-nano"
+                  />
+                  <div className={styles.aiNote} style={{ opacity: 0.9 }}>
+                    说明：会先自动选择最适合的 usertemplate，再按该模板强约束生成 Mermaid（V2），并使用四向 handle/布局规则应用到画布。
+                  </div>
+                </div>
+              </div>
+            </div>
+          </div>
+        )}
 
         {menu.open && (
           <div
@@ -3349,7 +3554,7 @@ function EditorInner({ onBackHome, source, previewSnapshot, readOnly: _readOnly 
                 }
               }}
             />
-            <div className={styles.modalHint}>文件将保存为 {exportFileName || 'Flow2Go'}.json</div>
+            <div className={styles.modalHint}>文件将保存为 {exportFileName || 'Flow2Go'}.zip</div>
             <div className={styles.modalFooter}>
               <button className={styles.btn} type="button" onClick={() => setSaveModalOpen(false)}>
                 取消

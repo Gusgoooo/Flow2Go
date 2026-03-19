@@ -1,22 +1,31 @@
 import dagre from 'dagre'
 import type { Edge, Node } from '@xyflow/react'
 
-export type LayoutDirection = 'LR' | 'TB'
+export type LayoutDirection = 'LR' | 'TB' | 'RL' | 'BT'
+
+export type LayoutSpacingOptions = {
+  nodesep?: number
+  ranksep?: number
+  marginx?: number
+  marginy?: number
+}
 
 export function autoLayout<NData extends Record<string, unknown>>(
   nodes: Array<Node<NData>>,
   edges: Array<Edge>,
   direction: LayoutDirection,
+  spacing?: LayoutSpacingOptions,
 ) {
   const g = new dagre.graphlib.Graph()
   g.setDefaultEdgeLabel(() => ({}))
 
   g.setGraph({
     rankdir: direction,
-    nodesep: 40,
-    ranksep: 70,
-    marginx: 30,
-    marginy: 30,
+    // keep a safer distance to reduce overlaps and stabilize edges
+    nodesep: spacing?.nodesep ?? 64,
+    ranksep: spacing?.ranksep ?? 96,
+    marginx: spacing?.marginx ?? 48,
+    marginy: spacing?.marginy ?? 48,
   })
 
   for (const n of nodes) {

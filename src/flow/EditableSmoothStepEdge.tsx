@@ -64,6 +64,7 @@ function getDefaultOrthogonalPoints(
   sourcePosition: Position,
   targetPosition: Position,
   offset: number = 24,
+  autoOffset: number = 0,
 ): Point[] {
   const isHorizontalSource = sourcePosition === Position.Left || sourcePosition === Position.Right
   const isHorizontalTarget = targetPosition === Position.Left || targetPosition === Position.Right
@@ -76,9 +77,9 @@ function getDefaultOrthogonalPoints(
     if (isCShape) {
       // C 字型 (Right→Right or Left→Left)
       const isRight = sourcePosition === Position.Right
-      const outerX = isRight 
-        ? Math.max(sourceX, targetX) + offset 
-        : Math.min(sourceX, targetX) - offset
+      const outerX = isRight
+        ? Math.max(sourceX, targetX) + offset + autoOffset
+        : Math.min(sourceX, targetX) - offset + autoOffset
       return [
         source,
         { x: outerX, y: sourceY },
@@ -87,7 +88,7 @@ function getDefaultOrthogonalPoints(
       ]
     } else {
       // Z 字型 (Right→Left or Left→Right)
-      const midX = (sourceX + targetX) / 2
+      const midX = (sourceX + targetX) / 2 + autoOffset
       return [
         source,
         { x: midX, y: sourceY },
@@ -99,9 +100,9 @@ function getDefaultOrthogonalPoints(
     if (isCShape) {
       // C 字型 (Bottom→Bottom or Top→Top)
       const isBottom = sourcePosition === Position.Bottom
-      const outerY = isBottom 
-        ? Math.max(sourceY, targetY) + offset 
-        : Math.min(sourceY, targetY) - offset
+      const outerY = isBottom
+        ? Math.max(sourceY, targetY) + offset + autoOffset
+        : Math.min(sourceY, targetY) - offset + autoOffset
       return [
         source,
         { x: sourceX, y: outerY },
@@ -110,7 +111,7 @@ function getDefaultOrthogonalPoints(
       ]
     } else {
       // Z 字型 (Bottom→Top or Top→Bottom)
-      const midY = (sourceY + targetY) / 2
+      const midY = (sourceY + targetY) / 2 + autoOffset
       return [
         source,
         { x: sourceX, y: midY },
@@ -124,14 +125,14 @@ function getDefaultOrthogonalPoints(
       // 水平出发，垂直到达：先水平再垂直
       return [
         source,
-        { x: targetX, y: sourceY },
+        { x: targetX, y: sourceY + autoOffset },
         target,
       ]
     } else {
       // 垂直出发，水平到达：先垂直再水平
       return [
         source,
-        { x: sourceX, y: targetY },
+        { x: sourceX + autoOffset, y: targetY },
         target,
       ]
     }
@@ -255,10 +256,11 @@ export function EditableSmoothStepEdge(props: EdgeProps) {
   // 从 data 中获取保存的路径点，或生成默认路径
   const dataAny = (data ?? {}) as any
   const savedWaypoints: Point[] | undefined = dataAny.waypoints
+  const autoOffset: number = typeof dataAny.autoOffset === 'number' && Number.isFinite(dataAny.autoOffset) ? dataAny.autoOffset : 0
   
   // 生成完整的路径点（包含源和目标）
   const defaultPoints = getDefaultOrthogonalPoints(
-    sourceX, sourceY, targetX, targetY, srcPos, tgtPos, 24
+    sourceX, sourceY, targetX, targetY, srcPos, tgtPos, 24, autoOffset
   )
   
   // 如果有保存的 waypoints，使用它们（中间点），加上当前的源和目标
