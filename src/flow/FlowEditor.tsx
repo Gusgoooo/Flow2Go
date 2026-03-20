@@ -139,6 +139,47 @@ function nowId(prefix: string) {
   return `${prefix}-${Date.now()}-${Math.random().toString(16).slice(2)}`
 }
 
+const DEFAULT_BUSINESS_BIGMAP_PROMPT = [
+  '请生成一张用于产品汇报的“战略全景业务大图”，',
+  '',
+  '画框标题：战略目标',
+  '- 定位用户需求',
+  '- 生成 DSL 草稿',
+  '- 转译为图结构',
+  '- 执行布局渲染',
+  '- 支持编辑回退',
+  '- 导出交付复用',
+  '',
+  '画框标题：核心流程',
+  '- 模块1：输入与模板',
+  '  - 选择最适模板',
+  '  - 注入约束规则',
+  '- 模块2：解析与转译',
+  '  - Mermaid 解析',
+  '  - 生成 Graph JSON',
+  '  - 修复/补齐结构',
+  '- 模块3：应用与可编辑',
+  '  - 批量应用到画布',
+  '  - 自动布局',
+  '  - 支持撤销重做',
+  '',
+  '画框标题：平台能力树',
+  '- 二级模块：质量与治理',
+  '  - 子模块：解析健壮性',
+  '    - 语法支持白名单',
+  '    - 不支持语法给 warning',
+  '  - 子模块：结构配额器',
+  '    - 混合层级覆盖',
+  '    - 避免单一 3层堆叠',
+  '- 二级模块：可用性与交付',
+  '  - 子模块：编辑体验',
+  '    - 统一自适应拉伸',
+  '    - 图形导入导出一致',
+  '  - 子模块：协作复用',
+  '    - 模板资产管理',
+  '    - 历史记录与快照',
+].join('\n')
+
 function Sidebar({
   assets,
   onAddAsset,
@@ -614,7 +655,7 @@ function EditorInner({ onBackHome, source, previewSnapshot, readOnly: _readOnly 
   const isPreview = !!previewSnapshot || !!_readOnly
   const [assetsPopupOpen, setAssetsPopupOpen] = useState(false)
   const [aiModalOpen, setAiModalOpen] = useState(false)
-  const [aiModalPrompt, setAiModalPrompt] = useState('')
+  const [aiModalPrompt, setAiModalPrompt] = useState(() => DEFAULT_BUSINESS_BIGMAP_PROMPT)
   const [aiModalGenerating, setAiModalGenerating] = useState(false)
   const [aiModalError, setAiModalError] = useState<string | null>(null)
   const [aiModalModel, setAiModalModel] = useState<string>(() => {
@@ -2988,135 +3029,8 @@ function EditorInner({ onBackHome, source, previewSnapshot, readOnly: _readOnly 
                     }}
                   />
 
-                  <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
-                    {[
-                      {
-                        short: '前后端链路',
-                        full: [
-                          '请帮我生成一个“前端-接口层-后端服务-数据/外部依赖”的完整调用链路图。',
-                          '业务：用户在 Web 端完成登录后创建订单并支付，包含鉴权、表单校验、下单、支付回调、状态更新与结果展示。',
-                          '要求：至少包含前端、Gateway/BFF、后端服务、数据库/缓存/第三方支付；必须有异常分支（鉴权失败/支付失败）；主链路清晰，跨层连线要有动作语义。',
-                          '标题要求：所有画框与节点标题必须自然完整，不截断，不附加类型后缀（如｜T、｜Type）。',
-                        ].join('\n'),
-                      },
-                      {
-                        short: '数据管道',
-                        full: [
-                          '请帮我生成一个数据管道（Data Pipeline）结构图。',
-                          '主题：电商行为数据到实时指标看板。',
-                          '描述：多源采集（埋点/订单/支付/客服），经过采集、清洗去重、转换建模、入仓/特征库、对外服务（BI/API/下游应用）。',
-                          '要求：必须包含数据质量/监控/告警链路；至少一条主数据流 + 一条治理辅助线；分层清晰，适合大画布扩展。',
-                          '标题要求：所有画框与节点标题必须自然完整，不截断，不附加类型后缀（如｜T、｜Type）。',
-                        ].join('\n'),
-                      },
-                      {
-                        short: '多Agent工作流',
-                        full: [
-                          '请帮我生成一个多 Agent 协作工作流图（Agent Workflow）。',
-                          '场景：根据用户需求生成产品 PRD，并输出可执行的研发任务拆解。',
-                          '要求：包含 Planner/Orchestrator、至少 2 个 Specialist Agents（例如：需求分析、技术方案、测试策略）、Tools/RAG/Memory、Reviewer/Verifier、最终输出，并至少一条反馈回路（review 失败回到 planner）。',
-                          '标题要求：所有画框与节点标题必须自然完整，不截断，不附加类型后缀（如｜T、｜Type）。',
-                        ].join('\n'),
-                      },
-                      {
-                        short: '审批流',
-                        full: [
-                          '请帮我生成一个企业审批流（Approval Workflow）流程图。',
-                          '主题：采购申请审批。',
-                          '要求：按角色分组（申请人/直属经理/财务/系统通知/归档）；至少 2 级审批；至少 1 个判断节点（金额阈值/合规）；至少 1 条退回补充分支；最后有通知与归档记录。',
-                          '标题要求：所有画框与节点标题必须自然完整，不截断，不附加类型后缀（如｜T、｜Type）。',
-                        ].join('\n'),
-                      },
-                      {
-                        short: '系统架构',
-                        full: [
-                          '请帮我生成一张系统架构图（System Architecture）。',
-                          '主题：SaaS 多租户平台。',
-                          '要求：分层包含 Users/Entry、Access Layer、Core Business Services（至少 3 个）、Platform Capabilities、Data Layer、Infrastructure/External；体现一条主访问链路 + 一条底层支撑链路（监控/日志/队列/缓存）。',
-                          '标题要求：所有画框与节点标题必须自然完整，不截断，不附加类型后缀（如｜T、｜Type）。',
-                        ].join('\n'),
-                      },
-                      {
-                        short: '用户旅程',
-                        full: [
-                          '请帮我生成一张用户旅程图（User Journey）。',
-                          '主题：新用户从了解产品到完成首次付费并复购。',
-                          '要求：至少 4 个阶段（Awareness/Onboarding/Usage/Retention）；每阶段包含用户目标、行为、触点、系统响应；全图包含至少 2 个痛点与 2 个机会点，并有一条清晰主旅程线。',
-                          '标题要求：所有画框与节点标题必须自然完整，不截断，不附加类型后缀（如｜T、｜Type）。',
-                        ].join('\n'),
-                      },
-                      {
-                        short: '业务大图',
-                        full: [
-                          '请为以下内容生成一张适合 Flow2Go 大图画布展示的层级结构图（业务大图）。',
-                          '',
-                          '【主题】',
-                          'Flow2Go 商业化与产品全景',
-                          '',
-                          '【内容说明】',
-                          '- 我希望得到一张“战略全景 + 能力地图 + 路线图”的业务大图，用于汇报与持续迭代。',
-                          '- 内容需要有清晰层级（章节 → 模块 → 子模块 → 要点），信息密度较高，但不能拥挤。',
-                          '- 多个章节必须从上到下排列，章节之间保持统一节奏间距。',
-                          '',
-                          '【章节建议（你可以补齐/调整中间层）】',
-                          '1) 战略目标｜北极星',
-                          '- 北极星指标｜年度目标',
-                          '- 目标拆解｜增长飞轮',
-                          '- 约束条件｜风险假设',
-                          '',
-                          '2) 业务域全景｜收入链路',
-                          '- 获客｜转化｜留存｜复购',
-                          '- 定价包装｜权益体系｜渠道策略',
-                          '- 增长实验｜投放策略｜内容策略',
-                          '',
-                          '3) 产品能力地图｜核心能力',
-                          '- AI 生图与 Mermaid→Flow2Go（提示词/模板/解析/转译/应用/布局）',
-                          '- 画布编辑能力（节点/编组/撤销/导入导出/素材）',
-                          '- 协作与沉淀（模板/资产复用/版本/审阅）',
-                          '- 可观测与质量（日志/告警/性能/错误收敛）',
-                          '',
-                          '4) 系统与数据支撑｜平台能力',
-                          '- OpenRouter 调用治理（key 管理/限流/成本/重试）',
-                          '- 数据资产（项目/快照/导出 zip/素材库）',
-                          '- 安全与合规（权限/审计/数据隔离）',
-                          '',
-                          '5) 路线图｜里程碑',
-                          '- 近 1 个月：可用性与体验（布局稳定/保存导出/模板选择）',
-                          '- 近 3 个月：协作与资产化（模板库/共享/版本）',
-                          '- 近 6 个月：平台化（插件/生态/企业能力）',
-                          '',
-                          '【强制要求】',
-                          '- 这是层级大图，不是流程图；少箭头少连线，优先用分组表达“包含/归属”。',
-                          '- 不要生成任何连线（edges = 0）。',
-                          '- 参考样式请从样式1/样式2/样式3/样式4中自动选择一个最合适的。',
-                          '- 必须使用嵌套 subgraph 来表达层级（章节 → 模块 → 子模块 → 要点）。',
-                          '- 每个 quad 标题尽量不超过 5 个字（必要时用 V2 主标题｜副标题）。',
-                          '- 用分组与层级表达关系，不要使用边连接。',
-                          '- 标题必须自然完整，不要截断，不要附加类型尾缀（如｜T、｜Type）。',
-                          '- 结构配额器：请混合出现 3 层嵌套、2 层嵌套、1 层嵌套三种样式，避免只输出单一深度。',
-                        ].join('\n'),
-                      },
-                    ].map((c) => (
-                      <button
-                        key={c.short}
-                        type="button"
-                        disabled={aiModalGenerating}
-                        onClick={() => setAiModalPrompt(c.full)}
-                        style={{
-                          borderRadius: 999,
-                          padding: '6px 10px',
-                          border: '1px solid rgba(148,163,184,0.22)',
-                          background: 'rgba(148,163,184,0.08)',
-                          color: '#e2e8f0',
-                          fontSize: 12,
-                          cursor: aiModalGenerating ? 'not-allowed' : 'pointer',
-                          userSelect: 'none',
-                        }}
-                        title="点击填入推荐 Prompt（可再编辑）"
-                      >
-                        {c.short}
-                      </button>
-                    ))}
+                  <div className={styles.aiNote}>
+                    已加载“战略全景业务大图”预设 Prompt，可直接生成或继续编辑。
                   </div>
 
                   {aiModalError && <div className={styles.aiError}>{aiModalError}</div>}
@@ -3155,8 +3069,13 @@ function EditorInner({ onBackHome, source, previewSnapshot, readOnly: _readOnly 
                     >
                       {aiModalGenerating ? '生成中…' : '生成并应用'}
                     </button>
-                    <button type="button" className={styles.btnSecondary} onClick={() => setAiModalPrompt('')} disabled={aiModalGenerating}>
-                      清空
+                    <button
+                      type="button"
+                      className={styles.btnSecondary}
+                      onClick={() => setAiModalPrompt(DEFAULT_BUSINESS_BIGMAP_PROMPT)}
+                      disabled={aiModalGenerating}
+                    >
+                      恢复预设
                     </button>
                   </div>
                 </div>
