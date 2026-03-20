@@ -35,18 +35,12 @@
 
 函数：`calcBusinessUnifiedTopChapterWidth()`
 
-- 遍历每个顶层章节 frame（没有 `parentId`）。
-- 对每个章节计算两类数量：
-  - `directChildFrames`：直接子 frame 数量
-  - `grandchildFrames`：孙级及以上 frame 数量（`descendantFrames - directChildFrames`）
-- 顶层章节选择 width tier（单位档位）：
-  - `directChildFrames <= 2` => `30`
-  - `directChildFrames == 3`：
-    - `grandchildFrames == 0` => `50`
-    - `grandchildFrames 1..2` => `70`
-    - `grandchildFrames 3..5` => `90`
-    - `grandchildFrames >= 6` => `120`
-- 全局章节档位统一为：所有顶层章节中 `MAX tier` 对应的宽度。
+- 遍历每个顶层章节 `frame`（没有 `parentId`）
+- 对每个顶层章节递归计算“所需最小宽度 requiredWidthForFrame(frameId)”（只基于子 frame 的分叉与递归传递；用于避免估算偏小导致的布局挤压）
+- 在候选档位中选择 **最小满足**：
+  - `30 -> 50 -> 70 -> 90 -> 120`
+- 当递归 requiredWidth 超过 `90` 档时，才会触发 `120`（因此 `120` 是“内容太多/递归需要才用”的最大兜底档位）
+- 最终全局统一：所有顶层章节取其 requiredWidth 的 `globalNeed` 对应的最小满足档位（并用于所有顶层章节宽度）
 
 输出用于顶层章节宽度：`businessUnifiedTopChapterWidth`。
 

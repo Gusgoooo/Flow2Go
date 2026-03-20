@@ -82,6 +82,7 @@ const BUSINESS_CHAPTER_W_30 = LAYOUT_UNIT * 30 // 30 grid units = 720px
 const BUSINESS_CHAPTER_W_50 = LAYOUT_UNIT * 50 // 50 grid units = 1200px
 const BUSINESS_CHAPTER_W_70 = LAYOUT_UNIT * 70 // 70 grid units
 const BUSINESS_CHAPTER_W_90 = LAYOUT_UNIT * 90 // 90 grid units
+const BUSINESS_CHAPTER_W_120 = LAYOUT_UNIT * 120 // 120 grid units
 // Keep the old name for readability at call sites that still assume the "30 units" baseline.
 const BUSINESS_CHAPTER_W = BUSINESS_CHAPTER_W_30
 // Business Big Map: restrict theme palette (rotating)
@@ -282,6 +283,7 @@ function wrapFramesToContents(allNodes: Array<Node<any>>, businessMode: boolean)
       { w: BUSINESS_CHAPTER_W_50, label: 50 },
       { w: BUSINESS_CHAPTER_W_70, label: 70 },
       { w: BUSINESS_CHAPTER_W_90, label: 90 },
+      { w: BUSINESS_CHAPTER_W_120, label: 120 },
     ]
 
     const chosen = tiers.find((t) => t.w >= globalNeed) ?? tiers[tiers.length - 1]
