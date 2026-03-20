@@ -77,6 +77,7 @@ function frameDefaults(title: string) {
 
 const LAYOUT_UNIT = 24
 const BUSINESS_INNER_UNIT = 12
+const BUSINESS_CHAPTER_W = LAYOUT_UNIT * 30 // 30 grid units = 720px
 // Business Big Map: restrict theme palette (rotating)
 const TOP_FRAME_THEME_COLORS = ['#4d9ef5', '#33d8ea', '#c059ff', '#ff6cc4']
 
@@ -172,9 +173,10 @@ function layoutTopLevel(allNodes: Array<Node<any>>, allEdges: Array<Edge<any>>, 
 
 function wrapFramesToContents(allNodes: Array<Node<any>>, businessMode: boolean) {
   const TITLE_H = 32
-  const MIN_W = 220
+  const MIN_W_DEFAULT = 220
   const MIN_H = 140
   const UNIT = businessMode ? BUSINESS_INNER_UNIT : LAYOUT_UNIT
+  const MAX_COLS = businessMode ? 6 : 6
 
   const nodeById = new Map(allNodes.map((n) => [n.id, n]))
   const childrenByParent = new Map<string, Array<Node<any>>>()
@@ -205,6 +207,144 @@ function wrapFramesToContents(allNodes: Array<Node<any>>, businessMode: boolean)
   // bottom-up so inner frames get sized before outer
   frames.sort((a, b) => depthOf(b.id) - depthOf(a.id))
 
+  const chooseCols = (count: number) => Math.max(1, Math.min(MAX_COLS, Math.ceil(Math.sqrt(count))))
+
+  const stretchChildrenToWidth = (
+    parentW: number,
+    padX: number,
+    items: Array<Node<any>>,
+    originY: number,
+    stretchWidth: boolean,
+  ) => {
+    const ordered = [...items].sort((a, b) => a.id.localeCompare(b.id))
+    if (ordered.length === 0) return { maxBottom: originY }
+    const cols = chooseCols(ordered.length)
+    const availableW = Math.max(1, parentW - padX * 2)
+    const cellW = Math.max(120, Math.floor((availableW - (cols - 1) * UNIT) / cols))
+    let maxBottom = originY
+    for (let i = 0; i < ordered.length; i += 1) {
+      const it = ordered[i]
+      const { h } = getNodeSize(it)
+      const col = i % cols
+      const row = Math.floor(i / cols)
+      // Important: do not stretch child frame width at parent level.
+      // Nodes should always stretch in their direct parent's coordinate system.
+      if (stretchWidth) {
+        it.width = cellW
+        it.style = { ...(it.style as any), width: cellW }
+      }
+      it.position = { x: col * (cellW + UNIT), y: originY + row * (h + UNIT) }
+      maxBottom = Math.max(maxBottom, originY + row * (h + UNIT) + h)
+    }
+    return { maxBottom }
+  }
+
+  if (businessMode) {
+    const layoutBusinessFrame = (frame: Node<any>, forcedWidth?: number) => {
+      const kids = childrenByParent.get(frame.id) ?? []
+      const childFrames = kids.filter(isFrame).sort((a, b) => a.id.localeCompare(b.id))
+      const childNodes = kids.filter((k) => !isFrame(k)).sort((a, b) => a.id.localeCompare(b.id))
+
+      const padX = UNIT
+      const padBottom = UNIT
+      const padTop = TITLE_H + Math.round(UNIT * 1.35)
+      const isTop = !frame.parentId
+      // Top chapter frame width is FIXED to 30 units.
+      // Nested frames follow the width allocated by their parent.
+      const frameW = isTop ? BUSINESS_CHAPTER_W : Math.max(forcedWidth ?? MIN_W_DEFAULT, MIN_W_DEFAULT)
+      const availableW = Math.max(1, frameW - padX * 2)
+
+      // 1) 先拉伸并布局子画框（父层决定子画框宽度）
+      let yCursor = 0
+      if (childFrames.length > 0) {
+        const cols = chooseCols(childFrames.length)
+        const cellW = Math.max(120, Math.floor((availableW - (cols - 1) * UNIT) / cols))
+
+        // 先把宽度下发给子画框，再递归布局子画框内部节点
+        for (const cf of childFrames) {
+          cf.width = cellW
+          cf.style = { ...(cf.style as any), width: cellW }
+          layoutBusinessFrame(cf, cellW)
+        }
+
+        // 再按子画框实际高度排版位置
+        let row = 0
+        let col = 0
+        let rowY = 0
+        let rowMaxH = 0
+        for (const cf of childFrames) {
+          const h = getNodeSize(cf).h
+          const x = col * (cellW + UNIT)
+          cf.position = { x, y: rowY }
+          rowMaxH = Math.max(rowMaxH, h)
+          col += 1
+          if (col >= cols) {
+            col = 0
+            row += 1
+            rowY += rowMaxH + UNIT
+            rowMaxH = 0
+          }
+        }
+        yCursor = rowY + (rowMaxH > 0 ? rowMaxH : 0)
+      }
+
+      // 2) 再拉伸并布局当前画框内的直接子节点
+      if (childNodes.length > 0) {
+        if (childFrames.length > 0) yCursor += UNIT
+        const cols = chooseCols(childNodes.length)
+        const cellW = Math.max(120, Math.floor((availableW - (cols - 1) * UNIT) / cols))
+        for (let i = 0; i < childNodes.length; i += 1) {
+          const n = childNodes[i]
+          const { h } = getNodeSize(n)
+          const col = i % cols
+          const row = Math.floor(i / cols)
+          n.width = cellW
+          n.style = { ...(n.style as any), width: cellW }
+          n.position = { x: col * (cellW + UNIT), y: yCursor + row * (h + UNIT) }
+        }
+      }
+
+      // 3) 包裹当前画框并统一 padding（父级内部坐标系）
+      let minX = Infinity
+      let minY = Infinity
+      let maxX = -Infinity
+      let maxY = -Infinity
+      for (const k of kids) {
+        const { w, h } = getNodeSize(k)
+        const x = k.position?.x ?? 0
+        const y = k.position?.y ?? 0
+        minX = Math.min(minX, x)
+        minY = Math.min(minY, y)
+        maxX = Math.max(maxX, x + w)
+        maxY = Math.max(maxY, y + h)
+      }
+      if (!Number.isFinite(minX) || !Number.isFinite(minY) || !Number.isFinite(maxX) || !Number.isFinite(maxY)) {
+        frame.width = frameW
+        frame.height = Math.max(MIN_H, TITLE_H + UNIT * 3)
+        frame.style = { ...(frame.style as any), width: frame.width, height: frame.height }
+        return
+      }
+      const contentW = maxX - minX
+      const contentH = maxY - minY
+      // Keep the width that parent allocated (strict recursive stretching contract).
+      const nextW = frameW
+      const nextH = Math.max(MIN_H, contentH + padTop + padBottom)
+      const extraX = Math.max(0, nextW - (contentW + padX * 2))
+      const dx = -minX + padX + extraX / 2
+      const dy = -minY + padTop
+      for (const k of kids) {
+        k.position = { x: (k.position?.x ?? 0) + dx, y: (k.position?.y ?? 0) + dy }
+      }
+      frame.width = nextW
+      frame.height = nextH
+      frame.style = { ...(frame.style as any), width: nextW, height: nextH }
+    }
+
+    const topFrames = frames.filter((f) => !f.parentId).sort((a, b) => a.id.localeCompare(b.id))
+    for (const tf of topFrames) layoutBusinessFrame(tf, BUSINESS_CHAPTER_W)
+    return allNodes
+  }
+
   for (const f of frames) {
     const kids = childrenByParent.get(f.id) ?? []
     if (kids.length === 0) continue
@@ -216,133 +356,84 @@ function wrapFramesToContents(allNodes: Array<Node<any>>, businessMode: boolean)
     // Default mode: nested frames tile horizontally with wrap; nodes use a grid below frames.
     const childFrames = kids.filter(isFrame)
     const childNodes = kids.filter((k) => !isFrame(k))
-    if (childFrames.length > 0) {
-      const orderedFrames = [...childFrames].sort((a, b) => a.id.localeCompare(b.id))
-      // Frame-frame gap should match node-node gap (same unit rhythm)
-      const GAP2 = UNIT
-      let maxBottom = 0
-      if (businessMode) {
-        // Except outermost, frames prefer horizontal tiling WITHOUT wrapping.
-        let x = 0
-        let y = 0
-        let rowMaxH = 0
-        for (const cf of orderedFrames) {
-          const { w, h } = getNodeSize(cf)
-          cf.position = { x, y }
-          rowMaxH = Math.max(rowMaxH, h)
-          maxBottom = Math.max(maxBottom, y + h)
-          x += w + GAP2
-        }
-      } else {
-        const avgW =
-          orderedFrames.reduce((acc, cf) => {
-            const { w } = getNodeSize(cf)
-            return acc + w
-          }, 0) / Math.max(1, orderedFrames.length)
-        const wrapCols = Math.max(1, Math.min(6, Math.floor(1200 / Math.max(180, avgW + GAP2))))
-        const cols = Math.max(1, Math.min(wrapCols, Math.ceil(Math.sqrt(orderedFrames.length))))
-        let x = 0
-        let y = 0
-        let col = 0
-        let rowMaxH = 0
-        for (const cf of orderedFrames) {
-          const { w, h } = getNodeSize(cf)
-          cf.position = { x, y }
-          rowMaxH = Math.max(rowMaxH, h)
-          maxBottom = Math.max(maxBottom, y + h)
-          col += 1
-          if (col >= cols) {
-            col = 0
-            x = 0
-            y += rowMaxH + GAP2
-            rowMaxH = 0
-          } else {
-            x += w + GAP2
-          }
-        }
-      }
-      if (childNodes.length > 0) {
-        const orderedNodes = [...childNodes].sort((a, b) => a.id.localeCompare(b.id))
-        if (businessMode) {
-          // Prefer vertical order; wrap into 2-row columns when >2 nodes.
-          for (let i = 0; i < orderedNodes.length; i += 1) {
-            const n = orderedNodes[i]
-            const { w, h } = getNodeSize(n)
-            const row = i % 2
-            const col = Math.floor(i / 2)
-            n.position = { x: col * (w + UNIT), y: maxBottom + UNIT * 2 + row * (h + UNIT) }
-          }
-        } else {
-          const cols = Math.max(1, Math.min(6, orderedNodes.length))
-          for (let i = 0; i < orderedNodes.length; i += 1) {
-            const n = orderedNodes[i]
-            const { w, h } = getNodeSize(n)
-            const col = i % cols
-            const row = Math.floor(i / cols)
-            n.position = { x: col * (w + UNIT), y: maxBottom + UNIT * 2 + row * (h + UNIT) }
-          }
-        }
-      }
-    } else if (childNodes.length > 0) {
-      // only nodes:
-      // - business mode: vertical-first, wrap at 2 into 2-row columns
-      // - default: grid tiling
-      const orderedNodes = [...childNodes].sort((a, b) => a.id.localeCompare(b.id))
-      if (businessMode) {
-        for (let i = 0; i < orderedNodes.length; i += 1) {
-          const n = orderedNodes[i]
-          const { w, h } = getNodeSize(n)
-          const row = i % 2
-          const col = Math.floor(i / 2)
-          n.position = { x: col * (w + UNIT), y: row * (h + UNIT) }
-        }
-      } else {
-        const cols = Math.max(1, Math.min(4, Math.ceil(Math.sqrt(orderedNodes.length))))
-        for (let i = 0; i < orderedNodes.length; i += 1) {
-          const n = orderedNodes[i]
-          const { w, h } = getNodeSize(n)
-          const col = i % cols
-          const row = Math.floor(i / cols)
-          n.position = { x: col * (w + UNIT), y: row * (h + UNIT) }
-        }
-      }
-    }
-
-    let minX = Infinity
-    let minY = Infinity
-    let maxX = -Infinity
-    let maxY = -Infinity
-
-    for (const k of kids) {
-      const { w, h } = getNodeSize(k)
-      const x = k.position?.x ?? 0
-      const y = k.position?.y ?? 0
-      minX = Math.min(minX, x)
-      minY = Math.min(minY, y)
-      maxX = Math.max(maxX, x + w)
-      maxY = Math.max(maxY, y + h)
-    }
-
-    if (!Number.isFinite(minX) || !Number.isFinite(minY) || !Number.isFinite(maxX) || !Number.isFinite(maxY)) continue
-
-    const contentW = maxX - minX
-    const contentH = maxY - minY
     const isTop = !f.parentId
-    // Business mode: nested paddings are half-unit tight; top frame only needs title + 1 unit.
+    // Business mode: padding uses half grid unit (12px).
     // Default mode keeps previous rhythm.
     const padX = businessMode ? UNIT : isTop ? UNIT * 4 : UNIT
     const padBottom = businessMode ? UNIT : isTop ? UNIT * 4 : UNIT
     // business mode: reduce title-to-content gap a bit more
     const padTop = businessMode ? TITLE_H + Math.round(UNIT * 1.35) : TITLE_H + (isTop ? UNIT * 3 : UNIT)
-    const nextW = Math.max(MIN_W, contentW + padX * 2)
-    const nextH = Math.max(MIN_H, contentH + padTop + padBottom)
+    // Only top-level "chapter" frames should be clamped to the chapter width.
+    // Inner frames must stay compact; otherwise horizontal padding becomes huge.
+    // compute bounds AFTER any relayout to keep children in parent's local coordinate system
+    const computeBounds = () => {
+      let minX = Infinity
+      let minY = Infinity
+      let maxX = -Infinity
+      let maxY = -Infinity
+      for (const k of kids) {
+        const { w, h } = getNodeSize(k)
+        const x = k.position?.x ?? 0
+        const y = k.position?.y ?? 0
+        minX = Math.min(minX, x)
+        minY = Math.min(minY, y)
+        maxX = Math.max(maxX, x + w)
+        maxY = Math.max(maxY, y + h)
+      }
+      if (!Number.isFinite(minX) || !Number.isFinite(minY) || !Number.isFinite(maxX) || !Number.isFinite(maxY)) return null
+      return { minX, minY, maxX, maxY, contentW: maxX - minX, contentH: maxY - minY }
+    }
+
+    const initialBounds = computeBounds()
+    if (!initialBounds) continue
+    const minW = businessMode && isTop ? BUSINESS_CHAPTER_W : MIN_W_DEFAULT
+    let nextW = Math.max(minW, initialBounds.contentW + padX * 2)
+    let nextH = Math.max(MIN_H, initialBounds.contentH + padTop + padBottom)
+
+    // Business mode: stable auto-stretch, no special-case math.
+    // - Keep paddings/gaps uniform (1 unit)
+    // - Stretch children to fill width under the same parent
+    if (businessMode) {
+      // Atomic rule v0:
+      // When a frame directly contains exactly ONE node (no child frames),
+      // clamp frame width to <= 26 grid units, and stretch the node to fill
+      // remaining width with 0.5-grid-unit paddings on both sides.
+      if (childFrames.length === 0 && childNodes.length === 1) {
+        const targetW = Math.min(BUSINESS_CHAPTER_W, Math.max(MIN_W_DEFAULT, initialBounds.contentW + padX * 2))
+        f.width = targetW
+        f.style = { ...(f.style as any), width: targetW }
+        const n = childNodes[0]
+        const nodeW = Math.max(120, targetW - padX * 2)
+        n.width = nodeW
+        n.style = { ...(n.style as any), width: nodeW }
+        // keep node at (0,0) before final shift; we will shift by dx/dy below
+        n.position = { x: 0, y: 0 }
+        // update targets for padding/shift
+        nextW = targetW
+      }
+
+      let maxBottom = 0
+      if (childFrames.length > 0) {
+        const res = stretchChildrenToWidth(nextW, padX, childFrames, 0, false)
+        maxBottom = Math.max(maxBottom, res.maxBottom)
+      }
+      if (childNodes.length > 0) {
+        const res = stretchChildrenToWidth(nextW, padX, childNodes, childFrames.length > 0 ? maxBottom + UNIT : 0, true)
+        maxBottom = Math.max(maxBottom, res.maxBottom)
+      }
+    }
+
+    const bounds = computeBounds()
+    if (!bounds) continue
+    nextW = Math.max(nextW, bounds.contentW + padX * 2)
+    nextH = Math.max(nextH, bounds.contentH + padTop + padBottom)
 
     // shift children into padded area (keep relative ordering).
     // When MIN_W expands frame width (common in single-column business blocks),
     // distribute extra horizontal slack evenly so left/right paddings stay symmetric.
-    const extraX = Math.max(0, nextW - (contentW + padX * 2))
-    const dx = -minX + padX + extraX / 2
-    const dy = -minY + padTop
+    const extraX = Math.max(0, nextW - (bounds.contentW + padX * 2))
+    const dx = -bounds.minX + padX + extraX / 2
+    const dy = -bounds.minY + padTop
     for (const k of kids) {
       k.position = { x: (k.position?.x ?? 0) + dx, y: (k.position?.y ?? 0) + dy }
     }
@@ -850,8 +941,7 @@ export function materializeGraphBatchPayloadToSnapshot(
   let rowMaxH = 0
   let colMaxW = 0
   // Business Big Map: enforce equal chapter widths around 600px.
-  // Choose closest even number of LAYOUT_UNITs to 600: 26 * 24 = 624.
-  const businessChapterW = LAYOUT_UNIT * 26
+  const businessChapterW = BUSINESS_CHAPTER_W
   if (businessMode) {
     const byParent = new Map<string, Array<Node<any>>>()
     for (const n of safeNodes) {

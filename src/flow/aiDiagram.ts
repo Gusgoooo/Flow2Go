@@ -317,26 +317,26 @@ function analyzeBusinessNestingCoverage(draft: AiDiagramDraft) {
     if (!n.parentId || !frameById.has(n.parentId)) continue
     childCount.set(n.parentId, (childCount.get(n.parentId) ?? 0) + 1)
   }
-  const depthOf = (id: string) => {
-    let d = 0
-    let cur = frameById.get(id)
-    const seen = new Set<string>()
-    while (cur?.parentId && frameById.has(cur.parentId)) {
-      if (seen.has(cur.id)) break
-      seen.add(cur.id)
-      d += 1
-      cur = frameById.get(cur.parentId)
-    }
-    return d
-  }
+  const topFrames = [...frameById.values()].filter((f) => !f.parentId || !frameById.has(f.parentId))
   const kinds = new Set<NestingDepthKind>()
-  for (const f of frameById.values()) {
-    // leaf frame represents a concrete "nesting style" landing depth
-    if ((childCount.get(f.id) ?? 0) > 0) continue
-    const d = depthOf(f.id)
-    if (d >= 2) kinds.add('nest-3')
-    else if (d === 1) kinds.add('nest-2')
-    else kinds.add('nest-1')
+  for (const top of topFrames) {
+    const hasChild = (childCount.get(top.id) ?? 0) > 0
+    if (!hasChild) {
+      kinds.add('nest-1')
+      continue
+    }
+    // If any grand-child frame exists under this chapter, treat as 3-level.
+    let hasGrand = false
+    for (const f of frameById.values()) {
+      const p = f.parentId
+      if (!p || !frameById.has(p)) continue
+      const pp = frameById.get(p)?.parentId
+      if (pp === top.id) {
+        hasGrand = true
+        break
+      }
+    }
+    kinds.add(hasGrand ? 'nest-3' : 'nest-2')
   }
   return {
     kinds,
@@ -546,10 +546,11 @@ export const DEFAULT_MERMAID_SYSTEM_PROMPT = [
   '- 边动作应简洁明确，例如：提交、校验、调用服务、创建订单、支付回调、更新状态、返回结果',
   '',
   '规模与可读性（强制）：',
-  '- 优先生成更少的节点与连线，保证可读性与可编辑性',
-  '- 默认建议：6~10 个节点；边尽量少（建议 <= 节点数 - 1）',
-  '- 信息很多时：必须用 subgraph（分组/画框）承载，不要用大量边把所有节点串起来',
-  '- 能用“编组/分区”表达归属关系时，不要画边',
+  '- 以“最小 Mermaid DSL”完成用户诉求：能少就少，能省就省',
+  '- 默认建议：6~9 个节点（再多会失控）；边尽量少（建议 <= 节点数 - 2）',
+  '- 只保留主干结构：避免把每个细节都拆成节点；避免把每个关系都画边',
+  '- 信息很多时：用 subgraph（分组/画框）承载，而不是用大量边把所有节点串起来',
+  '- 能用“编组/分区”表达归属关系时，不画边',
   '',
   '默认生成策略：',
   '- 如果用户描述不完整，自动补全为合理的前后端业务流程图',
@@ -654,8 +655,14 @@ export async function openRouterGenerateDiagram(opts: OpenRouterChatOptions): Pr
       '- 控制复杂度：一级章节建议 3~5 个；每章二级模块建议 2~3 个；每个模块下要点建议 2 或 4 个（尽量偶数）。',
       '- 同一章节内的二级模块尽量保持“要点数量一致”（例如都 2 个或都 4 个），避免参差。',
       '- 画框横向平铺，子节点优先竖排（倒N字顺序），超过 2 个再折行。',
-      '- 必须同时包含 1层嵌套、2层嵌套、3层嵌套 三种章节画框（缺一不可）。',
-      '- 每一个章节画框必须只有一种嵌套层数：该章节要么是 1层嵌套，要么是 2层嵌套，要么是 3层嵌套；禁止同一章节内混用不同层数。',
+      '- 结构多样化（硬约束）：整张业务大图必须同时出现三类章节结构：',
+      '  - 章节A：1层嵌套（章节画框直接包含节点，不允许任何子 subgraph）',
+      '  - 章节B：2层嵌套（章节 -> 二级画框 -> 节点；禁止出现子画框）',
+      '  - 章节C：3层嵌套（章节 -> 二级画框 -> 子画框 -> 节点）',
+      '- 每一个章节画框必须只属于上述三类之一：禁止同一章节内混用不同层数。',
+      '- 1层嵌套章节：直接放 4~6 个 quad 节点即可（最简）。',
+      '- 2层嵌套章节：2~3 个二级画框，每个二级画框 2~4 个节点（最简）。',
+      '- 3层嵌套章节：2 个二级画框，每个二级画框 2~3 个子画框，每个子画框 2 个节点（最简）。',
       '- 嵌套样式从外向内决定：最内层（直接承载节点）统一为“主题色 6% 底 + 主题色不透明描边”的样式，不要出现截断式标题。',
       '- 所有画框标题必须自然、完整、可读，不要截断，不要附加类型尾缀。',
       '- 文案尽量不超过 5 个字；超过 5 个字必须拆成主副标题（V2）。',
