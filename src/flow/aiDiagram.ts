@@ -595,9 +595,15 @@ const DIAGRAM_PLANNER_SYSTEM_PROMPT = [
   '',
   '当 templateKey 为 Mind Map Template：',
   '- framesOrRoot 的第一个元素作为中心主题（root）；其 children 为一级分支；points 为二级/要点节点。',
-  '- 需要至少 3 层深度：可以在 points 里写“二级主题 + 可拆的子主题短语”，让模型在渲染时自然展开。',
+  '- 必须确保至少 3 层深度：根(Depth0) -> 一级分支(Depth1) -> 二级要点(Depth2)。',
+  '- 要求：children 数量建议 3~6；每个一级分支的 points 数量至少 1、最多 4。',
+  '- 列间距、线型由系统 mind-map 布局器与模板负责；你只负责结构信息。',
   '- 列间距、线型由系统 mind-map 布局器与模板负责。',
 ].join('\n')
+
+function detectMindMapIntent(prompt: string): boolean {
+  return /(思维导图|脑图|mind\s*map|树状联想|主题分支|知识梳理|层级展开)/i.test(prompt)
+}
 
 function parseSceneRouteJson(raw: string): SceneRoute | null {
   try {
@@ -687,19 +693,35 @@ export async function openRouterGenerateDiagram(opts: OpenRouterChatOptions): Pr
   let route: SceneRoute | null = null
 
   // 新链路：Scene Router -> Diagram Planner。失败则回退到旧逻辑，避免引入全局风险。
+  // Mind Map：额外做“硬路由”，避免模型把思维导图当流程图（关键）。
+  const forceMindMap = detectMindMapIntent(originalPrompt)
   try {
-    route = await openRouterSceneRoute({ apiKey: key, model, prompt: originalPrompt, signal, timeoutMs })
-    chosen = route.templateKey
-    plannerText = await openRouterDiagramPlanner({
-      apiKey: key,
-      model,
-      prompt: originalPrompt,
-      signal,
-      timeoutMs,
-      templateKey: chosen,
-      complexityMode: route.complexityMode,
-    })
-  } catch (e) {
+    if (forceMindMap) {
+      chosen = 'Mind Map Template'
+      route = { templateKey: 'Mind Map Template', sceneKind: 'mind-map', complexityMode: 'chapters' }
+      plannerText = await openRouterDiagramPlanner({
+        apiKey: key,
+        model,
+        prompt: originalPrompt,
+        signal,
+        timeoutMs,
+        templateKey: chosen,
+        complexityMode: route.complexityMode,
+      })
+    } else {
+      route = await openRouterSceneRoute({ apiKey: key, model, prompt: originalPrompt, signal, timeoutMs })
+      chosen = route.templateKey
+      plannerText = await openRouterDiagramPlanner({
+        apiKey: key,
+        model,
+        prompt: originalPrompt,
+        signal,
+        timeoutMs,
+        templateKey: chosen,
+        complexityMode: route.complexityMode,
+      })
+    }
+  } catch {
     chosen = null
     plannerText = null
     route = null
@@ -847,6 +869,21 @@ export async function openRouterGenerateDiagram(opts: OpenRouterChatOptions): Pr
   ].join('\n')
 
   const user = DEFAULT_MERMAID_USER_TEMPLATE.replaceAll('{{prompt}}', effectivePrompt)
+
+  const mindMapJsonMermaidHint = [
+    '【必须依据 Planner JSON 生成思维导图 Mermaid】',
+    '你在 user 里收到的是严格 JSON（来自 Diagram Planner）。请按以下映射生成：',
+    '1) 根节点：从 structure.framesOrRoot[0].title 生成一个节点 rootId[rootTitle]',
+    '2) 一级分支：对 structure.framesOrRoot[0].children 每个元素生成一个节点 childId[childTitle]',
+    '3) 二级要点：对每个 children[i].points 生成节点 pointId[pointTitle]',
+    '4) 连线关系（只表示归属，不要动作）：',
+    '   - rootId --> childId',
+    '   - childId --> pointId',
+    '5) 禁止：任何 subgraph / end / frame / 画框 / 编组。',
+    '6) 禁止：生成步骤式“流程图语序/章节链条”；只能做树状发散（root 并列一级分支）。',
+    '7) Mermaid 第一行必须是 flowchart LR。',
+  ].join('\n')
+
   const generateOnce = async (extraUserHint?: string) => {
     const content = await openRouterChatComplete({
       apiKey: key,
@@ -857,6 +894,12 @@ export async function openRouterGenerateDiagram(opts: OpenRouterChatOptions): Pr
       timeoutMs,
       temperature: 0.2,
     })
+
+    // Mind Map：强制禁止 subgraph，避免模型“顺便画框/编组”导致不是纯节点思维导图。
+    if (chosen === 'Mind Map Template' && /\bsubgraph\b/i.test(content)) {
+      throw new Error('Mind Map Template forbidden subgraph')
+    }
+
     return convertMermaidToAiDraft(content, {
       layoutProfile:
         chosen === 'Business Big Map Template'
@@ -868,6 +911,14 @@ export async function openRouterGenerateDiagram(opts: OpenRouterChatOptions): Pr
   }
 
   if (chosen !== 'Business Big Map Template') {
+    if (chosen === 'Mind Map Template') {
+      // Mind Map：最多重试一次，专门修复“画框/编组/不按 JSON 映射”问题。
+      try {
+        return await generateOnce(mindMapJsonMermaidHint)
+      } catch {
+        return await generateOnce(`${mindMapJsonMermaidHint}\n\n【额外强制】必须只输出节点和父子连线，禁止任何 subgraph/end。`)
+      }
+    }
     const d1 = await generateOnce()
 
     // 轻量压缩重试（非 business big map）：避免碎节点/碎连线退化过重。
