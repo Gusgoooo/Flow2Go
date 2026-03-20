@@ -85,6 +85,14 @@ function splitLabelAndSubtitle(labelRaw: string): { label: string; subtitle?: st
   return { label: t }
 }
 
+function extractBracketTitle(raw: string): string {
+  const t = raw.trim()
+  if (!t) return t
+  const m = t.match(/\[([^\]]+)\]/)
+  if (m?.[1]) return m[1].trim()
+  return t
+}
+
 function parseNodeToken(token: string): { id: string; label: string; subtitle?: string; shape: MermaidNodeShape; explicit: boolean } | null {
   const raw = token.trim()
 
@@ -206,7 +214,7 @@ export function parseMermaidFlowchart(input: string): ParseMermaidResult {
 
     const subgraphMatch = line.match(/^subgraph\s+(.+)$/i)
     if (subgraphMatch) {
-      const title = subgraphMatch[1].trim()
+      const title = extractBracketTitle(subgraphMatch[1].trim())
       const parentSubgraphId = subgraphStack[subgraphStack.length - 1]?.id
       const sg: MermaidIRSubgraph = {
         id: `subgraph_${slug(title) || String(state.subgraphs.length + 1)}`,
