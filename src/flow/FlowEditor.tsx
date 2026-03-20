@@ -1863,6 +1863,12 @@ function EditorInner({ onBackHome, source, previewSnapshot, readOnly: _readOnly 
         id,
         type: nodeType,
         position,
+        // Set initial size explicitly.
+        // Otherwise QuadNode/ReactFlow will fall back to DOM min-width (currently 80px),
+        // which makes newly created nodes start at 80px instead of the intended 160px.
+        width: defaultSize.w,
+        height: defaultSize.h,
+        style: { width: defaultSize.w, height: defaultSize.h },
         data: { label: nodeType === 'quad' ? `节点 ${id.slice(-4)}` : `文本 ${id.slice(-4)}` },
       }
       setNodes((nds) => {
@@ -1950,6 +1956,10 @@ function EditorInner({ onBackHome, source, previewSnapshot, readOnly: _readOnly 
         id,
         type: nodeType === 'quad' ? 'quad' : (nodeType as FlowNode['type']),
         position,
+        // Explicit default sizing for consistent initial width.
+        width: nodeType === 'quad' ? 160 : undefined,
+        height: nodeType === 'quad' ? 44 : undefined,
+        style: nodeType === 'quad' ? { width: 160, height: 44 } : undefined,
         data: { label: `${nodeType} ${id.slice(-4)}` },
       }
 
