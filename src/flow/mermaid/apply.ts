@@ -223,7 +223,6 @@ function wrapFramesToContents(allNodes: Array<Node<any>>, businessMode: boolean)
     return hasAny50 ? BUSINESS_CHAPTER_W_50 : BUSINESS_CHAPTER_W_30
   }
   const businessUnifiedTopChapterWidth = calcBusinessUnifiedTopChapterWidth()
-  const enforceAllFramesTo50 = businessUnifiedTopChapterWidth === BUSINESS_CHAPTER_W_50
   const getBusinessChapterWidth = (isTop: boolean): number => (isTop ? businessUnifiedTopChapterWidth : BUSINESS_CHAPTER_W_30)
 
   const frames = allNodes.filter(isFrame)
@@ -277,7 +276,7 @@ function wrapFramesToContents(allNodes: Array<Node<any>>, businessMode: boolean)
   }
 
   if (businessMode) {
-    const rowsPerColumn = 2
+    type BusinessCase = 'case1' | 'case2' | 'case3'
 
     const isDescendantFrame = (ancestorId: string, nodeId: string): boolean => {
       let cur = nodeById.get(nodeId)
@@ -349,7 +348,27 @@ function wrapFramesToContents(allNodes: Array<Node<any>>, businessMode: boolean)
       }
     }
 
-    const layoutBusinessFrame = (frame: Node<any>, forcedWidth?: number) => {
+    const getFrameDepthFrom = (rootId: string): number => {
+      const walk = (id: string, depth: number): number => {
+        const kids = (childrenByParent.get(id) ?? []).filter(isFrame)
+        if (kids.length === 0) return depth
+        let maxDepth = depth
+        for (const k of kids) {
+          maxDepth = Math.max(maxDepth, walk(k.id, depth + 1))
+        }
+        return maxDepth
+      }
+      return walk(rootId, 0)
+    }
+
+    const pickBusinessCase = (topFrameId: string): BusinessCase => {
+      const d = getFrameDepthFrom(topFrameId)
+      if (d >= 3) return 'case3'
+      if (d >= 2) return 'case2'
+      return 'case1'
+    }
+
+    const layoutBusinessFrame = (frame: Node<any>, forcedWidth: number | undefined, bizCase: BusinessCase, level: number) => {
       // Ensure this subtree obeys "max 2 direct child frames per parent" before layout.
       enforceMaxNestedFrames(frame.id, 2)
 
@@ -363,61 +382,59 @@ function wrapFramesToContents(allNodes: Array<Node<any>>, businessMode: boolean)
       const isTop = !frame.parentId
       // Top chapter width is selected by the generated structure.
       // Nested frames follow the width allocated by their parent.
-      const frameW =
-        isTop && enforceAllFramesTo50
-          ? BUSINESS_CHAPTER_W_50
-          : isTop
-            ? getBusinessChapterWidth(true)
-            : Math.max(forcedWidth ?? MIN_W_DEFAULT, MIN_W_DEFAULT)
+      const frameW = isTop ? getBusinessChapterWidth(true) : Math.max(forcedWidth ?? MIN_W_DEFAULT, MIN_W_DEFAULT)
       const availableW = Math.max(1, frameW - padX * 2)
 
-      // 1) 先拉伸并布局子画框（父层决定子画框宽度）
+      const shouldLayoutFrames =
+        (bizCase === 'case1' && level === 0) ||
+        (bizCase === 'case2' && level === 0) ||
+        (bizCase === 'case3' && (level === 0 || level === 1))
+      const shouldLayoutNodes =
+        (bizCase === 'case1' && level >= 1) ||
+        (bizCase === 'case2' && level >= 1) ||
+        (bizCase === 'case3' && level >= 2)
+
+      // 1) 先递归并布局子画框（优先横向平铺）
       let yCursor = 0
-      if (childFrames.length > 0) {
+      if (childFrames.length > 0 && shouldLayoutFrames) {
         // Optimized recursion:
         // - keep top-tier width decision at chapter level
         // - nested frames use parent's available width budget so they can tile horizontally
-        const cols = Math.max(1, Math.ceil(childFrames.length / rowsPerColumn))
+        const cols = Math.max(1, childFrames.length)
         const cellW = Math.max(MIN_NODE_W, Math.floor((availableW - (cols - 1) * UNIT) / cols))
 
         // 先把宽度下发给子画框，再递归布局子画框内部节点
         for (const cf of childFrames) {
           cf.width = cellW
           cf.style = { ...(cf.style as any), width: cellW }
-          layoutBusinessFrame(cf, cellW)
+          layoutBusinessFrame(cf, cellW, bizCase, level + 1)
         }
 
         // 再按子画框实际高度排版位置
         let maxBottom = 0
-        const topHeights = new Map<number, number>()
         for (let i = 0; i < childFrames.length; i += 1) {
           const cf = childFrames[i]
           const { h } = getNodeSize(cf)
-          const col = Math.floor(i / rowsPerColumn)
-          const row = i % rowsPerColumn
+          const col = i % cols
+          const row = Math.floor(i / cols)
           const x = col * (cellW + UNIT)
-          let y = 0
-          if (row === 0) {
-            topHeights.set(col, h)
-          } else {
-            y = (topHeights.get(col) ?? 0) + UNIT
-          }
+          const y = row * (h + UNIT)
           cf.position = { x, y }
           maxBottom = Math.max(maxBottom, y + h)
         }
         yCursor = maxBottom
       }
 
-      // 2) 再拉伸并布局当前画框内的直接子节点
-      if (childNodes.length > 0) {
+      // 2) 再布局当前画框内的直接子节点（最多2列）
+      if (childNodes.length > 0 && shouldLayoutNodes) {
         if (childFrames.length > 0) yCursor += UNIT
-        const cols = Math.max(1, Math.ceil(childNodes.length / rowsPerColumn))
+        const cols = Math.max(1, Math.min(2, childNodes.length))
         const cellW = Math.max(MIN_NODE_W, Math.floor((availableW - (cols - 1) * UNIT) / cols))
         for (let i = 0; i < childNodes.length; i += 1) {
           const n = childNodes[i]
           const { h } = getNodeSize(n)
-          const col = Math.floor(i / rowsPerColumn)
-          const row = i % rowsPerColumn
+          const col = i % cols
+          const row = Math.floor(i / cols)
           n.width = cellW
           n.style = { ...(n.style as any), width: cellW }
           n.position = { x: col * (cellW + UNIT), y: yCursor + row * (h + UNIT) }
@@ -461,7 +478,10 @@ function wrapFramesToContents(allNodes: Array<Node<any>>, businessMode: boolean)
     }
 
     const topFrames = frames.filter((f) => !f.parentId).sort((a, b) => a.id.localeCompare(b.id))
-    for (const tf of topFrames) layoutBusinessFrame(tf, getBusinessChapterWidth(true))
+    for (const tf of topFrames) {
+      const bizCase = pickBusinessCase(tf.id)
+      layoutBusinessFrame(tf, getBusinessChapterWidth(true), bizCase, 0)
+    }
     return allNodes
   }
 
