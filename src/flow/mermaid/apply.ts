@@ -77,7 +77,7 @@ function frameDefaults(title: string) {
 
 const LAYOUT_UNIT = 24
 const BUSINESS_INNER_UNIT = 12
-const NODE_MIN_WIDTH_UNITS = 3.5
+const NODE_MIN_WIDTH_UNITS = 3
 const BUSINESS_CHAPTER_W_30 = LAYOUT_UNIT * 30 // 30 grid units = 720px
 const BUSINESS_CHAPTER_W_50 = LAYOUT_UNIT * 50 // 50 grid units = 1200px
 // Keep the old name for readability at call sites that still assume the "30 units" baseline.
@@ -181,6 +181,7 @@ function wrapFramesToContents(allNodes: Array<Node<any>>, businessMode: boolean)
   const MIN_H = 140
   const UNIT = businessMode ? BUSINESS_INNER_UNIT : LAYOUT_UNIT
   const MIN_NODE_W = Math.round(UNIT * NODE_MIN_WIDTH_UNITS)
+  const NODE_GAP = Math.round(UNIT * 0.5)
   const MAX_COLS = businessMode ? 6 : 6
 
   const nodeById = new Map(allNodes.map((n) => [n.id, n]))
@@ -396,16 +397,18 @@ function wrapFramesToContents(allNodes: Array<Node<any>>, businessMode: boolean)
       // 2) 再布局当前画框内的直接子节点（最多2列）
       if (childNodes.length > 0) {
         if (childFrames.length > 0) yCursor += UNIT
-        const cols = Math.max(1, Math.min(2, childNodes.length))
-        const cellW = Math.max(MIN_NODE_W, Math.floor((availableW - (cols - 1) * UNIT) / cols))
+        // 节点统一采用竖向“倒N”排列：先上下，再换列（最多2行）
+        const rows = Math.max(1, Math.min(2, childNodes.length))
+        const cols = Math.max(1, Math.ceil(childNodes.length / rows))
+        const cellW = Math.max(MIN_NODE_W, Math.floor((availableW - (cols - 1) * NODE_GAP) / cols))
         for (let i = 0; i < childNodes.length; i += 1) {
           const n = childNodes[i]
           const { h } = getNodeSize(n)
-          const col = i % cols
-          const row = Math.floor(i / cols)
+          const col = Math.floor(i / rows)
+          const row = i % rows
           n.width = cellW
           n.style = { ...(n.style as any), width: cellW }
-          n.position = { x: col * (cellW + UNIT), y: yCursor + row * (h + UNIT) }
+          n.position = { x: col * (cellW + NODE_GAP), y: yCursor + row * (h + NODE_GAP) }
         }
       }
 
