@@ -194,7 +194,7 @@ function wrapFramesToContents(allNodes: Array<Node<any>>, businessMode: boolean)
 
   // Business Big Map: chapter width is unified by the largest bucket.
   // Rule:
-  // - If ANY top-level chapter matches "3 sub-frames and each sub-frame has >2 direct non-frame nodes",
+  // - If ANY top-level chapter matches ">=3 sub-frames and at least 3 sub-frames each has >2 direct non-frame nodes",
   //   then ALL top-level chapters use 50 grid units.
   // - Otherwise ALL top-level chapters use 30 grid units.
   const calcBusinessUnifiedTopChapterWidth = (): number => {
@@ -202,12 +202,13 @@ function wrapFramesToContents(allNodes: Array<Node<any>>, businessMode: boolean)
     const hasAny50 = topFrames.some((chapter) => {
       const kids = childrenByParent.get(chapter.id) ?? []
       const subFrames = kids.filter(isFrame)
-      if (subFrames.length !== 3) return false
-      return subFrames.every((sf) => {
+      if (subFrames.length < 3) return false
+      const qualified = subFrames.filter((sf) => {
         const sfKids = childrenByParent.get(sf.id) ?? []
         const directNonFrameNodes = sfKids.filter((n) => !isFrame(n)).length
         return directNonFrameNodes > 2
       })
+      return qualified.length >= 3
     })
     return hasAny50 ? BUSINESS_CHAPTER_W_50 : BUSINESS_CHAPTER_W_30
   }
