@@ -64,7 +64,7 @@ import {
   normalizeAiDiagramToSnapshot,
   type AiDiagramDraft,
 } from './aiDiagram'
-import { AI_PROMPT_PRESETS, DEFAULT_AI_PROMPT } from './aiPromptPresets'
+import { AI_PROMPT_PRESETS } from './aiPromptPresets'
 // overview 示例入口已移除
 
 export type AssetItem = {
@@ -618,7 +618,7 @@ function EditorInner({ onBackHome, source, previewSnapshot, readOnly: _readOnly 
   const isPreview = !!previewSnapshot || !!_readOnly
   const [assetsPopupOpen, setAssetsPopupOpen] = useState(false)
   const [aiModalOpen, setAiModalOpen] = useState(false)
-  const [aiModalPrompt, setAiModalPrompt] = useState(() => DEFAULT_AI_PROMPT)
+  const [aiModalPrompt, setAiModalPrompt] = useState('')
   const [aiConfigOpen, setAiConfigOpen] = useState(false)
   const [aiModalGenerating, setAiModalGenerating] = useState(false)
   const [aiModalError, setAiModalError] = useState<string | null>(null)
@@ -2900,6 +2900,7 @@ function EditorInner({ onBackHome, source, previewSnapshot, readOnly: _readOnly 
                 onClick={() => {
                   setAiModalError(null)
                   setAiConfigOpen(false)
+                  setAiModalPrompt('')
                   setAiModalOpen(true)
                 }}
               >
