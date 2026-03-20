@@ -212,57 +212,66 @@ function wrapFramesToContents(allNodes: Array<Node<any>>, businessMode: boolean)
   //   - grandchildFrames >= 6 => 120
   const calcBusinessUnifiedTopChapterWidth = (): number => {
     const topFrames = allNodes.filter((n) => isFrame(n) && !n.parentId)
-    const countDescendantFrames = (frameId: string): number => {
-      const q: string[] = [frameId]
-      const seen = new Set<string>()
-      let count = 0
-      while (q.length > 0) {
-        const pid = q.shift()!
-        const kids = (childrenByParent.get(pid) ?? []).filter(isFrame)
-        for (const k of kids) {
-          if (seen.has(k.id)) continue
-          seen.add(k.id)
-          count += 1
-          q.push(k.id)
-        }
+
+    // Recursively compute a "required width" purely from sub-frame branching.
+    // This is designed to fix underestimation cases like:
+    // top: 2 child frames -> each child has 2 sub-child frames
+    //
+    // We intentionally ignore child-quad counts (你选的 A 方案),
+    // but still use a safe leaf base width so the recursion doesn't collapse to too small tiers.
+    const BASE_LEAF_FRAME_W = MIN_W_DEFAULT // 220px
+
+    const memo = new Map<string, number>()
+    const visiting = new Set<string>()
+
+    const requiredWidthForFrame = (frameId: string): number => {
+      const cached = memo.get(frameId)
+      if (cached != null) return cached
+      if (visiting.has(frameId)) {
+        // Defensive: break potential cycles; fall back to base.
+        return BASE_LEAF_FRAME_W
       }
-      return count
+      visiting.add(frameId)
+
+      const childFrames = (childrenByParent.get(frameId) ?? []).filter(isFrame)
+      if (childFrames.length === 0) {
+        memo.set(frameId, BASE_LEAF_FRAME_W)
+        visiting.delete(frameId)
+        return BASE_LEAF_FRAME_W
+      }
+
+      // layoutBusinessFrame places direct child frames with:
+      // cols = min(3, childFrames.length), and each child frame width ~= cellW.
+      const cols = Math.max(1, Math.min(3, childFrames.length))
+      const requiredChildW = Math.max(...childFrames.map((cf) => requiredWidthForFrame(cf.id)))
+
+      // parentW needs to satisfy:
+      // cellW = floor((availableW - (cols - 1) * UNIT) / cols)
+      // with availableW = parentW - 2 * padX, padX = UNIT.
+      // => parentW >= 2*padX + (cols-1)*UNIT + cols*requiredChildW
+      const padX = UNIT
+      const parentW = 2 * padX + (cols - 1) * UNIT + cols * requiredChildW
+
+      memo.set(frameId, parentW)
+      visiting.delete(frameId)
+      return parentW
     }
 
-    const calcTierUnits = (chapterId: string): number => {
-      const directChildFrames = (childrenByParent.get(chapterId) ?? []).filter(isFrame).length
-      const descendantFrames = countDescendantFrames(chapterId)
-      // descendantFrames includes direct child frames + deeper frames.
-      const grandchildFrames = Math.max(0, descendantFrames - directChildFrames)
-
-      if (directChildFrames <= 2) return 30
-      if (directChildFrames !== 3) return 120
-
-      // directChildFrames === 3
-      if (grandchildFrames === 0) return 50
-      if (grandchildFrames <= 2) return 70
-      if (grandchildFrames <= 5) return 90
-      return 120
-    }
-
-    let maxUnits = 30
+    let globalNeed = 0
     for (const chapter of topFrames) {
-      const units = calcTierUnits(chapter.id)
-      if (units > maxUnits) maxUnits = units
+      globalNeed = Math.max(globalNeed, requiredWidthForFrame(chapter.id))
     }
 
-    const tierWidth =
-      maxUnits === 30
-        ? BUSINESS_CHAPTER_W_30
-        : maxUnits === 50
-          ? BUSINESS_CHAPTER_W_50
-          : maxUnits === 70
-            ? BUSINESS_CHAPTER_W_70
-            : maxUnits === 90
-              ? BUSINESS_CHAPTER_W_90
-              : BUSINESS_CHAPTER_W_120
+    const tiers = [
+      { w: BUSINESS_CHAPTER_W_30, label: 30 },
+      { w: BUSINESS_CHAPTER_W_50, label: 50 },
+      { w: BUSINESS_CHAPTER_W_70, label: 70 },
+      { w: BUSINESS_CHAPTER_W_90, label: 90 },
+      { w: BUSINESS_CHAPTER_W_120, label: 120 },
+    ]
 
-    return tierWidth
+    const chosen = tiers.find((t) => t.w >= globalNeed) ?? tiers[tiers.length - 1]
+    return chosen.w
   }
   const businessUnifiedTopChapterWidth = calcBusinessUnifiedTopChapterWidth()
   const getBusinessChapterWidth = (isTop: boolean): number => (isTop ? businessUnifiedTopChapterWidth : BUSINESS_CHAPTER_W_30)
