@@ -307,7 +307,7 @@ function wrapFramesToContents(allNodes: Array<Node<any>>, businessMode: boolean)
     // Never allow a parent frame to directly contain more than 2 child frames.
     // If exceeded, move extra child frames under the first two child frames in turn,
     // and iterate until every parent satisfies the cap.
-    const enforceMaxNestedFrames = (rootFrameId: string, maxChildren = 2) => {
+    const enforceMaxNestedFrames = (rootFrameId: string, maxChildren = 3) => {
       const queue: string[] = [rootFrameId]
       const guard = new Set<string>()
       while (queue.length > 0) {
@@ -348,8 +348,8 @@ function wrapFramesToContents(allNodes: Array<Node<any>>, businessMode: boolean)
     }
 
     const layoutBusinessFrame = (frame: Node<any>, forcedWidth: number | undefined) => {
-      // Ensure this subtree obeys "max 2 direct child frames per parent" before layout.
-      enforceMaxNestedFrames(frame.id, 2)
+      // Ensure this subtree obeys "max 3 direct child frames per parent" before layout.
+      enforceMaxNestedFrames(frame.id, 3)
 
       const kids = childrenByParent.get(frame.id) ?? []
       const childFrames = kids.filter(isFrame).sort((a, b) => a.id.localeCompare(b.id))
@@ -367,8 +367,8 @@ function wrapFramesToContents(allNodes: Array<Node<any>>, businessMode: boolean)
       // 1) 先递归并布局子画框（优先横向平铺）
       let yCursor = 0
       if (childFrames.length > 0) {
-        // 横向优先，超出后换行；每行最多2个子画框，避免过宽导致拥挤
-        const cols = Math.max(1, Math.min(2, childFrames.length))
+        // 横向优先，超出后换行；每行最多3个子画框
+        const cols = Math.max(1, Math.min(3, childFrames.length))
         const cellW = Math.max(MIN_NODE_W, Math.floor((availableW - (cols - 1) * UNIT) / cols))
 
         // 先把宽度下发给子画框，再递归布局子画框内部节点
