@@ -34,7 +34,9 @@ import {
 import JSZip from 'jszip'
 import {
   AlignHorizontalDistributeCenter,
+  KeyRound,
   InspectionPanel,
+  Settings2,
   SquareDashedKanban,
   Square,
   Type,
@@ -656,6 +658,7 @@ function EditorInner({ onBackHome, source, previewSnapshot, readOnly: _readOnly 
   const [assetsPopupOpen, setAssetsPopupOpen] = useState(false)
   const [aiModalOpen, setAiModalOpen] = useState(false)
   const [aiModalPrompt, setAiModalPrompt] = useState(() => DEFAULT_BUSINESS_BIGMAP_PROMPT)
+  const [aiConfigOpen, setAiConfigOpen] = useState(false)
   const [aiModalGenerating, setAiModalGenerating] = useState(false)
   const [aiModalError, setAiModalError] = useState<string | null>(null)
   const [aiModalModel, setAiModalModel] = useState<string>(() => {
@@ -2935,6 +2938,7 @@ function EditorInner({ onBackHome, source, previewSnapshot, readOnly: _readOnly 
                 type="button"
                 onClick={() => {
                   setAiModalError(null)
+                  setAiConfigOpen(false)
                   setAiModalOpen(true)
                 }}
               >
@@ -3002,35 +3006,69 @@ function EditorInner({ onBackHome, source, previewSnapshot, readOnly: _readOnly 
               <div style={{ padding: '12px 14px', display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 10, borderBottom: '1px solid rgba(148,163,184,0.18)' }}>
                 <div style={{ fontSize: 14, fontWeight: 800 }}>AI 生成</div>
                 <div style={{ display: 'flex', gap: 8 }}>
+                  <button
+                    type="button"
+                    className={styles.aiConfigIconBtn}
+                    title="OpenRouter 配置"
+                    onClick={() => setAiConfigOpen((v) => !v)}
+                  >
+                    <Settings2 size={16} />
+                  </button>
                   <button type="button" className={styles.btnSecondary} onClick={() => setAiModalOpen(false)}>
                     关闭
                   </button>
                 </div>
               </div>
 
-              <div style={{ padding: 14, display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12, overflow: 'auto' }}>
-                <div style={{ display: 'flex', flexDirection: 'column', gap: 8, minWidth: 0 }}>
-                  <div style={{ fontSize: 12, fontWeight: 800, color: '#cbd5e1' }}>Prompt</div>
-                  <textarea
-                    value={aiModalPrompt}
-                    onChange={(e) => setAiModalPrompt(e.target.value)}
-                    rows={10}
-                    placeholder="描述你想生成的图，例如：一个树状结构的解决方案分层图..."
-                    style={{
-                      width: '100%',
-                      borderRadius: 10,
-                      border: '1px solid rgba(148,163,184,0.22)',
-                      padding: 10,
-                      background: '#0a0f1a',
-                      color: '#e2e8f0',
-                      resize: 'vertical',
-                      fontSize: 13,
-                      lineHeight: 1.55,
-                    }}
-                  />
+              <div className={styles.aiModalLayout}>
+                {aiConfigOpen && (
+                  <div className={styles.aiConfigPanel}>
+                    <div className={styles.aiConfigTitle}>OpenRouter 配置</div>
+                    <input
+                      className={styles.aiApiKeyInput}
+                      value={aiModalKey}
+                      onChange={(e) => {
+                        setAiModalKey(e.target.value)
+                        try { localStorage.setItem('flow2go-openrouter-key', e.target.value) } catch {}
+                      }}
+                      placeholder="sk-or-..."
+                    />
+                    <input
+                      className={styles.aiApiKeyInput}
+                      value={aiModalModel}
+                      onChange={(e) => {
+                        setAiModalModel(e.target.value)
+                        try { localStorage.setItem('flow2go-openrouter-model', e.target.value) } catch {}
+                      }}
+                      placeholder="openai/gpt-5.4-nano"
+                    />
+                    <div className={styles.aiNote} style={{ opacity: 0.9 }}>
+                      配置只保存在本地浏览器。未配置 Key 时，无法发起生成。
+                    </div>
+                  </div>
+                )}
 
-                  <div className={styles.aiNote}>
-                    已加载“战略全景业务大图”预设 Prompt，可直接生成或继续编辑。
+                <div className={styles.aiPromptColumn}>
+                  <div className={styles.aiPromptHeader}>
+                    <div style={{ fontSize: 12, fontWeight: 800, color: '#cbd5e1' }}>Prompt</div>
+                    {!aiModalKey.trim() && (
+                      <button type="button" className={styles.aiNeedConfigTag} onClick={() => setAiConfigOpen(true)}>
+                        <KeyRound size={14} />
+                        需先配置 API Key
+                      </button>
+                    )}
+                  </div>
+                  <div className={styles.aiChatInputWrap}>
+                    <textarea
+                      value={aiModalPrompt}
+                      onChange={(e) => setAiModalPrompt(e.target.value)}
+                      rows={10}
+                      placeholder="像 ChatGPT 一样输入你的需求，支持多段层级描述..."
+                      className={styles.aiChatInput}
+                    />
+                    <div className={styles.aiChatToolbar}>
+                      <div className={styles.aiNote}>已加载“战略全景业务大图”预设 Prompt，可直接生成或继续编辑。</div>
+                    </div>
                   </div>
 
                   {aiModalError && <div className={styles.aiError}>{aiModalError}</div>}
@@ -3045,6 +3083,7 @@ function EditorInner({ onBackHome, source, previewSnapshot, readOnly: _readOnly 
                         if (!p) return
                         if (!aiModalKey.trim()) {
                           setAiModalError('请先填写 OpenRouter API Key')
+                          setAiConfigOpen(true)
                           return
                         }
                         setAiModalGenerating(true)
@@ -3077,31 +3116,6 @@ function EditorInner({ onBackHome, source, previewSnapshot, readOnly: _readOnly 
                     >
                       恢复预设
                     </button>
-                  </div>
-                </div>
-
-                <div style={{ display: 'flex', flexDirection: 'column', gap: 10, minWidth: 0 }}>
-                  <div style={{ fontSize: 12, fontWeight: 800, color: '#cbd5e1' }}>OpenRouter API Key / Model</div>
-                  <input
-                    className={styles.aiApiKeyInput}
-                    value={aiModalKey}
-                    onChange={(e) => {
-                      setAiModalKey(e.target.value)
-                      try { localStorage.setItem('flow2go-openrouter-key', e.target.value) } catch {}
-                    }}
-                    placeholder="sk-or-..."
-                  />
-                  <input
-                    className={styles.aiApiKeyInput}
-                    value={aiModalModel}
-                    onChange={(e) => {
-                      setAiModalModel(e.target.value)
-                      try { localStorage.setItem('flow2go-openrouter-model', e.target.value) } catch {}
-                    }}
-                    placeholder="openai/gpt-5.4-nano"
-                  />
-                  <div className={styles.aiNote} style={{ opacity: 0.9 }}>
-                    说明：会先自动选择最适合的 usertemplate，再按该模板强约束生成 Mermaid（V2），并使用四向 handle/布局规则应用到画布。
                   </div>
                 </div>
               </div>
