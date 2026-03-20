@@ -310,6 +310,8 @@ function wrapFramesToContents(allNodes: Array<Node<any>>, businessMode: boolean)
       if (stretchWidth) {
         it.width = cellW
         it.style = { ...(it.style as any), width: cellW }
+        // Ensure later bounds calculations use the updated width.
+        ;(it as any).measured = undefined
       }
       it.position = { x: col * (cellW + UNIT), y: originY + row * (h + UNIT) }
       maxBottom = Math.max(maxBottom, originY + row * (h + UNIT) + h)
@@ -554,13 +556,18 @@ function wrapFramesToContents(allNodes: Array<Node<any>>, businessMode: boolean)
         // This clamp must follow the selected global "max tier" width.
         // Otherwise, mixed 1-level + 2-level nesting will cause shallow frames
         // to be forced back to the 30-unit baseline, producing small alignment issues.
-        const targetW = Math.min(businessUnifiedTopChapterWidth, Math.max(MIN_W_DEFAULT, initialBounds.contentW + padX * 2))
+        // Avoid forcing single-node frames to the old fixed MIN_W_DEFAULT (220px).
+        // That can prevent nodes from reaching the intended "3 units" minimum width.
+        const targetWMin = padX * 2 + MIN_NODE_W
+        const targetW = Math.min(businessUnifiedTopChapterWidth, Math.max(targetWMin, initialBounds.contentW + padX * 2))
         f.width = targetW
         f.style = { ...(f.style as any), width: targetW }
         const n = childNodes[0]
         const nodeW = Math.max(MIN_NODE_W, targetW - padX * 2)
         n.width = nodeW
         n.style = { ...(n.style as any), width: nodeW }
+        // Ensure later bounds calculations use the updated width.
+        ;(n as any).measured = undefined
         // keep node at (0,0) before final shift; we will shift by dx/dy below
         n.position = { x: 0, y: 0 }
         // update targets for padding/shift
