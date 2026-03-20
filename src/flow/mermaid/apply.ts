@@ -77,6 +77,7 @@ function frameDefaults(title: string) {
 
 const LAYOUT_UNIT = 24
 const BUSINESS_INNER_UNIT = 12
+const NODE_MIN_WIDTH_UNITS = 3.5
 const BUSINESS_CHAPTER_W_30 = LAYOUT_UNIT * 30 // 30 grid units = 720px
 const BUSINESS_CHAPTER_W_50 = LAYOUT_UNIT * 50 // 50 grid units = 1200px
 // Keep the old name for readability at call sites that still assume the "30 units" baseline.
@@ -179,6 +180,7 @@ function wrapFramesToContents(allNodes: Array<Node<any>>, businessMode: boolean)
   const MIN_W_DEFAULT = 220
   const MIN_H = 140
   const UNIT = businessMode ? BUSINESS_INNER_UNIT : LAYOUT_UNIT
+  const MIN_NODE_W = Math.round(UNIT * NODE_MIN_WIDTH_UNITS)
   const MAX_COLS = businessMode ? 6 : 6
 
   const nodeById = new Map(allNodes.map((n) => [n.id, n]))
@@ -247,7 +249,7 @@ function wrapFramesToContents(allNodes: Array<Node<any>>, businessMode: boolean)
     if (ordered.length === 0) return { maxBottom: originY }
     const cols = chooseCols(ordered.length)
     const availableW = Math.max(1, parentW - padX * 2)
-    const cellW = Math.max(120, Math.floor((availableW - (cols - 1) * UNIT) / cols))
+    const cellW = Math.max(MIN_NODE_W, Math.floor((availableW - (cols - 1) * UNIT) / cols))
     let maxBottom = originY
     for (let i = 0; i < ordered.length; i += 1) {
       const it = ordered[i]
@@ -368,7 +370,7 @@ function wrapFramesToContents(allNodes: Array<Node<any>>, businessMode: boolean)
         const cols = enforceAllFramesTo50 ? 1 : Math.max(1, Math.ceil(childFrames.length / rowsPerColumn))
         const cellW = enforceAllFramesTo50
           ? BUSINESS_CHAPTER_W_50
-          : Math.max(120, Math.floor((availableW - (cols - 1) * UNIT) / cols))
+          : Math.max(MIN_NODE_W, Math.floor((availableW - (cols - 1) * UNIT) / cols))
 
         // 先把宽度下发给子画框，再递归布局子画框内部节点
         for (const cf of childFrames) {
@@ -402,7 +404,7 @@ function wrapFramesToContents(allNodes: Array<Node<any>>, businessMode: boolean)
       if (childNodes.length > 0) {
         if (childFrames.length > 0) yCursor += UNIT
         const cols = Math.max(1, Math.ceil(childNodes.length / rowsPerColumn))
-        const cellW = Math.max(120, Math.floor((availableW - (cols - 1) * UNIT) / cols))
+        const cellW = Math.max(MIN_NODE_W, Math.floor((availableW - (cols - 1) * UNIT) / cols))
         for (let i = 0; i < childNodes.length; i += 1) {
           const n = childNodes[i]
           const { h } = getNodeSize(n)
@@ -513,7 +515,7 @@ function wrapFramesToContents(allNodes: Array<Node<any>>, businessMode: boolean)
         f.width = targetW
         f.style = { ...(f.style as any), width: targetW }
         const n = childNodes[0]
-        const nodeW = Math.max(120, targetW - padX * 2)
+        const nodeW = Math.max(MIN_NODE_W, targetW - padX * 2)
         n.width = nodeW
         n.style = { ...(n.style as any), width: nodeW }
         // keep node at (0,0) before final shift; we will shift by dx/dy below
