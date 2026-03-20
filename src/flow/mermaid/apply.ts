@@ -1141,6 +1141,20 @@ export function materializeGraphBatchPayloadToSnapshot(
     const COL_GAP = LAYOUT_UNIT * 10
     const ROW_GAP = LAYOUT_UNIT * 1 // 同列纵向间距（结合节点高度避免重叠）
 
+    // 思维导图：不允许任何画框/编组容器。
+    // 有些模型输出可能仍带着 subgraph/frame（即 group(role=frame)），
+    // 这里强制把 quad 拉到根，并从 nodes 里移除所有 frame groups，确保“纯节点思维导图”。
+    const frameRoleNodes = safeNodes.filter((n) => n.type === 'group' && (n.data as any)?.role === 'frame')
+    if (frameRoleNodes.length > 0) {
+      const frameIdSet = new Set(frameRoleNodes.map((f) => f.id))
+      for (const n of safeNodes) {
+        if (n.type === 'quad' && n.parentId && frameIdSet.has(n.parentId)) {
+          n.parentId = undefined
+        }
+      }
+      safeNodes = safeNodes.filter((n) => !(n.type === 'group' && (n.data as any)?.role === 'frame'))
+    }
+
     const frameNodes = safeNodes.filter((n) => n.type === 'group' && (n.data as any)?.role === 'frame')
     const wrapperFrames = frameNodes.filter((f) => !f.parentId)
     const palette = TOP_FRAME_THEME_COLORS
@@ -1249,6 +1263,8 @@ export function materializeGraphBatchPayloadToSnapshot(
             ...(n.data ?? {}),
             stroke: color,
             strokeWidth: 2,
+            // Mind Map：只保留左右 handle，避免出现上/下句柄造成“非思维导图观感”。
+            handleMode: 'leftRight',
           }
         }
 
@@ -1322,6 +1338,8 @@ export function materializeGraphBatchPayloadToSnapshot(
             ...(n.data ?? {}),
             stroke: color,
             strokeWidth: 2,
+            // Mind Map：只保留左右 handle，避免出现上/下句柄造成“非思维导图观感”。
+            handleMode: 'leftRight',
           }
         }
 

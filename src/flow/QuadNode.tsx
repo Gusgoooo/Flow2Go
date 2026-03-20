@@ -21,6 +21,11 @@ type QuadNodeData = {
   stroke?: string
   /** 节点描边粗细 */
   strokeWidth?: number
+  /**
+   * 思维导图模式：只保留左右句柄，隐藏上下句柄。
+   * 其它模式默认渲染全部句柄。
+   */
+  handleMode?: 'leftRight' | 'all'
   /** 节点形状（点击节点弹出工具栏可切换） */
   shape?: QuadShape
 }
@@ -133,6 +138,7 @@ export function QuadNode(props: NodeProps) {
   const title = data.title ?? data.label ?? ''
   const subtitle = data.subtitle ?? ''
   const showSubtitle = !!data.showSubtitle
+  const showLeftRightHandles = data.handleMode === 'leftRight'
   const labelStyle = {
     fontSize: data.labelFontSize ?? 12,
     fontWeight: data.labelFontWeight ?? '700',
@@ -340,16 +346,34 @@ export function QuadNode(props: NodeProps) {
       </div>
 
       {/* target handles - 与 nodeInner 平级，不被 clip-path 裁剪 */}
-      <Handle className={styles.handle} type="target" position={Position.Top} id="t-top" />
-      <Handle className={styles.handle} type="target" position={Position.Right} id="t-right" />
-      <Handle className={styles.handle} type="target" position={Position.Bottom} id="t-bottom" />
-      <Handle className={styles.handle} type="target" position={Position.Left} id="t-left" />
+      {showLeftRightHandles ? (
+        <>
+          <Handle className={styles.handle} type="target" position={Position.Right} id="t-right" />
+          <Handle className={styles.handle} type="target" position={Position.Left} id="t-left" />
+        </>
+      ) : (
+        <>
+          <Handle className={styles.handle} type="target" position={Position.Top} id="t-top" />
+          <Handle className={styles.handle} type="target" position={Position.Right} id="t-right" />
+          <Handle className={styles.handle} type="target" position={Position.Bottom} id="t-bottom" />
+          <Handle className={styles.handle} type="target" position={Position.Left} id="t-left" />
+        </>
+      )}
 
       {/* source handles */}
-      <Handle className={styles.handle} type="source" position={Position.Top} id="s-top" />
-      <Handle className={styles.handle} type="source" position={Position.Right} id="s-right" />
-      <Handle className={styles.handle} type="source" position={Position.Bottom} id="s-bottom" />
-      <Handle className={styles.handle} type="source" position={Position.Left} id="s-left" />
+      {showLeftRightHandles ? (
+        <>
+          <Handle className={styles.handle} type="source" position={Position.Right} id="s-right" />
+          <Handle className={styles.handle} type="source" position={Position.Left} id="s-left" />
+        </>
+      ) : (
+        <>
+          <Handle className={styles.handle} type="source" position={Position.Top} id="s-top" />
+          <Handle className={styles.handle} type="source" position={Position.Right} id="s-right" />
+          <Handle className={styles.handle} type="source" position={Position.Bottom} id="s-bottom" />
+          <Handle className={styles.handle} type="source" position={Position.Left} id="s-left" />
+        </>
+      )}
     </div>
   )
 }
