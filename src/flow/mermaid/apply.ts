@@ -196,21 +196,29 @@ function wrapFramesToContents(allNodes: Array<Node<any>>, businessMode: boolean)
 
   // Business Big Map: chapter width is unified by the largest bucket.
   // Rule:
-  // - If ANY top-level chapter matches ">=3 sub-frames and at least 3 sub-frames each has >2 direct non-frame nodes",
-  //   then ALL top-level chapters use 50 grid units.
-  // - Otherwise ALL top-level chapters use 30 grid units.
+  // - If ANY top-level chapter has >=3 descendant frames (at any depth), then ALL frames use 50 grid units.
+  // - Otherwise ALL frames use 30 grid units.
   const calcBusinessUnifiedTopChapterWidth = (): number => {
     const topFrames = allNodes.filter((n) => isFrame(n) && !n.parentId)
+    const countDescendantFrames = (frameId: string): number => {
+      const q: string[] = [frameId]
+      const seen = new Set<string>()
+      let count = 0
+      while (q.length > 0) {
+        const pid = q.shift()!
+        const kids = (childrenByParent.get(pid) ?? []).filter(isFrame)
+        for (const k of kids) {
+          if (seen.has(k.id)) continue
+          seen.add(k.id)
+          count += 1
+          q.push(k.id)
+        }
+      }
+      return count
+    }
     const hasAny50 = topFrames.some((chapter) => {
-      const kids = childrenByParent.get(chapter.id) ?? []
-      const subFrames = kids.filter(isFrame)
-      if (subFrames.length < 3) return false
-      const qualified = subFrames.filter((sf) => {
-        const sfKids = childrenByParent.get(sf.id) ?? []
-        const directNonFrameNodes = sfKids.filter((n) => !isFrame(n)).length
-        return directNonFrameNodes > 2
-      })
-      return qualified.length >= 3
+      const descendantFrames = countDescendantFrames(chapter.id)
+      return descendantFrames >= 3
     })
     return hasAny50 ? BUSINESS_CHAPTER_W_50 : BUSINESS_CHAPTER_W_30
   }
