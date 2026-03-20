@@ -77,7 +77,10 @@ function frameDefaults(title: string) {
 
 const LAYOUT_UNIT = 24
 const BUSINESS_INNER_UNIT = 12
-const BUSINESS_CHAPTER_W = LAYOUT_UNIT * 30 // 30 grid units = 720px
+const BUSINESS_CHAPTER_W_30 = LAYOUT_UNIT * 30 // 30 grid units = 720px
+const BUSINESS_CHAPTER_W_50 = LAYOUT_UNIT * 50 // 50 grid units = 1200px
+// Keep the old name for readability at call sites that still assume the "30 units" baseline.
+const BUSINESS_CHAPTER_W = BUSINESS_CHAPTER_W_30
 // Business Big Map: restrict theme palette (rotating)
 const TOP_FRAME_THEME_COLORS = ['#4d9ef5', '#33d8ea', '#c059ff', '#ff6cc4']
 
@@ -189,6 +192,26 @@ function wrapFramesToContents(allNodes: Array<Node<any>>, businessMode: boolean)
 
   const isFrame = (n: Node<any>) => n.type === 'group' && (n.data as any)?.role === 'frame'
 
+  // Business Big Map: choose chapter width by "prompt -> structure" heuristic.
+  // Rule:
+  // - 3 sub-frames AND each sub-frame's direct (non-frame) nodes count > 2 => 50 grid units
+  // - 2 sub-frames => 30 grid units
+  // - otherwise => 30 grid units (safe fallback)
+  const getBusinessChapterWidth = (chapterFrameId: string): number => {
+    const kids = childrenByParent.get(chapterFrameId) ?? []
+    const subFrames = kids.filter(isFrame)
+    if (subFrames.length === 3) {
+      const ok = subFrames.every((sf) => {
+        const sfKids = childrenByParent.get(sf.id) ?? []
+        const directNonFrameNodes = sfKids.filter((n) => !isFrame(n)).length
+        return directNonFrameNodes > 2
+      })
+      if (ok) return BUSINESS_CHAPTER_W_50
+    }
+    if (subFrames.length === 2) return BUSINESS_CHAPTER_W_30
+    return BUSINESS_CHAPTER_W_30
+  }
+
   const frames = allNodes.filter(isFrame)
 
   const depthOf = (id: string) => {
@@ -249,9 +272,9 @@ function wrapFramesToContents(allNodes: Array<Node<any>>, businessMode: boolean)
       const padBottom = UNIT
       const padTop = TITLE_H + Math.round(UNIT * 1.35)
       const isTop = !frame.parentId
-      // Top chapter frame width is FIXED to 30 units.
+      // Top chapter width is selected by the generated structure.
       // Nested frames follow the width allocated by their parent.
-      const frameW = isTop ? BUSINESS_CHAPTER_W : Math.max(forcedWidth ?? MIN_W_DEFAULT, MIN_W_DEFAULT)
+      const frameW = isTop ? getBusinessChapterWidth(frame.id) : Math.max(forcedWidth ?? MIN_W_DEFAULT, MIN_W_DEFAULT)
       const availableW = Math.max(1, frameW - padX * 2)
 
       // 1) 先拉伸并布局子画框（父层决定子画框宽度）
@@ -341,7 +364,7 @@ function wrapFramesToContents(allNodes: Array<Node<any>>, businessMode: boolean)
     }
 
     const topFrames = frames.filter((f) => !f.parentId).sort((a, b) => a.id.localeCompare(b.id))
-    for (const tf of topFrames) layoutBusinessFrame(tf, BUSINESS_CHAPTER_W)
+    for (const tf of topFrames) layoutBusinessFrame(tf, getBusinessChapterWidth(tf.id))
     return allNodes
   }
 
@@ -386,7 +409,7 @@ function wrapFramesToContents(allNodes: Array<Node<any>>, businessMode: boolean)
 
     const initialBounds = computeBounds()
     if (!initialBounds) continue
-    const minW = businessMode && isTop ? BUSINESS_CHAPTER_W : MIN_W_DEFAULT
+    const minW = businessMode && isTop ? getBusinessChapterWidth(f.id) : MIN_W_DEFAULT
     let nextW = Math.max(minW, initialBounds.contentW + padX * 2)
     let nextH = Math.max(MIN_H, initialBounds.contentH + padTop + padBottom)
 
