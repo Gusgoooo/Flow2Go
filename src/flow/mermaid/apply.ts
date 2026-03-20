@@ -265,7 +265,82 @@ function wrapFramesToContents(allNodes: Array<Node<any>>, businessMode: boolean)
   }
 
   if (businessMode) {
+    const rowsPerColumn = 2
+
+    const isDescendantFrame = (ancestorId: string, nodeId: string): boolean => {
+      let cur = nodeById.get(nodeId)
+      const seen = new Set<string>()
+      while (cur?.parentId) {
+        if (seen.has(cur.id)) break
+        seen.add(cur.id)
+        if (cur.parentId === ancestorId) return true
+        cur = nodeById.get(cur.parentId)
+      }
+      return false
+    }
+
+    const reparentFrame = (child: Node<any>, newParentId: string) => {
+      const prevParentId = child.parentId
+      if (!prevParentId || prevParentId === newParentId) return
+      const prevArr = childrenByParent.get(prevParentId)
+      if (prevArr) {
+        const idx = prevArr.findIndex((n) => n.id === child.id)
+        if (idx >= 0) prevArr.splice(idx, 1)
+      }
+      const nextArr = childrenByParent.get(newParentId) ?? []
+      nextArr.push(child)
+      childrenByParent.set(newParentId, nextArr)
+      child.parentId = newParentId
+    }
+
+    // Hard constraint:
+    // Never allow a parent frame to directly contain more than 2 child frames.
+    // If exceeded, move extra child frames under the first two child frames in turn,
+    // and iterate until every parent satisfies the cap.
+    const enforceMaxNestedFrames = (rootFrameId: string, maxChildren = 2) => {
+      const queue: string[] = [rootFrameId]
+      const guard = new Set<string>()
+      while (queue.length > 0) {
+        const parentId = queue.shift()!
+        const loopGuardKey = `${parentId}:${queue.length}`
+        if (guard.has(loopGuardKey)) continue
+        guard.add(loopGuardKey)
+
+        const directFrames = (childrenByParent.get(parentId) ?? [])
+          .filter(isFrame)
+          .sort((a, b) => a.id.localeCompare(b.id))
+        if (directFrames.length <= maxChildren) {
+          for (const cf of directFrames) queue.push(cf.id)
+          continue
+        }
+
+        const keepers = directFrames.slice(0, maxChildren)
+        const extras = directFrames.slice(maxChildren)
+        for (let i = 0; i < extras.length; i += 1) {
+          const extra = extras[i]
+          const preferred = keepers[i % keepers.length]
+          const fallback = keepers[(i + 1) % keepers.length]
+          const target =
+            !isDescendantFrame(extra.id, preferred.id) && preferred.id !== extra.id
+              ? preferred
+              : !isDescendantFrame(extra.id, fallback.id) && fallback.id !== extra.id
+                ? fallback
+                : null
+          if (!target) continue
+          reparentFrame(extra, target.id)
+        }
+
+        // Re-check current parent and all its direct children after mutation.
+        queue.push(parentId)
+        const nextDirectFrames = (childrenByParent.get(parentId) ?? []).filter(isFrame)
+        for (const cf of nextDirectFrames) queue.push(cf.id)
+      }
+    }
+
     const layoutBusinessFrame = (frame: Node<any>, forcedWidth?: number) => {
+      // Ensure this subtree obeys "max 2 direct child frames per parent" before layout.
+      enforceMaxNestedFrames(frame.id, 2)
+
       const kids = childrenByParent.get(frame.id) ?? []
       const childFrames = kids.filter(isFrame).sort((a, b) => a.id.localeCompare(b.id))
       const childNodes = kids.filter((k) => !isFrame(k)).sort((a, b) => a.id.localeCompare(b.id))
@@ -282,7 +357,7 @@ function wrapFramesToContents(allNodes: Array<Node<any>>, businessMode: boolean)
       // 1) 先拉伸并布局子画框（父层决定子画框宽度）
       let yCursor = 0
       if (childFrames.length > 0) {
-        const cols = chooseCols(childFrames.length)
+        const cols = Math.max(1, Math.ceil(childFrames.length / rowsPerColumn))
         const cellW = Math.max(120, Math.floor((availableW - (cols - 1) * UNIT) / cols))
 
         // 先把宽度下发给子画框，再递归布局子画框内部节点
@@ -293,36 +368,36 @@ function wrapFramesToContents(allNodes: Array<Node<any>>, businessMode: boolean)
         }
 
         // 再按子画框实际高度排版位置
-        let row = 0
-        let col = 0
-        let rowY = 0
-        let rowMaxH = 0
-        for (const cf of childFrames) {
-          const h = getNodeSize(cf).h
+        let maxBottom = 0
+        const topHeights = new Map<number, number>()
+        for (let i = 0; i < childFrames.length; i += 1) {
+          const cf = childFrames[i]
+          const { h } = getNodeSize(cf)
+          const col = Math.floor(i / rowsPerColumn)
+          const row = i % rowsPerColumn
           const x = col * (cellW + UNIT)
-          cf.position = { x, y: rowY }
-          rowMaxH = Math.max(rowMaxH, h)
-          col += 1
-          if (col >= cols) {
-            col = 0
-            row += 1
-            rowY += rowMaxH + UNIT
-            rowMaxH = 0
+          let y = 0
+          if (row === 0) {
+            topHeights.set(col, h)
+          } else {
+            y = (topHeights.get(col) ?? 0) + UNIT
           }
+          cf.position = { x, y }
+          maxBottom = Math.max(maxBottom, y + h)
         }
-        yCursor = rowY + (rowMaxH > 0 ? rowMaxH : 0)
+        yCursor = maxBottom
       }
 
       // 2) 再拉伸并布局当前画框内的直接子节点
       if (childNodes.length > 0) {
         if (childFrames.length > 0) yCursor += UNIT
-        const cols = chooseCols(childNodes.length)
+        const cols = Math.max(1, Math.ceil(childNodes.length / rowsPerColumn))
         const cellW = Math.max(120, Math.floor((availableW - (cols - 1) * UNIT) / cols))
         for (let i = 0; i < childNodes.length; i += 1) {
           const n = childNodes[i]
           const { h } = getNodeSize(n)
-          const col = i % cols
-          const row = Math.floor(i / cols)
+          const col = Math.floor(i / rowsPerColumn)
+          const row = i % rowsPerColumn
           n.width = cellW
           n.style = { ...(n.style as any), width: cellW }
           n.position = { x: col * (cellW + UNIT), y: yCursor + row * (h + UNIT) }
