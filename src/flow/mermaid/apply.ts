@@ -78,6 +78,7 @@ function frameDefaults(title: string) {
 const LAYOUT_UNIT = 24
 const BUSINESS_INNER_UNIT = 12
 const NODE_MIN_WIDTH_UNITS = 3
+const BUSINESS_NODE_MIN_WIDTH_UNITS = 1.5
 const BUSINESS_CHAPTER_W_30 = LAYOUT_UNIT * 30 // 30 grid units = 720px
 const BUSINESS_CHAPTER_W_50 = LAYOUT_UNIT * 50 // 50 grid units = 1200px
 const BUSINESS_CHAPTER_W_70 = LAYOUT_UNIT * 70 // 70 grid units
@@ -182,7 +183,8 @@ function wrapFramesToContents(allNodes: Array<Node<any>>, businessMode: boolean)
   const MIN_W_DEFAULT = 220
   const MIN_H = 140
   const UNIT = businessMode ? BUSINESS_INNER_UNIT : LAYOUT_UNIT
-  const MIN_NODE_W = Math.round(UNIT * NODE_MIN_WIDTH_UNITS)
+  const minUnits = businessMode ? BUSINESS_NODE_MIN_WIDTH_UNITS : NODE_MIN_WIDTH_UNITS
+  const MIN_NODE_W = Math.round(UNIT * minUnits)
   const NODE_GAP = Math.round(UNIT * 0.5)
   const MAX_COLS = businessMode ? 6 : 6
 
