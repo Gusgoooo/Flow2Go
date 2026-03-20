@@ -630,6 +630,8 @@ const DIAGRAM_PLANNER_SYSTEM_PROMPT = [
   '    "framesOrRoot": [',
   '      {',
   '        "title": string,',
+  '        "case": "case1" | "case2" | "case3",',
+  '        "directPoints": string[],',
   '        "children": [',
   '          {',
   '            "title": string,',
@@ -650,7 +652,11 @@ const DIAGRAM_PLANNER_SYSTEM_PROMPT = [
   '}',
   '',
   '当 templateKey 为 Business Big Map Template：',
-  '- framesOrRoot 对应一级画框(frame)；每个 frame 的 children 对应 group（模块）；points 对应 subgroup/quad 的语义短语。',
+  '- framesOrRoot 对应一级画框(frame)，并且每个 frame 必须给出 nesting case：case1/case2/case3。',
+  '- case1：frame 直接承载要点（directPoints），frame 的 children 必须为空数组（不出现任何子画框）。',
+  '- case2：frame 下的 children 对应 group（模块），每个 children.points 对应该 group 内的 quad 要点（直接 quad，不创建 subgroup）。',
+  '- case3：frame 下的 children 对应 group（模块），每个 children.points 对应 subgroup 标题（每个 subgroup 再承载 1 个 quad，要点 label 使用该标题）。',
+  '- case2/case3 时 directPoints 必须为空数组 []（禁止把要点同时放在 frame 与子模块两处）。',
   '- 明确哪些 frame/group 属于主表达区、哪些属于支撑层（写进 mainChain/supportStrategy 字段）；避免写出任何连线/边。',
   '',
   '当 templateKey 为 Mind Map Template：',
@@ -878,6 +884,7 @@ export async function openRouterGenerateDiagram(opts: OpenRouterChatOptions): Pr
       '  - 章节B（Case 2）：2层嵌套（章节 -> 二级画框 -> 节点；禁止出现子画框）',
       '  - 章节C（Case 3）：3层嵌套（章节 -> 二级画框 -> 子画框 -> 节点）',
       '- 每一个章节画框必须只属于上述三类之一：禁止同一章节内混用不同层数。',
+      '- 严格依据 Diagram Planner 输出的 nesting case（frame.case / case1|case2|case3）生成章节嵌套层级：不得在生成阶段自行推断某个章节内部的子画框层级（尤其禁止 Case2/Case3 混搭）。',
       '- 额外嵌套一致性约束（新增，强制）：任意父画框（包含嵌套的二级/三级画框），其“直接子画框”必须保持相同的相对嵌套层级：',
       '  - 要么该父画框下所有直接子画框都不再包含子画框（全员 Case 2 相对父级），',
       '  - 要么该父画框下所有直接子画框都必须包含子画框（全员 Case 3 相对父级），',
@@ -949,6 +956,21 @@ export async function openRouterGenerateDiagram(opts: OpenRouterChatOptions): Pr
     '7) Mermaid 第一行必须是 flowchart LR。',
   ].join('\n')
 
+  const businessJsonMermaidHint = [
+    '【必须依据 Planner JSON 生成业务大图 Mermaid】',
+    '你在 user 里收到的是严格 JSON（来自 Diagram Planner）。请严格按 JSON 字段生成，不要根据语义自行推断嵌套层级。',
+    '结构映射：',
+    '1) chapters：structure.framesOrRoot 中每个 frame 对应一个“章节 frame”subgraph。',
+    '2) frame.case 决定该章节内部的“嵌套层级类型”（且仅此一个类型）：',
+    '   - case1：只在章节 frame 内生成 quad 节点（每个 directPoints 生成一个 quad）。禁止生成任何二级/三级 subgraph。',
+    '   - case2：章节 frame 内为每个 children[i] 生成 group 子 subgraph；在每个 group 内只生成 quad（children[i].points）。禁止生成任何 subgroup。',
+    '   - case3：章节 frame 内为每个 children[i] 生成 group 子 subgraph；在每个 group 内为 children[i].points 的每个字符串生成 subgroup 子 subgraph；每个 subgroup 里只生成 1 个 quad（quad 标题使用该字符串）。',
+    '3) 强制一致性：',
+    '   - 同一个章节 frame 内不得混合 case2/case3，也不得混合 quad 与 subgroup 的生成方式。',
+    '   - 若 JSON 某字段为空数组，则忽略对应生成。',
+    '4) 禁止：业务大图不要输出任何连线（不允许 -->）。',
+  ].join('\n')
+
   const generateOnce = async (extraUserHint?: string) => {
     const content = await openRouterChatComplete({
       apiKey: key,
@@ -1011,7 +1033,8 @@ export async function openRouterGenerateDiagram(opts: OpenRouterChatOptions): Pr
     '【结构配额器最终重试】前两次仍不达标。请优先保证 3 种嵌套样式最小覆盖，再优化美观与密度。',
   ]
   for (let i = 0; i < 2; i += 1) {
-    const d = await generateOnce(hints[i] || undefined)
+    const extra = hints[i] ? `${businessJsonMermaidHint}\n\n${hints[i]}` : businessJsonMermaidHint
+    const d = await generateOnce(extra)
     attempts.push(d)
     analyses.push(analyzeBusinessNestingCoverage(d))
     uniformities.push(analyzeBusinessFrameUniformity(d))
@@ -1019,7 +1042,7 @@ export async function openRouterGenerateDiagram(opts: OpenRouterChatOptions): Pr
   }
   const sameSingleDepthTwice = analyses[0].count === 1 && analyses[1].count === 1 && analyses[0].onlyKind === analyses[1].onlyKind
   if (sameSingleDepthTwice || analyses[1].count < 3) {
-    const d3 = await generateOnce(hints[2])
+    const d3 = await generateOnce(`${businessJsonMermaidHint}\n\n${hints[2]}`)
     attempts.push(d3)
     analyses.push(analyzeBusinessNestingCoverage(d3))
     uniformities.push(analyzeBusinessFrameUniformity(d3))
