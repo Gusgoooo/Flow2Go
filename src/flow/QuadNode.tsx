@@ -185,7 +185,10 @@ export function QuadNode(props: NodeProps) {
       onDoubleClick={onDoubleClick}
     >
       <NodeResizer
-        minWidth={80}
+        // Business Big Map: want quad nodes to be shrinkable down to ~3 layout units.
+        // Business inner unit = 12px => 3 units = 36px.
+        // Previously this was hard-coded to 80px, preventing further shrinking.
+        minWidth={36}
         minHeight={44}
         handleStyle={{ width: 12, height: 12, borderRadius: 9999 }}
         isVisible={Boolean((props as any).selected)}
