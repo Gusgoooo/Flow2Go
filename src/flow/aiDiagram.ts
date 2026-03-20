@@ -498,17 +498,193 @@ export const DEFAULT_MERMAID_SYSTEM_PROMPT = MERMAID_GENERATOR_SYSTEM_PROMPT.tri
 
 export const DEFAULT_MERMAID_USER_TEMPLATE = ['{{prompt}}'].join('\n')
 
+type ComplexityMode = 'compact' | 'chapters'
+
+type SceneRoute = {
+  templateKey: UserTemplateKey
+  sceneKind:
+    | 'business-big-map'
+    | 'agent-flow'
+    | 'approval-flow'
+    | 'data-pipeline'
+    | 'business-flow'
+    | 'hierarchy'
+    | 'mind-map'
+    | 'other'
+  complexityMode: ComplexityMode
+}
+
+const SCENE_ROUTER_SYSTEM_PROMPT = [
+  '你是 Flow2Go 的 Scene Router。',
+  '',
+  '你的任务是：根据用户原始需求，选择最适合的模板（8 种之一），并判断表达复杂度模式。',
+  '',
+  '你的输出必须是“纯 JSON”，不能有任何多余文本或代码块。',
+  'JSON 格式：',
+  '{',
+  '  "templateKey": "从以下 8 个字符串中选择",',
+  '  "sceneKind": "business-big-map|agent-flow|approval-flow|data-pipeline|business-flow|hierarchy|mind-map|other",',
+  '  "complexityMode": "compact|chapters"',
+  '}',
+  '',
+  '可选 templateKey：',
+  '- Frontend-Backend Flow Template',
+  '- Data Pipeline Flow Template',
+  '- Agent Workflow Template',
+  '- Approval Workflow Template',
+  '- System Architecture Template',
+  '- User Journey Template',
+  '- Business Big Map Template',
+  '- Mind Map Template',
+  '',
+  '路由规则（综合判断）：',
+  '- 强战略/能力/知识结构/系统分层大图/业务总览：Business Big Map Template，complexityMode=chapters',
+  '- 思维导图/树状联想/主题分支展开：Mind Map Template，complexityMode=chapters',
+  '- 涉及接口调用链、前后端流转：Frontend-Backend Flow Template，complexityMode=compact',
+  '- 涉及采集-清洗-加工-仓库-指标-消费：Data Pipeline Flow Template，complexityMode=chapters',
+  '- 涉及 Planner/Executor/Agent/RAG/工具：Agent Workflow Template，complexityMode=chapters',
+  '- 涉及申请/审核/驳回/通知/归档：Approval Workflow Template，complexityMode=chapters',
+  '- 涉及平台分层/服务分层/基础设施/依赖：System Architecture Template，complexityMode=chapters',
+  '- 涉及用户阶段/触点/行为：User Journey Template，complexityMode=chapters',
+  '',
+  '默认复杂度：如果不确定，优先 compact（更克制），除非明显是章节式结构（则用 chapters）。',
+].join('\n')
+
+const DIAGRAM_PLANNER_SYSTEM_PROMPT = [
+  '你是 Flow2Go 的 Diagram Planner / Graph Normalizer（规划器）。',
+  '',
+  '你的任务：把用户原始高噪声输入，压缩成“模板可承接的结构规划文本”。',
+  '',
+  '硬约束：',
+  '- 只能输出中文纯文本，不要输出 Mermaid DSL，不要输出任何 subgraph / end / flowchart / classDef / style / linkStyle / click / ::: 等。',
+  '- 不要输出任何节点 id（例如 id[xxx] 这种）与边（例如 A --> B 这种）表达式。',
+  '- 只输出规划骨架：章节/阶段/模块/要点颗粒度 + 主链/支撑/回流的“弱化/下沉/收敛”意图。',
+  '',
+  '输出结构（固定模板，方便后续渲染器读取）：',
+  '【主题】...（一句话）',
+  '【章节/阶段】（3~5 条，每条控制在 1 行内）',
+  '【主链范围】（用“哪些章节/模块属于主表达区”的方式描述，避免实体级列举）',
+  '【支撑/下沉】（如果有支撑关系：要求弱化、下沉到侧边模块；如果没有就写“无”）',
+  '【回流收敛】（如果有返工：只允许保留关键一条的文字描述；没有就写“无”）',
+  '【要点颗粒度】（给出每个模块建议要点数范围：2~4 或更少）',
+  '',
+  '当 templateKey 为 Business Big Map Template：',
+  '- 章节=一级画框(frame)的名字（3~5 个）',
+  '- 每个章节包含 2~3 个模块(group)的名字与 2~4 个要点(subgroup/quad)的语义短语（不要展开成对象级清单）',
+  '- 明确哪些模块属于“主表达区”（核心章节），哪些属于“支撑层”（侧边/下沉区）；避免写出任何连线/边。',
+  '',
+  '当 templateKey 为 Mind Map Template：',
+  '- 需要至少 3 层深度的“父->子”层级描述，但仍以纯文本表达（不要写 A --> B）。',
+  '- 每层节点建议 1~5 个，避免过密；列间距交给系统 mind-map 布局器。',
+].join('\n')
+
+function parseSceneRouteJson(raw: string): SceneRoute | null {
+  try {
+    const cleaned = stripCodeFences(raw).trim()
+    const obj = JSON.parse(cleaned)
+    const templateKey = obj?.templateKey as UserTemplateKey | undefined
+    const sceneKind = obj?.sceneKind as SceneRoute['sceneKind'] | undefined
+    const complexityMode = obj?.complexityMode as ComplexityMode | undefined
+
+    const candidates = new Set(Object.keys(USER_TEMPLATES) as UserTemplateKey[])
+    if (!templateKey || !candidates.has(templateKey)) return null
+    if (!sceneKind) return null
+    if (complexityMode !== 'compact' && complexityMode !== 'chapters') return null
+    return { templateKey, sceneKind, complexityMode }
+  } catch {
+    return null
+  }
+}
+
+async function openRouterSceneRoute(args: OpenRouterChatOptions): Promise<SceneRoute> {
+  const { apiKey, model, prompt, signal, timeoutMs = DEFAULT_TIMEOUT_MS } = args
+  const key = (apiKey ?? '').trim()
+  if (!key) throw new Error('缺少 OpenRouter API Key')
+  if (!prompt.trim()) throw new Error('请输入生成描述')
+
+  const raw = await openRouterChatComplete({
+    apiKey: key,
+    model,
+    system: SCENE_ROUTER_SYSTEM_PROMPT,
+    user: prompt.trim(),
+    signal,
+    timeoutMs,
+    temperature: 0,
+  })
+
+  const parsed = parseSceneRouteJson(raw)
+  if (!parsed) throw new Error('Scene Router 输出不是合法 JSON')
+  return parsed
+}
+
+async function openRouterDiagramPlanner(args: OpenRouterChatOptions & { templateKey: UserTemplateKey; complexityMode: ComplexityMode }): Promise<string> {
+  const { apiKey, model, prompt, signal, timeoutMs = DEFAULT_TIMEOUT_MS, templateKey, complexityMode } = args
+  const key = (apiKey ?? '').trim()
+  if (!key) throw new Error('缺少 OpenRouter API Key')
+  if (!prompt.trim()) throw new Error('请输入生成描述')
+
+  const raw = await openRouterChatComplete({
+    apiKey: key,
+    model,
+    system: DIAGRAM_PLANNER_SYSTEM_PROMPT,
+    user: [
+      `【templateKey】${templateKey}`,
+      `【complexityMode】${complexityMode}`,
+      '',
+      '【用户原文】',
+      prompt.trim(),
+    ].join('\n'),
+    signal,
+    timeoutMs,
+    temperature: 0.2,
+  })
+
+  const s = raw.trim()
+  if (!s) throw new Error('Diagram Planner 返回空文本')
+  return s
+}
+
 export async function openRouterGenerateDiagram(opts: OpenRouterChatOptions): Promise<AiDiagramDraft> {
   const { apiKey, model, prompt, signal, timeoutMs = DEFAULT_TIMEOUT_MS } = opts
   const key = (apiKey ?? '').trim()
   if (!key) throw new Error('缺少 OpenRouter API Key')
   if (!prompt.trim()) throw new Error('请输入生成描述')
 
-  const chosen = await openRouterSelectUserTemplate({ apiKey: key, model, prompt, signal, timeoutMs })
+  const originalPrompt = prompt.trim()
+  let chosen: UserTemplateKey | null = null
+  let plannerText: string | null = null
+  let route: SceneRoute | null = null
+
+  // 新链路：Scene Router -> Diagram Planner。失败则回退到旧逻辑，避免引入全局风险。
+  try {
+    route = await openRouterSceneRoute({ apiKey: key, model, prompt: originalPrompt, signal, timeoutMs })
+    chosen = route.templateKey
+    plannerText = await openRouterDiagramPlanner({
+      apiKey: key,
+      model,
+      prompt: originalPrompt,
+      signal,
+      timeoutMs,
+      templateKey: chosen,
+      complexityMode: route.complexityMode,
+    })
+  } catch (e) {
+    chosen = null
+    plannerText = null
+    route = null
+  }
+
+  // 兼容旧逻辑：如果 router/planner 失败，继续使用旧 template selector
+  if (!chosen) {
+    chosen = await openRouterSelectUserTemplate({ apiKey: key, model, prompt, signal, timeoutMs })
+  }
+
   const templateText = USER_TEMPLATES[chosen] || ''
-  const frameType = chosen === 'Business Big Map Template' ? await openRouterSelectFrameType({ apiKey: key, model, prompt, signal, timeoutMs }) : null
+  const effectivePrompt = plannerText ?? originalPrompt
+
+  const frameType = chosen === 'Business Big Map Template' ? await openRouterSelectFrameType({ apiKey: key, model, prompt: effectivePrompt, signal, timeoutMs }) : null
   const businessStyle =
-    chosen === 'Business Big Map Template' ? await openRouterSelectBusinessStyle({ apiKey: key, model, prompt, signal, timeoutMs }) : null
+    chosen === 'Business Big Map Template' ? await openRouterSelectBusinessStyle({ apiKey: key, model, prompt: effectivePrompt, signal, timeoutMs }) : null
 
   const templateSubgraphRules: Record<UserTemplateKey, string> = {
     'Frontend-Backend Flow Template': [
@@ -637,7 +813,7 @@ export async function openRouterGenerateDiagram(opts: OpenRouterChatOptions): Pr
         ]),
   ].join('\n')
 
-  const user = DEFAULT_MERMAID_USER_TEMPLATE.replaceAll('{{prompt}}', prompt.trim())
+  const user = DEFAULT_MERMAID_USER_TEMPLATE.replaceAll('{{prompt}}', effectivePrompt)
   const generateOnce = async (extraUserHint?: string) => {
     const content = await openRouterChatComplete({
       apiKey: key,
@@ -659,7 +835,19 @@ export async function openRouterGenerateDiagram(opts: OpenRouterChatOptions): Pr
   }
 
   if (chosen !== 'Business Big Map Template') {
-    return generateOnce()
+    const d1 = await generateOnce()
+
+    // 轻量压缩重试（非 business big map）：避免碎节点/碎连线退化过重。
+    // 只做一次重试，避免过度消耗。
+    if ((route?.sceneKind ?? '') !== 'business-big-map') {
+      const nodesCount = Array.isArray(d1.nodes) ? d1.nodes.length : 0
+      const edgesCount = Array.isArray(d1.edges) ? d1.edges.length : 0
+      const tooComplex = nodesCount > 45 || edgesCount > 60
+      if (tooComplex) {
+        return generateOnce('【压缩重试】节点/连线过多：必须更章节化、更合并同类、更弱化支撑关系，最多输出 3~5 个章节与少量关键要点。禁止碎节点与全连接。')
+      }
+    }
+    return d1
   }
 
   // 结构配额器：
