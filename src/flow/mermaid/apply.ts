@@ -1040,7 +1040,9 @@ export function materializeGraphBatchPayloadToSnapshot(
   // - apply themed strokes per depth and make edges use bezier curves
   if (mindMapMode) {
     const FRAME_PAD = LAYOUT_UNIT * 0.9
-    const COL_GAP = LAYOUT_UNIT * 8 // user要求：列间距约 8 个单位
+    // 用户要求：列间距至少 8 个单位宽度
+    // 这里给更稳的余量，避免节点/曲线的视觉重叠导致“看起来像没从 handle 出来”
+    const COL_GAP = LAYOUT_UNIT * 10
     const ROW_GAP = LAYOUT_UNIT * 1 // 同列纵向间距（结合节点高度避免重叠）
 
     const frameNodes = safeNodes.filter((n) => n.type === 'group' && (n.data as any)?.role === 'frame')
@@ -1343,6 +1345,15 @@ export function materializeGraphBatchPayloadToSnapshot(
   }
 
   const safeEdges = applyInferredEdgeHandles(safeNodes, edges)
+
+  // Mind-map: avoid perpendicular autoOffset that makes bezier start/end not align with handle.
+  if (mindMapMode) {
+    for (const e of safeEdges) {
+      const data = (e.data ?? {}) as any
+      data.autoOffset = 0
+      e.data = data
+    }
+  }
 
   return { nodes: safeNodes, edges: safeEdges }
 }
