@@ -197,6 +197,17 @@ function wrapFramesToContents(allNodes: Array<Node<any>>, businessMode: boolean)
 
   const isFrame = (n: Node<any>) => n.type === 'group' && (n.data as any)?.role === 'frame'
 
+    const resizeQuadChildrenToWidth = (container: Node<any>, targetW: number) => {
+      if (!container?.id) return
+      const quads = (childrenByParent.get(container.id) ?? []).filter((n) => n.type === 'quad') as Array<Node<any>>
+      if (quads.length === 0) return
+      for (const q of quads) {
+        q.width = targetW
+        q.style = { ...(q.style as any), width: targetW }
+        ;(q as any).measured = undefined
+      }
+    }
+
   // Business Big Map: chapter width is unified by the largest bucket.
   // Rule:
   // - Top-level chapter chooses width tier by (direct child frames, grandchild frames).
@@ -467,6 +478,9 @@ function wrapFramesToContents(allNodes: Array<Node<any>>, businessMode: boolean)
           n.width = cellW
           n.style = { ...(n.style as any), width: cellW }
           ;(n as any).measured = undefined
+          // If this direct child is a subgroup container, keep quads inside aligned with its width.
+          // Otherwise quads may keep their default 160px width and ignore our min-unit shrink logic.
+          resizeQuadChildrenToWidth(n, cellW)
           n.position = { x: col * (cellW + NODE_GAP), y: yCursor + row * (h + NODE_GAP) }
         }
       }
@@ -588,6 +602,8 @@ function wrapFramesToContents(allNodes: Array<Node<any>>, businessMode: boolean)
         n.width = nodeW
         n.style = { ...(n.style as any), width: nodeW }
         ;(n as any).measured = undefined
+        // If this single child is a subgroup container, shrink quads inside too.
+        resizeQuadChildrenToWidth(n, nodeW)
         nextW = targetW
       }
 
