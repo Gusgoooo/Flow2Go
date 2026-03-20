@@ -30,6 +30,7 @@ import APPROVAL_WORKFLOW_TMPL from '../../usertemplate/04_approval_workflow_temp
 import SYSTEM_ARCH_TMPL from '../../usertemplate/05_system_architecture_template.md?raw'
 import USER_JOURNEY_TMPL from '../../usertemplate/06_user_journey_template.md?raw'
 import BUSINESS_BIG_MAP_TMPL from '../../usertemplate/07_business_big_map_template.md?raw'
+import MIND_MAP_TMPL from '../../usertemplate/08_mind_map_template.md?raw'
 
 export type UserTemplateKey =
   | 'Frontend-Backend Flow Template'
@@ -39,6 +40,7 @@ export type UserTemplateKey =
   | 'System Architecture Template'
   | 'User Journey Template'
   | 'Business Big Map Template'
+  | 'Mind Map Template'
 
 const USER_TEMPLATES: Record<UserTemplateKey, string> = {
   'Frontend-Backend Flow Template': FRONTEND_BACKEND_TMPL,
@@ -48,6 +50,7 @@ const USER_TEMPLATES: Record<UserTemplateKey, string> = {
   'System Architecture Template': SYSTEM_ARCH_TMPL,
   'User Journey Template': USER_JOURNEY_TMPL,
   'Business Big Map Template': BUSINESS_BIG_MAP_TMPL,
+  'Mind Map Template': MIND_MAP_TMPL,
 }
 
 export const TEMPLATE_SELECTOR_SYSTEM_PROMPT = [
@@ -55,7 +58,7 @@ export const TEMPLATE_SELECTOR_SYSTEM_PROMPT = [
   '',
   '你的任务不是直接生成图，而是先判断当前用户需求最适合使用哪一种模板，再按对应模板的结构要求去生成。',
   '',
-  '可选模板只有以下 7 种：',
+  '可选模板只有以下 8 种：',
   '1. Frontend-Backend Flow Template',
   '2. Data Pipeline Flow Template',
   '3. Agent Workflow Template',
@@ -63,6 +66,7 @@ export const TEMPLATE_SELECTOR_SYSTEM_PROMPT = [
   '5. System Architecture Template',
   '6. User Journey Template',
   '7. Business Big Map Template',
+  '8. Mind Map Template',
   '',
   '选择规则：',
   '- 涉及页面、接口、服务、数据库请求链路，优先 Frontend-Backend Flow',
@@ -72,6 +76,7 @@ export const TEMPLATE_SELECTOR_SYSTEM_PROMPT = [
   '- 涉及平台模块、服务分层、基础设施、第三方依赖，优先 System Architecture',
   '- 涉及用户阶段、触点、行为、痛点、机会点，优先 User Journey',
   '- 涉及战略全景图、能力地图、知识结构图、系统分层大图、方案拆解图、业务总览图，优先 Business Big Map',
+  '- 涉及思维导图、脑图、层级展开、树状联想、主题分支展开，优先 Mind Map',
   '',
   '如果需求同时满足多个模板：',
   '- 优先选择最接近用户核心意图的模板',
@@ -79,7 +84,7 @@ export const TEMPLATE_SELECTOR_SYSTEM_PROMPT = [
   '- 避免混用多个模板导致结构失焦',
   '',
   '输出要求（强制）：',
-  '- 只能输出“模板名称”这一行（必须与上述 7 个模板名称完全一致）',
+  '- 只能输出“模板名称”这一行（必须与上述 8 个模板名称完全一致）',
 ].join('\n')
 
 export type FrameTypeKey = 'Type A' | 'Type B' | 'Type C' | 'Type D' | 'Type E' | 'Type F'
@@ -666,6 +671,19 @@ export async function openRouterGenerateDiagram(opts: OpenRouterChatOptions): Pr
       '- 所有画框标题必须自然、完整、可读，不要截断，不要附加类型尾缀。',
       '- 文案尽量不超过 5 个字；超过 5 个字必须拆成主副标题（V2）。',
     ].join('\n'),
+    'Mind Map Template': [
+      '【模板落地要求（强制）】',
+      '- 必须只输出 1 个最外层 subgraph 作为画框（外框），外层 subgraph 标题建议为：思维导图。',
+      '- 除外框外不要再出现任何 subgraph：每一层都是普通节点（quad），层级用父->子边表达。',
+      '- Mermaid 第一行必须严格为：flowchart LR。',
+      '- 禁止回边/环：请让边从上层（左）指向下层（右），形成树状层级。',
+      '- 节点 id 必须唯一且为小写英文字母/数字/下划线；节点 label 必须为中文且尽量短。',
+      '- 布局与样式由系统 mind-map 布局器负责：',
+      '  - 列式排版：根在最左列，深度越深越往右；同列纵向对齐。',
+      '  - 列间距目标约 8 个 grid units。',
+      '  - 以“深度层级”为主题色顺序，节点描边粗细 strokeWidth=2。',
+      '  - 边使用贝塞尔曲线效果。',
+    ].join('\n'),
   }
 
   const baseMermaidSystem =
@@ -707,7 +725,12 @@ export async function openRouterGenerateDiagram(opts: OpenRouterChatOptions): Pr
       temperature: 0.2,
     })
     return convertMermaidToAiDraft(content, {
-      layoutProfile: chosen === 'Business Big Map Template' ? 'business-big-map' : undefined,
+      layoutProfile:
+        chosen === 'Business Big Map Template'
+          ? 'business-big-map'
+          : chosen === 'Mind Map Template'
+            ? 'mind-map'
+            : undefined,
     })
   }
 

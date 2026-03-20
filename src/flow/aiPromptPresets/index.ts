@@ -5,6 +5,7 @@ import dataPipelinePrompt from './data-pipeline.md?raw'
 import productRoadmapPrompt from './product-roadmap.md?raw'
 import systemArchitecturePrompt from './system-architecture.md?raw'
 import userJourneyPrompt from './user-journey.md?raw'
+import mindMapPrompt from './mind-map.md?raw'
 
 export type AiPromptPreset = {
   id: string
@@ -20,6 +21,7 @@ export const AI_PROMPT_PRESETS: AiPromptPreset[] = [
   { id: 'agent-workflow', label: '多Agent', prompt: agentWorkflowPrompt.trim() },
   { id: 'approval-workflow', label: '审批流程', prompt: approvalWorkflowPrompt.trim() },
   { id: 'product-roadmap', label: '产品路线图', prompt: productRoadmapPrompt.trim() },
+  { id: 'mind-map', label: '思维导图', prompt: mindMapPrompt.trim() },
 ]
 
 export const DEFAULT_AI_PROMPT_PRESET_ID = 'business-tree'
