@@ -559,7 +559,11 @@ function wrapFramesToContents(allNodes: Array<Node<any>>, businessMode: boolean)
         // Avoid forcing single-node frames to the old fixed MIN_W_DEFAULT (220px).
         // That can prevent nodes from reaching the intended "3 units" minimum width.
         const targetWMin = padX * 2 + MIN_NODE_W
-        const targetW = Math.min(businessUnifiedTopChapterWidth, Math.max(targetWMin, initialBounds.contentW + padX * 2))
+        // IMPORTANT:
+        // Do NOT use initialBounds.contentW as a lower bound.
+        // initialBounds is computed with the current measured/default widths (often 160px),
+        // which prevents "true compression" to the intended "3 units" minimum.
+        const targetW = Math.min(businessUnifiedTopChapterWidth, targetWMin)
         f.width = targetW
         f.style = { ...(f.style as any), width: targetW }
         const n = childNodes[0]
