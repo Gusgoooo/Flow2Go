@@ -556,26 +556,47 @@ const DIAGRAM_PLANNER_SYSTEM_PROMPT = [
   '你的任务：把用户原始高噪声输入，压缩成“模板可承接的结构规划文本”。',
   '',
   '硬约束：',
-  '- 只能输出中文纯文本，不要输出 Mermaid DSL，不要输出任何 subgraph / end / flowchart / classDef / style / linkStyle / click / ::: 等。',
+  '- 只能输出严格 JSON（不能有任何多余文本、代码块标记、换行外的内容）。',
+  '- 不要输出 Mermaid DSL，不要输出任何 subgraph/end/flowchart/classDef/style/linkStyle/click/::: 等。',
   '- 不要输出任何节点 id（例如 id[xxx] 这种）与边（例如 A --> B 这种）表达式。',
-  '- 只输出规划骨架：章节/阶段/模块/要点颗粒度 + 主链/支撑/回流的“弱化/下沉/收敛”意图。',
+  '- 只输出规划骨架：主题、分层结构、主链/支撑/回流的文字意图、以及要点颗粒度。',
   '',
-  '输出结构（固定模板，方便后续渲染器读取）：',
-  '【主题】...（一句话）',
-  '【章节/阶段】（3~5 条，每条控制在 1 行内）',
-  '【主链范围】（用“哪些章节/模块属于主表达区”的方式描述，避免实体级列举）',
-  '【支撑/下沉】（如果有支撑关系：要求弱化、下沉到侧边模块；如果没有就写“无”）',
-  '【回流收敛】（如果有返工：只允许保留关键一条的文字描述；没有就写“无”）',
-  '【要点颗粒度】（给出每个模块建议要点数范围：2~4 或更少）',
+  '输出 JSON 结构（固定字段，强制类型）：',
+  '{',
+  '  "templateKey": string,',
+  '  "complexityMode": "compact" | "chapters",',
+  '  "theme": string,',
+  '  "structure": {',
+  '    "framesOrRoot": [',
+  '      {',
+  '        "title": string,',
+  '        "children": [',
+  '          {',
+  '            "title": string,',
+  '            "points": string[]',
+  '          }',
+  '        ]',
+  '      }',
+  '    ]',
+  '  },',
+  '  "mainChain": string,',
+  '  "supportStrategy": string,',
+  '  "feedbackStrategy": string,',
+  '  "constraints": {',
+  '    "modulePointRange": [number, number],',
+  '    "targetNodeCountHintRange": [number, number],',
+  '    "noCrossBranchConnections": boolean',
+  '  }',
+  '}',
   '',
   '当 templateKey 为 Business Big Map Template：',
-  '- 章节=一级画框(frame)的名字（3~5 个）',
-  '- 每个章节包含 2~3 个模块(group)的名字与 2~4 个要点(subgroup/quad)的语义短语（不要展开成对象级清单）',
-  '- 明确哪些模块属于“主表达区”（核心章节），哪些属于“支撑层”（侧边/下沉区）；避免写出任何连线/边。',
+  '- framesOrRoot 对应一级画框(frame)；每个 frame 的 children 对应 group（模块）；points 对应 subgroup/quad 的语义短语。',
+  '- 明确哪些 frame/group 属于主表达区、哪些属于支撑层（写进 mainChain/supportStrategy 字段）；避免写出任何连线/边。',
   '',
   '当 templateKey 为 Mind Map Template：',
-  '- 需要至少 3 层深度的“父->子”层级描述，但仍以纯文本表达（不要写 A --> B）。',
-  '- 每层节点建议 1~5 个，避免过密；列间距交给系统 mind-map 布局器。',
+  '- framesOrRoot 的第一个元素作为中心主题（root）；其 children 为一级分支；points 为二级/要点节点。',
+  '- 需要至少 3 层深度：可以在 points 里写“二级主题 + 可拆的子主题短语”，让模型在渲染时自然展开。',
+  '- 列间距、线型由系统 mind-map 布局器与模板负责。',
 ].join('\n')
 
 function parseSceneRouteJson(raw: string): SceneRoute | null {
@@ -641,7 +662,17 @@ async function openRouterDiagramPlanner(args: OpenRouterChatOptions & { template
 
   const s = raw.trim()
   if (!s) throw new Error('Diagram Planner 返回空文本')
-  return s
+
+  // planner 必须是严格 JSON；否则直接回退旧逻辑，避免影响现有 business big map 视觉稳定性。
+  const cleaned = stripCodeFences(s).trim()
+  let obj: unknown
+  try {
+    obj = JSON.parse(cleaned)
+  } catch {
+    throw new Error('Diagram Planner 输出不是合法 JSON')
+  }
+  // 压缩输出，减少 Mermaid 生成器的 token 消耗。
+  return JSON.stringify(obj)
 }
 
 export async function openRouterGenerateDiagram(opts: OpenRouterChatOptions): Promise<AiDiagramDraft> {
