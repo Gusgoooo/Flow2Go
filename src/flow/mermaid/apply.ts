@@ -550,7 +550,11 @@ function wrapFramesToContents(allNodes: Array<Node<any>>, businessMode: boolean)
       // clamp frame width to <= 26 grid units, and stretch the node to fill
       // remaining width with 0.5-grid-unit paddings on both sides.
       if (childFrames.length === 0 && childNodes.length === 1) {
-        const targetW = Math.min(BUSINESS_CHAPTER_W, Math.max(MIN_W_DEFAULT, initialBounds.contentW + padX * 2))
+        // IMPORTANT:
+        // This clamp must follow the selected global "max tier" width.
+        // Otherwise, mixed 1-level + 2-level nesting will cause shallow frames
+        // to be forced back to the 30-unit baseline, producing small alignment issues.
+        const targetW = Math.min(businessUnifiedTopChapterWidth, Math.max(MIN_W_DEFAULT, initialBounds.contentW + padX * 2))
         f.width = targetW
         f.style = { ...(f.style as any), width: targetW }
         const n = childNodes[0]
