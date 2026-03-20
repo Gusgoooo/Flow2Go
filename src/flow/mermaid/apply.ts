@@ -405,7 +405,9 @@ function wrapFramesToContents(allNodes: Array<Node<any>>, businessMode: boolean)
       const isTop = !frame.parentId
       // Top chapter width is selected by the generated structure.
       // Nested frames follow the width allocated by their parent.
-      const frameW = isTop ? getBusinessChapterWidth(true) : Math.max(forcedWidth ?? MIN_W_DEFAULT, MIN_W_DEFAULT)
+      // Non-top frames must strictly follow recursive parent allocation.
+      // Avoid forcing MIN_W_DEFAULT here, otherwise shallow mixed nesting will break the "recursive unit width" contract.
+      const frameW = isTop ? getBusinessChapterWidth(true) : forcedWidth ?? MIN_W_DEFAULT
       const availableW = Math.max(1, frameW - padX * 2)
 
       // 1) 先递归并布局子画框（优先横向平铺）
@@ -419,6 +421,7 @@ function wrapFramesToContents(allNodes: Array<Node<any>>, businessMode: boolean)
         for (const cf of childFrames) {
           cf.width = cellW
           cf.style = { ...(cf.style as any), width: cellW }
+          ;(cf as any).measured = undefined
           layoutBusinessFrame(cf, cellW)
         }
 
@@ -451,6 +454,7 @@ function wrapFramesToContents(allNodes: Array<Node<any>>, businessMode: boolean)
           const row = i % rows
           n.width = cellW
           n.style = { ...(n.style as any), width: cellW }
+          ;(n as any).measured = undefined
           n.position = { x: col * (cellW + NODE_GAP), y: yCursor + row * (h + NODE_GAP) }
         }
       }
@@ -539,7 +543,10 @@ function wrapFramesToContents(allNodes: Array<Node<any>>, businessMode: boolean)
 
     const initialBounds = computeBounds()
     if (!initialBounds) continue
-    const minW = businessMode && isTop ? getBusinessChapterWidth(true) : MIN_W_DEFAULT
+    // Business mode:
+    // - Top-level frames clamp to selected chapter width.
+    // - Inner frames should follow recursive parent allocation; do not force MIN_W_DEFAULT.
+    const minW = businessMode ? (isTop ? getBusinessChapterWidth(true) : 0) : MIN_W_DEFAULT
     let nextW = Math.max(minW, initialBounds.contentW + padX * 2)
     let nextH = Math.max(MIN_H, initialBounds.contentH + padTop + padBottom)
 
@@ -552,29 +559,17 @@ function wrapFramesToContents(allNodes: Array<Node<any>>, businessMode: boolean)
       // clamp frame width to <= 26 grid units, and stretch the node to fill
       // remaining width with 0.5-grid-unit paddings on both sides.
       if (childFrames.length === 0 && childNodes.length === 1) {
-        // IMPORTANT:
-        // This clamp must follow the selected global "max tier" width.
-        // Otherwise, mixed 1-level + 2-level nesting will cause shallow frames
-        // to be forced back to the 30-unit baseline, producing small alignment issues.
-        // Avoid forcing single-node frames to the old fixed MIN_W_DEFAULT (220px).
-        // That can prevent nodes from reaching the intended "3 units" minimum width.
-        const targetWMin = padX * 2 + MIN_NODE_W
-        // IMPORTANT:
-        // Do NOT use initialBounds.contentW as a lower bound.
-        // initialBounds is computed with the current measured/default widths (often 160px),
-        // which prevents "true compression" to the intended "3 units" minimum.
-        const targetW = Math.min(businessUnifiedTopChapterWidth, targetWMin)
+        // Atomic rule v0 (single-node frame):
+        // Only apply an upper clamp by selected global max tier.
+        // The actual unit width must be derived from recursion + stretchChildrenToWidth,
+        // not from an explicit "3 units first" rule.
+        const curW =
+          typeof f.width === 'number'
+            ? (f.width as number)
+            : Math.round(initialBounds.contentW + padX * 2)
+        const targetW = Math.min(businessUnifiedTopChapterWidth, curW)
         f.width = targetW
         f.style = { ...(f.style as any), width: targetW }
-        const n = childNodes[0]
-        const nodeW = Math.max(MIN_NODE_W, targetW - padX * 2)
-        n.width = nodeW
-        n.style = { ...(n.style as any), width: nodeW }
-        // Ensure later bounds calculations use the updated width.
-        ;(n as any).measured = undefined
-        // keep node at (0,0) before final shift; we will shift by dx/dy below
-        n.position = { x: 0, y: 0 }
-        // update targets for padding/shift
         nextW = targetW
       }
 
