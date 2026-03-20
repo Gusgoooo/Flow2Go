@@ -411,6 +411,72 @@ function analyzeBusinessFrameUniformity(draft: AiDiagramDraft): {
   }
 }
 
+function validateBusinessPlannerJson(obj: any): { ok: boolean; errors: string[] } {
+  const errors: string[] = []
+  const frames = obj?.structure?.framesOrRoot
+
+  if (!Array.isArray(frames)) {
+    errors.push('structure.framesOrRoot 必须是数组')
+    return { ok: false, errors }
+  }
+
+  const hasCase = new Set<string>()
+
+  const isString = (v: any): v is string => typeof v === 'string' && v.trim().length > 0
+  const isStringArray = (v: any): v is string[] => Array.isArray(v) && v.every((x) => isString(x))
+
+  const frameCaseAllowed = new Set(['case1', 'case2', 'case3'])
+
+  for (let i = 0; i < frames.length; i += 1) {
+    const f = frames[i]
+    if (!f || typeof f !== 'object') {
+      errors.push(`framesOrRoot[${i}] 必须是对象`)
+      continue
+    }
+
+    if (!isString(f.title)) errors.push(`framesOrRoot[${i}].title 必须是非空字符串`)
+
+    if (!frameCaseAllowed.has(f.case)) errors.push(`framesOrRoot[${i}].case 必须是 case1|case2|case3`)
+    if (frameCaseAllowed.has(f.case)) hasCase.add(f.case)
+
+    if (!isStringArray(f.directPoints)) errors.push(`framesOrRoot[${i}].directPoints 必须是 string[]`)
+    if (!Array.isArray(f.children)) errors.push(`framesOrRoot[${i}].children 必须是数组`)
+
+    if (f.case === 'case1') {
+      if (Array.isArray(f.children) && f.children.length > 0) errors.push(`framesOrRoot[${i}] case1 时 children 必须为空数组`)
+      if (Array.isArray(f.directPoints) && f.directPoints.length === 0) errors.push(`framesOrRoot[${i}] case1 时 directPoints 至少 1 个`)
+    }
+
+    if (f.case === 'case2') {
+      if (Array.isArray(f.directPoints) && f.directPoints.length > 0) errors.push(`framesOrRoot[${i}] case2 时 directPoints 必须为空数组 []`)
+      if (Array.isArray(f.children) && f.children.length === 0) errors.push(`framesOrRoot[${i}] case2 时 children 至少 1 个 group`)
+    }
+
+    if (f.case === 'case3') {
+      if (Array.isArray(f.directPoints) && f.directPoints.length > 0) errors.push(`framesOrRoot[${i}] case3 时 directPoints 必须为空数组 []`)
+      if (Array.isArray(f.children) && f.children.length === 0) errors.push(`framesOrRoot[${i}] case3 时 children 至少 1 个 group`)
+    }
+
+    // children 的基本结构校验（case1 不要求 children 为空以外的 children 字段）
+    if (Array.isArray(f.children)) {
+      f.children.forEach((c: any, j: number) => {
+        if (!c || typeof c !== 'object') {
+          errors.push(`framesOrRoot[${i}].children[${j}] 必须是对象`)
+          return
+        }
+        if (!isString(c.title)) errors.push(`framesOrRoot[${i}].children[${j}].title 必须是非空字符串`)
+        if (!isStringArray(c.points)) errors.push(`framesOrRoot[${i}].children[${j}].points 必须是 string[]`)
+      })
+    }
+  }
+
+  if (!hasCase.has('case1')) errors.push('必须至少包含 1 个 case1 的章节 frame')
+  if (!hasCase.has('case2')) errors.push('必须至少包含 1 个 case2 的章节 frame')
+  if (!hasCase.has('case3')) errors.push('必须至少包含 1 个 case3 的章节 frame')
+
+  return { ok: errors.length === 0, errors }
+}
+
 async function openRouterChatComplete(args: {
   apiKey: string
   model: string
@@ -710,8 +776,10 @@ async function openRouterSceneRoute(args: OpenRouterChatOptions): Promise<SceneR
   return parsed
 }
 
-async function openRouterDiagramPlanner(args: OpenRouterChatOptions & { templateKey: UserTemplateKey; complexityMode: ComplexityMode }): Promise<string> {
-  const { apiKey, model, prompt, signal, timeoutMs = DEFAULT_TIMEOUT_MS, templateKey, complexityMode } = args
+async function openRouterDiagramPlanner(
+  args: OpenRouterChatOptions & { templateKey: UserTemplateKey; complexityMode: ComplexityMode; extraUserHint?: string },
+): Promise<string> {
+  const { apiKey, model, prompt, signal, timeoutMs = DEFAULT_TIMEOUT_MS, templateKey, complexityMode, extraUserHint } = args
   const key = (apiKey ?? '').trim()
   if (!key) throw new Error('缺少 OpenRouter API Key')
   if (!prompt.trim()) throw new Error('请输入生成描述')
@@ -726,6 +794,7 @@ async function openRouterDiagramPlanner(args: OpenRouterChatOptions & { template
       '',
       '【用户原文】',
       prompt.trim(),
+      ...(extraUserHint ? ['', '【Planner 失败原因/额外强制】', extraUserHint] : []),
     ].join('\n'),
     signal,
     timeoutMs,
@@ -799,6 +868,46 @@ export async function openRouterGenerateDiagram(opts: OpenRouterChatOptions): Pr
   }
 
   const templateText = USER_TEMPLATES[chosen] || ''
+  // Business Big Map：对 Planner JSON 做强校验，不合格则重生成（失败才回退到原始 prompt）。
+  if (chosen === 'Business Big Map Template' && plannerText) {
+    const complexityMode = route?.complexityMode ?? 'chapters'
+    let ok = false
+    let lastErrors: string[] = []
+
+    for (let i = 0; i < 2; i += 1) {
+      try {
+        const parsed = JSON.parse(plannerText)
+        const v = validateBusinessPlannerJson(parsed)
+        if (v.ok) {
+          ok = true
+          break
+        }
+        lastErrors = v.errors
+      } catch (e: any) {
+        lastErrors = [`Planner JSON parse 失败：${String(e?.message ?? e)}`]
+      }
+
+      plannerText = await openRouterDiagramPlanner({
+        apiKey: key,
+        model,
+        prompt: originalPrompt,
+        signal,
+        timeoutMs,
+        templateKey: chosen,
+        complexityMode,
+        extraUserHint: [
+          '你输出的 Planner JSON 不符合 Business Big Map 的 case/directPoints/children 约束。',
+          '请严格按约束重生成：',
+          ...lastErrors.map((x) => `- ${x}`),
+          '',
+          '再次提醒：必须是严格 JSON，不允许多余文本。',
+        ].join('\n'),
+      })
+    }
+
+    if (!ok) plannerText = null
+  }
+
   const effectivePrompt = plannerText ?? originalPrompt
 
   // 为了最大化保留既有业务大图视觉：frameType/businessStyle 的判断尽量基于原始用户意图，
