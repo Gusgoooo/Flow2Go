@@ -286,8 +286,17 @@ function wrapFramesToContents(allNodes: Array<Node<any>>, businessMode: boolean)
       { w: BUSINESS_CHAPTER_W_120, label: 120 },
     ]
 
-    const chosen = tiers.find((t) => t.w >= globalNeed) ?? tiers[tiers.length - 1]
-    return chosen.w
+    // 递进一档：
+    // - 当“运算结果对应的最大档位”为 50，则统一宽度取 70
+    // - 运算结果对应为 70，则统一宽度取 90
+    // - 以此类推（但仅当基础档位 >= 50 时才上调），避免小图被无谓放大。
+    // 实现方式：先取 floor 档位（<= globalNeed 的最大 tier），再在基础档位为 50/70/90 时上调一档。
+    let baseIdx = 0
+    for (let i = 0; i < tiers.length; i += 1) {
+      if (tiers[i].w <= globalNeed) baseIdx = i
+    }
+    const bumpedIdx = baseIdx >= 1 && baseIdx < tiers.length - 1 ? baseIdx + 1 : baseIdx
+    return tiers[bumpedIdx].w
   }
   const businessUnifiedTopChapterWidth = calcBusinessUnifiedTopChapterWidth()
   const getBusinessChapterWidth = (isTop: boolean): number => (isTop ? businessUnifiedTopChapterWidth : BUSINESS_CHAPTER_W_30)
