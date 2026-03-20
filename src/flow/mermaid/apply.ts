@@ -78,7 +78,6 @@ function frameDefaults(title: string) {
 const LAYOUT_UNIT = 24
 const BUSINESS_INNER_UNIT = 12
 const NODE_MIN_WIDTH_UNITS = 3
-const BUSINESS_NODE_MIN_WIDTH_UNITS = 1.5
 const BUSINESS_CHAPTER_W_30 = LAYOUT_UNIT * 30 // 30 grid units = 720px
 const BUSINESS_CHAPTER_W_50 = LAYOUT_UNIT * 50 // 50 grid units = 1200px
 const BUSINESS_CHAPTER_W_70 = LAYOUT_UNIT * 70 // 70 grid units
@@ -183,8 +182,7 @@ function wrapFramesToContents(allNodes: Array<Node<any>>, businessMode: boolean)
   const MIN_W_DEFAULT = 220
   const MIN_H = 140
   const UNIT = businessMode ? BUSINESS_INNER_UNIT : LAYOUT_UNIT
-  const minUnits = businessMode ? BUSINESS_NODE_MIN_WIDTH_UNITS : NODE_MIN_WIDTH_UNITS
-  const MIN_NODE_W = Math.round(UNIT * minUnits)
+  const MIN_NODE_W = Math.round(UNIT * NODE_MIN_WIDTH_UNITS)
   const NODE_GAP = Math.round(UNIT * 0.5)
   const MAX_COLS = businessMode ? 6 : 6
 
@@ -222,7 +220,7 @@ function wrapFramesToContents(allNodes: Array<Node<any>>, businessMode: boolean)
     // (cols = min(3, childFrames.length)).
     //
     // This avoids the previous overestimation that caused too often selecting the max tier.
-    const targetNodeCellW = UNIT * 1.5
+    const targetNodeCellW = UNIT * 3
     const leafCols = 2
     const leafAvailableWRequired = (leafCols - 1) * NODE_GAP + leafCols * targetNodeCellW
     const BASE_LEAF_FRAME_W = leafAvailableWRequired + 2 * UNIT
@@ -584,6 +582,12 @@ function wrapFramesToContents(allNodes: Array<Node<any>>, businessMode: boolean)
         const targetW = Math.min(businessUnifiedTopChapterWidth, curW)
         f.width = targetW
         f.style = { ...(f.style as any), width: targetW }
+        // Ensure the single quad node can reach the recursive min width (3 units).
+        const n = childNodes[0]
+        const nodeW = Math.max(MIN_NODE_W, targetW - padX * 2)
+        n.width = nodeW
+        n.style = { ...(n.style as any), width: nodeW }
+        ;(n as any).measured = undefined
         nextW = targetW
       }
 
