@@ -351,6 +351,66 @@ function analyzeBusinessNestingCoverage(draft: AiDiagramDraft) {
   }
 }
 
+function analyzeBusinessFrameUniformity(draft: AiDiagramDraft): {
+  ok: boolean
+  mixedParentFrameIds: string[]
+} {
+  const nodes = Array.isArray(draft.nodes) ? (draft.nodes as any[]) : []
+  const frameById = new Map<string, any>()
+  for (const n of nodes) {
+    if (n && typeof n === 'object' && n.type === 'group' && n.data?.role === 'frame') frameById.set(n.id, n)
+  }
+
+  const frameChildCount = new Map<string, number>()
+  for (const f of frameById.values()) {
+    if (!f.parentId || !frameById.has(f.parentId)) continue
+    frameChildCount.set(f.parentId, (frameChildCount.get(f.parentId) ?? 0) + 1)
+  }
+
+  // Case 1 relative to a parent means: parent has direct quad nodes and no child frames.
+  // We only care if a parent mixes "direct quad" with "child frames", or mixes case-2 vs case-3
+  // among its direct child frames.
+  const directQuadCountByFrame = new Map<string, number>()
+  for (const n of nodes) {
+    if (!n || typeof n !== 'object') continue
+    if (n.type !== 'quad') continue
+    if (!n.parentId) continue
+    if (!frameById.has(n.parentId)) continue
+    directQuadCountByFrame.set(n.parentId, (directQuadCountByFrame.get(n.parentId) ?? 0) + 1)
+  }
+
+  const mixedParentFrameIds: string[] = []
+
+  for (const parent of frameById.values()) {
+    const parentId = parent.id
+    const directChildFrames = [...frameById.values()].filter((f) => f.parentId === parentId)
+    if (directChildFrames.length === 0) continue // Case 1 is fine (only quads inside parent), no further check.
+
+    const hasDirectQuads = (directQuadCountByFrame.get(parentId) ?? 0) > 0
+    if (hasDirectQuads) {
+      mixedParentFrameIds.push(parentId)
+      continue
+    }
+
+    let hasCase2Child = false
+    let hasCase3Child = false
+    for (const childFrame of directChildFrames) {
+      const childHasGrandChildFrames = (frameChildCount.get(childFrame.id) ?? 0) > 0
+      if (childHasGrandChildFrames) hasCase3Child = true
+      else hasCase2Child = true
+      if (hasCase2Child && hasCase3Child) {
+        mixedParentFrameIds.push(parentId)
+        break
+      }
+    }
+  }
+
+  return {
+    ok: mixedParentFrameIds.length === 0,
+    mixedParentFrameIds,
+  }
+}
+
 async function openRouterChatComplete(args: {
   apiKey: string
   model: string
@@ -818,6 +878,11 @@ export async function openRouterGenerateDiagram(opts: OpenRouterChatOptions): Pr
       '  - 章节B（Case 2）：2层嵌套（章节 -> 二级画框 -> 节点；禁止出现子画框）',
       '  - 章节C（Case 3）：3层嵌套（章节 -> 二级画框 -> 子画框 -> 节点）',
       '- 每一个章节画框必须只属于上述三类之一：禁止同一章节内混用不同层数。',
+      '- 额外嵌套一致性约束（新增，强制）：任意父画框（包含嵌套的二级/三级画框），其“直接子画框”必须保持相同的相对嵌套层级：',
+      '  - 要么该父画框下所有直接子画框都不再包含子画框（全员 Case 2 相对父级），',
+      '  - 要么该父画框下所有直接子画框都必须包含子画框（全员 Case 3 相对父级），',
+      '  - 禁止同一父画框下同时出现“直接子画框中既有继续嵌套（Case3 相对父级）又有不继续嵌套（Case2 相对父级）”的混搭。',
+      '  - 若父画框存在任何直接子画框，则禁止父画框同时直接包含 quad（禁止 Case 1 形态与 Case 2/3 形态混用）。',
       '- 1层嵌套章节：直接放 4~6 个 quad 节点即可（最简）。',
       '- 2层嵌套章节：2~3 个二级画框，每个二级画框 2~4 个节点（最简）。',
       '- 3层嵌套章节：2~3 个二级画框，每个二级画框 2~3 个子画框，每个子画框 2~4 个节点（最简）。',
@@ -939,6 +1004,7 @@ export async function openRouterGenerateDiagram(opts: OpenRouterChatOptions): Pr
   // - 目标是最小覆盖 3 种样式（3层/2层/1层）
   const attempts: AiDiagramDraft[] = []
   const analyses: ReturnType<typeof analyzeBusinessNestingCoverage>[] = []
+  const uniformities: ReturnType<typeof analyzeBusinessFrameUniformity>[] = []
   const hints = [
     '',
     '【结构配额器重试】请强制混合 3 种嵌套样式并显式覆盖：3层嵌套、2层嵌套、1层嵌套；不要只输出单一深度。',
@@ -948,19 +1014,23 @@ export async function openRouterGenerateDiagram(opts: OpenRouterChatOptions): Pr
     const d = await generateOnce(hints[i] || undefined)
     attempts.push(d)
     analyses.push(analyzeBusinessNestingCoverage(d))
-    if (analyses[i].count >= 3) return normalizeBusinessBigMapDraft(d)
+    uniformities.push(analyzeBusinessFrameUniformity(d))
+    if (analyses[i].count >= 3 && uniformities[i].ok) return normalizeBusinessBigMapDraft(d)
   }
   const sameSingleDepthTwice = analyses[0].count === 1 && analyses[1].count === 1 && analyses[0].onlyKind === analyses[1].onlyKind
   if (sameSingleDepthTwice || analyses[1].count < 3) {
     const d3 = await generateOnce(hints[2])
     attempts.push(d3)
     analyses.push(analyzeBusinessNestingCoverage(d3))
-    if (analyses[2].count >= 3) return normalizeBusinessBigMapDraft(d3)
+    uniformities.push(analyzeBusinessFrameUniformity(d3))
+    if (analyses[2].count >= 3 && uniformities[2].ok) return normalizeBusinessBigMapDraft(d3)
   }
   // 兜底：选覆盖度最高的一次结果
   let bestIndex = 0
   for (let i = 1; i < analyses.length; i += 1) {
-    if (analyses[i].count > analyses[bestIndex].count) bestIndex = i
+    const scoreI = analyses[i].count + (uniformities[i]?.ok ? 0.5 : 0)
+    const scoreBest = analyses[bestIndex].count + (uniformities[bestIndex]?.ok ? 0.5 : 0)
+    if (scoreI > scoreBest) bestIndex = i
   }
   return normalizeBusinessBigMapDraft(attempts[bestIndex])
 }
