@@ -620,9 +620,9 @@
   width: 34px;
   height: 34px;
   border-radius: 10px;
-  border: 1px solid rgba(148, 163, 184, 0.28);
-  background: #0f172a;
-  color: #cbd5e1;
+  border: 1px solid #dbe3ee;
+  background: #ffffff;
+  color: #475569;
   display: inline-flex;
   align-items: center;
   justify-content: center;
@@ -630,13 +630,30 @@
 }
 
 .aiConfigIconBtn:hover {
-  background: #111b31;
+  background: #f8fafc;
+}
+
+.aiCloseIconBtn {
+  width: 34px;
+  height: 34px;
+  border-radius: 10px;
+  border: 1px solid #dbe3ee;
+  background: #ffffff;
+  color: #475569;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+}
+
+.aiCloseIconBtn:hover {
+  background: #f8fafc;
 }
 
 .aiConfigPanel {
-  border: 1px solid rgba(148, 163, 184, 0.25);
+  border: 1px solid #e2e8f0;
   border-radius: 12px;
-  background: #0a0f1a;
+  background: #ffffff;
   padding: 10px;
   display: grid;
   gap: 8px;
@@ -645,7 +662,7 @@
 .aiConfigTitle {
   font-size: 12px;
   font-weight: 800;
-  color: #cbd5e1;
+  color: #334155;
 }
 
 .aiPromptColumn {
@@ -663,9 +680,9 @@
 }
 
 .aiNeedConfigTag {
-  border: 1px solid rgba(248, 113, 113, 0.5);
-  color: #fecaca;
-  background: rgba(127, 29, 29, 0.25);
+  border: 1px solid #fecaca;
+  color: #b91c1c;
+  background: #fff1f2;
   border-radius: 999px;
   padding: 4px 10px;
   font-size: 12px;
@@ -676,10 +693,10 @@
 }
 
 .aiChatInputWrap {
-  border: 1px solid rgba(148, 163, 184, 0.3);
+  border: 1px solid #dbe3ee;
   border-radius: 16px;
-  background: #0b1324;
-  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.04);
+  background: #ffffff;
+  box-shadow: inset 0 1px 0 rgba(15, 23, 42, 0.02);
   padding: 10px;
   display: flex;
   flex-direction: column;
@@ -693,7 +710,7 @@
   outline: none;
   resize: vertical;
   background: transparent;
-  color: #e2e8f0;
+  color: #0f172a;
   font-size: 14px;
   line-height: 1.65;
   padding: 4px 2px;
@@ -707,8 +724,34 @@
   display: flex;
   align-items: center;
   justify-content: flex-end;
-  border-top: 1px solid rgba(148, 163, 184, 0.16);
+  border-top: 1px solid #e2e8f0;
   padding-top: 8px;
+}
+
+.aiPresetChips {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+.aiPresetChip {
+  border: 1px solid #dbe3ee;
+  background: #ffffff;
+  color: #334155;
+  border-radius: 999px;
+  padding: 6px 12px;
+  font-size: 12px;
+  cursor: pointer;
+}
+
+.aiPresetChip:hover:not(:disabled) {
+  background: #f8fafc;
+  color: #0f172a;
+}
+
+.aiPresetChip:disabled {
+  opacity: 0.55;
+  cursor: not-allowed;
 }
 
 .menu {

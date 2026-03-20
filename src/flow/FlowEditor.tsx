@@ -40,6 +40,7 @@ import {
   SquareDashedKanban,
   Square,
   Type,
+  X,
 } from 'lucide-react'
 // import { clearPersistedState } from './persistence'  // 已移除清空功能
 import defaultExample from './defaultExample.json'
@@ -63,6 +64,7 @@ import {
   normalizeAiDiagramToSnapshot,
   type AiDiagramDraft,
 } from './aiDiagram'
+import { AI_PROMPT_PRESETS, DEFAULT_AI_PROMPT } from './aiPromptPresets'
 // overview 示例入口已移除
 
 export type AssetItem = {
@@ -140,47 +142,6 @@ const DEFAULT_MARKER_END = {
 function nowId(prefix: string) {
   return `${prefix}-${Date.now()}-${Math.random().toString(16).slice(2)}`
 }
-
-const DEFAULT_BUSINESS_BIGMAP_PROMPT = [
-  '请生成一张用于产品汇报的“战略全景业务大图”，',
-  '',
-  '画框标题：战略目标',
-  '- 定位用户需求',
-  '- 生成 DSL 草稿',
-  '- 转译为图结构',
-  '- 执行布局渲染',
-  '- 支持编辑回退',
-  '- 导出交付复用',
-  '',
-  '画框标题：核心流程',
-  '- 模块1：输入与模板',
-  '  - 选择最适模板',
-  '  - 注入约束规则',
-  '- 模块2：解析与转译',
-  '  - Mermaid 解析',
-  '  - 生成 Graph JSON',
-  '  - 修复/补齐结构',
-  '- 模块3：应用与可编辑',
-  '  - 批量应用到画布',
-  '  - 自动布局',
-  '  - 支持撤销重做',
-  '',
-  '画框标题：平台能力树',
-  '- 二级模块：质量与治理',
-  '  - 子模块：解析健壮性',
-  '    - 语法支持白名单',
-  '    - 不支持语法给 warning',
-  '  - 子模块：结构配额器',
-  '    - 混合层级覆盖',
-  '    - 避免单一 3层堆叠',
-  '- 二级模块：可用性与交付',
-  '  - 子模块：编辑体验',
-  '    - 统一自适应拉伸',
-  '    - 图形导入导出一致',
-  '  - 子模块：协作复用',
-  '    - 模板资产管理',
-  '    - 历史记录与快照',
-].join('\n')
 
 function Sidebar({
   assets,
@@ -657,7 +618,7 @@ function EditorInner({ onBackHome, source, previewSnapshot, readOnly: _readOnly 
   const isPreview = !!previewSnapshot || !!_readOnly
   const [assetsPopupOpen, setAssetsPopupOpen] = useState(false)
   const [aiModalOpen, setAiModalOpen] = useState(false)
-  const [aiModalPrompt, setAiModalPrompt] = useState(() => DEFAULT_BUSINESS_BIGMAP_PROMPT)
+  const [aiModalPrompt, setAiModalPrompt] = useState(() => DEFAULT_AI_PROMPT)
   const [aiConfigOpen, setAiConfigOpen] = useState(false)
   const [aiModalGenerating, setAiModalGenerating] = useState(false)
   const [aiModalError, setAiModalError] = useState<string | null>(null)
@@ -2991,19 +2952,19 @@ function EditorInner({ onBackHome, source, previewSnapshot, readOnly: _readOnly 
             <div
               onClick={(e) => e.stopPropagation()}
               style={{
-                width: 'min(980px, 96vw)',
                 maxHeight: '90vh',
-                background: '#0b1220',
-                border: '1px solid rgba(148, 163, 184, 0.28)',
+                width: 'min(760px, 94vw)',
+                background: '#ffffff',
+                border: '1px solid #e2e8f0',
                 borderRadius: 14,
-                boxShadow: '0 28px 90px rgba(0,0,0,0.35)',
-                color: '#e2e8f0',
+                boxShadow: '0 24px 60px rgba(15,23,42,0.18)',
+                color: '#0f172a',
                 display: 'flex',
                 flexDirection: 'column',
                 overflow: 'hidden',
               }}
             >
-              <div style={{ padding: '12px 14px', display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 10, borderBottom: '1px solid rgba(148,163,184,0.18)' }}>
+              <div style={{ padding: '12px 14px', display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 10, borderBottom: '1px solid #e2e8f0' }}>
                 <div style={{ fontSize: 14, fontWeight: 800 }}>AI 生成</div>
                 <div style={{ display: 'flex', gap: 8 }}>
                   <button
@@ -3014,8 +2975,8 @@ function EditorInner({ onBackHome, source, previewSnapshot, readOnly: _readOnly 
                   >
                     <Settings2 size={16} />
                   </button>
-                  <button type="button" className={styles.btnSecondary} onClick={() => setAiModalOpen(false)}>
-                    关闭
+                  <button type="button" className={styles.aiCloseIconBtn} title="关闭" onClick={() => setAiModalOpen(false)}>
+                    <X size={16} />
                   </button>
                 </div>
               </div>
@@ -3050,7 +3011,7 @@ function EditorInner({ onBackHome, source, previewSnapshot, readOnly: _readOnly 
 
                 <div className={styles.aiPromptColumn}>
                   <div className={styles.aiPromptHeader}>
-                    <div style={{ fontSize: 12, fontWeight: 800, color: '#cbd5e1' }}>Prompt</div>
+                    <div style={{ fontSize: 12, fontWeight: 800, color: '#334155' }}>Prompt</div>
                     {!aiModalKey.trim() && (
                       <button type="button" className={styles.aiNeedConfigTag} onClick={() => setAiConfigOpen(true)}>
                         <KeyRound size={14} />
@@ -3067,8 +3028,21 @@ function EditorInner({ onBackHome, source, previewSnapshot, readOnly: _readOnly 
                       className={styles.aiChatInput}
                     />
                     <div className={styles.aiChatToolbar}>
-                      <div className={styles.aiNote}>已加载“战略全景业务大图”预设 Prompt，可直接生成或继续编辑。</div>
+                      <div className={styles.aiNote}>可点击下方推荐胶囊填充预设 Prompt，也可自行编辑。</div>
                     </div>
+                  </div>
+                  <div className={styles.aiPresetChips}>
+                    {AI_PROMPT_PRESETS.map((preset) => (
+                      <button
+                        key={preset.id}
+                        type="button"
+                        className={styles.aiPresetChip}
+                        onClick={() => setAiModalPrompt(preset.prompt)}
+                        disabled={aiModalGenerating}
+                      >
+                        {preset.label}
+                      </button>
+                    ))}
                   </div>
 
                   {aiModalError && <div className={styles.aiError}>{aiModalError}</div>}
@@ -3107,14 +3081,6 @@ function EditorInner({ onBackHome, source, previewSnapshot, readOnly: _readOnly 
                       }}
                     >
                       {aiModalGenerating ? '生成中…' : '生成并应用'}
-                    </button>
-                    <button
-                      type="button"
-                      className={styles.btnSecondary}
-                      onClick={() => setAiModalPrompt(DEFAULT_BUSINESS_BIGMAP_PROMPT)}
-                      disabled={aiModalGenerating}
-                    >
-                      恢复预设
                     </button>
                   </div>
                 </div>
