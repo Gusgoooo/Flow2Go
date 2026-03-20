@@ -20,6 +20,9 @@
 - `NODE_MIN_WIDTH_UNITS = 3.5`
 - `BUSINESS_CHAPTER_W_30 = 30 * LAYOUT_UNIT = 720`
 - `BUSINESS_CHAPTER_W_50 = 50 * LAYOUT_UNIT = 1200`
+- `BUSINESS_CHAPTER_W_70 = 70 * LAYOUT_UNIT`
+- `BUSINESS_CHAPTER_W_90 = 90 * LAYOUT_UNIT`
+- `BUSINESS_CHAPTER_W_120 = 120 * LAYOUT_UNIT`
 - `UNIT = businessMode ? BUSINESS_INNER_UNIT : LAYOUT_UNIT`
 - `MIN_NODE_W = round(UNIT * NODE_MIN_WIDTH_UNITS)`
 
@@ -29,14 +32,22 @@
 
 ---
 
-## 3. 顶层宽度档位规则（30/50）
+## 3. 顶层宽度档位规则（30/50/70/90/120）
 
 函数：`calcBusinessUnifiedTopChapterWidth()`
 
 - 遍历每个顶层章节 frame（没有 `parentId`）。
-- 统计该章节“后代 frame 总数”（任意深度）。
-- 若任一章节后代 frame 数量 `>= 3`，全局章节档位设为 `50`；
-- 否则设为 `30`。
+- 对每个章节计算两类数量：
+  - `directChildFrames`：直接子 frame 数量
+  - `grandchildFrames`：孙级及以上 frame 数量（`descendantFrames - directChildFrames`）
+- 顶层章节选择 width tier（单位档位）：
+  - `directChildFrames <= 2` => `30`
+  - `directChildFrames == 3`：
+    - `grandchildFrames == 0` => `50`
+    - `grandchildFrames 1..2` => `70`
+    - `grandchildFrames 3..5` => `90`
+    - `grandchildFrames >= 6` => `120`
+- 全局章节档位统一为：所有顶层章节中 `MAX tier` 对应的宽度。
 
 输出用于顶层章节宽度：`businessUnifiedTopChapterWidth`。
 

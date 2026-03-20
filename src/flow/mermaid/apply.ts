@@ -80,6 +80,9 @@ const BUSINESS_INNER_UNIT = 12
 const NODE_MIN_WIDTH_UNITS = 3
 const BUSINESS_CHAPTER_W_30 = LAYOUT_UNIT * 30 // 30 grid units = 720px
 const BUSINESS_CHAPTER_W_50 = LAYOUT_UNIT * 50 // 50 grid units = 1200px
+const BUSINESS_CHAPTER_W_70 = LAYOUT_UNIT * 70 // 70 grid units
+const BUSINESS_CHAPTER_W_90 = LAYOUT_UNIT * 90 // 90 grid units
+const BUSINESS_CHAPTER_W_120 = LAYOUT_UNIT * 120 // 120 grid units
 // Keep the old name for readability at call sites that still assume the "30 units" baseline.
 const BUSINESS_CHAPTER_W = BUSINESS_CHAPTER_W_30
 // Business Big Map: restrict theme palette (rotating)
@@ -197,8 +200,16 @@ function wrapFramesToContents(allNodes: Array<Node<any>>, businessMode: boolean)
 
   // Business Big Map: chapter width is unified by the largest bucket.
   // Rule:
-  // - If ANY top-level chapter has >=3 descendant frames (at any depth), then ALL frames use 50 grid units.
-  // - Otherwise ALL frames use 30 grid units.
+  // - Top-level chapter chooses width tier by (direct child frames, grandchild frames).
+  // - Global chapter width is unified to the MAX tier across all top-level chapters.
+  //
+  // Tier thresholds (default):
+  // - directChildFrames <= 2 => 30
+  // - directChildFrames == 3:
+  //   - grandchildFrames == 0 => 50
+  //   - grandchildFrames 1..2 => 70  (3 子画框且子画框还包含子画框，原 50 容易不够)
+  //   - grandchildFrames 3..5 => 90
+  //   - grandchildFrames >= 6 => 120
   const calcBusinessUnifiedTopChapterWidth = (): number => {
     const topFrames = allNodes.filter((n) => isFrame(n) && !n.parentId)
     const countDescendantFrames = (frameId: string): number => {
@@ -217,11 +228,41 @@ function wrapFramesToContents(allNodes: Array<Node<any>>, businessMode: boolean)
       }
       return count
     }
-    const hasAny50 = topFrames.some((chapter) => {
-      const descendantFrames = countDescendantFrames(chapter.id)
-      return descendantFrames >= 3
-    })
-    return hasAny50 ? BUSINESS_CHAPTER_W_50 : BUSINESS_CHAPTER_W_30
+
+    const calcTierUnits = (chapterId: string): number => {
+      const directChildFrames = (childrenByParent.get(chapterId) ?? []).filter(isFrame).length
+      const descendantFrames = countDescendantFrames(chapterId)
+      // descendantFrames includes direct child frames + deeper frames.
+      const grandchildFrames = Math.max(0, descendantFrames - directChildFrames)
+
+      if (directChildFrames <= 2) return 30
+      if (directChildFrames !== 3) return 120
+
+      // directChildFrames === 3
+      if (grandchildFrames === 0) return 50
+      if (grandchildFrames <= 2) return 70
+      if (grandchildFrames <= 5) return 90
+      return 120
+    }
+
+    let maxUnits = 30
+    for (const chapter of topFrames) {
+      const units = calcTierUnits(chapter.id)
+      if (units > maxUnits) maxUnits = units
+    }
+
+    const tierWidth =
+      maxUnits === 30
+        ? BUSINESS_CHAPTER_W_30
+        : maxUnits === 50
+          ? BUSINESS_CHAPTER_W_50
+          : maxUnits === 70
+            ? BUSINESS_CHAPTER_W_70
+            : maxUnits === 90
+              ? BUSINESS_CHAPTER_W_90
+              : BUSINESS_CHAPTER_W_120
+
+    return tierWidth
   }
   const businessUnifiedTopChapterWidth = calcBusinessUnifiedTopChapterWidth()
   const getBusinessChapterWidth = (isTop: boolean): number => (isTop ? businessUnifiedTopChapterWidth : BUSINESS_CHAPTER_W_30)
