@@ -682,9 +682,11 @@ export async function openRouterGenerateDiagram(opts: OpenRouterChatOptions): Pr
   const templateText = USER_TEMPLATES[chosen] || ''
   const effectivePrompt = plannerText ?? originalPrompt
 
-  const frameType = chosen === 'Business Big Map Template' ? await openRouterSelectFrameType({ apiKey: key, model, prompt: effectivePrompt, signal, timeoutMs }) : null
+  // 为了最大化保留既有业务大图视觉：frameType/businessStyle 的判断尽量基于原始用户意图，
+  // 生成阶段才使用 plannerText 做结构压缩与去噪。
+  const frameType = chosen === 'Business Big Map Template' ? await openRouterSelectFrameType({ apiKey: key, model, prompt: originalPrompt, signal, timeoutMs }) : null
   const businessStyle =
-    chosen === 'Business Big Map Template' ? await openRouterSelectBusinessStyle({ apiKey: key, model, prompt: effectivePrompt, signal, timeoutMs }) : null
+    chosen === 'Business Big Map Template' ? await openRouterSelectBusinessStyle({ apiKey: key, model, prompt: originalPrompt, signal, timeoutMs }) : null
 
   const templateSubgraphRules: Record<UserTemplateKey, string> = {
     'Frontend-Backend Flow Template': [
