@@ -1094,81 +1094,187 @@ export function materializeGraphBatchPayloadToSnapshot(
       return { depthByNodeId, internalEdgeBySource: outAdj }
     }
 
-    for (const frame of wrapperFrames) {
-      const frameId = frame.id
-      const quadNodes = safeNodes.filter((n) => n.type === 'quad' && n.parentId === frameId) as Array<Node<any>>
-      if (quadNodes.length === 0) continue
+    const getDepthForQuadNodes = (quadNodes: Array<Node<any>>): Map<string, number> => {
+      const quadIds = new Set(quadNodes.map((n) => n.id))
 
-      const { depthByNodeId } = getDepthForFrame(frameId)
-
-      // 1) theme strokes by depth
-      for (const n of quadNodes) {
-        const d = depthByNodeId.get(n.id) ?? 0
-        const color = palette[d % palette.length]
-        n.data = {
-          ...(n.data ?? {}),
-          stroke: color,
-          strokeWidth: 2,
-        }
+      const indeg = new Map<string, number>()
+      const outAdj = new Map<string, string[]>()
+      for (const id of quadIds) {
+        indeg.set(id, 0)
+        outAdj.set(id, [])
       }
 
-      // 2) columnar layout: x = depth * COL_GAP, y = index * (h + ROW_GAP)
-      const byDepth = new Map<number, Array<Node<any>>>()
-      for (const n of quadNodes) {
-        const d = depthByNodeId.get(n.id) ?? 0
-        const arr = byDepth.get(d) ?? []
-        arr.push(n)
-        byDepth.set(d, arr)
-      }
-      const depths = [...byDepth.keys()].sort((a, b) => a - b)
-
-      for (const d of depths) {
-        const arr = byDepth.get(d) ?? []
-        arr.sort((a, b) => a.id.localeCompare(b.id))
-        for (let i = 0; i < arr.length; i += 1) {
-          const n = arr[i]
-          const { h } = getNodeSize(n)
-          n.position = { x: d * COL_GAP, y: i * (h + ROW_GAP) }
-        }
-      }
-
-      // 3) update frame size + shift children into padded area
-      let minX = Number.POSITIVE_INFINITY
-      let minY = Number.POSITIVE_INFINITY
-      let maxX = Number.NEGATIVE_INFINITY
-      let maxY = Number.NEGATIVE_INFINITY
-      for (const n of quadNodes) {
-        const { w, h } = getNodeSize(n)
-        minX = Math.min(minX, n.position?.x ?? 0)
-        minY = Math.min(minY, n.position?.y ?? 0)
-        maxX = Math.max(maxX, (n.position?.x ?? 0) + w)
-        maxY = Math.max(maxY, (n.position?.y ?? 0) + h)
-      }
-
-      const contentW = Math.max(1, maxX - minX)
-      const contentH = Math.max(1, maxY - minY)
-      const shiftX = FRAME_PAD - minX
-      const shiftY = FRAME_PAD - minY
-      for (const n of quadNodes) {
-        n.position = { x: (n.position?.x ?? 0) + shiftX, y: (n.position?.y ?? 0) + shiftY }
-      }
-
-      const nextW = Math.max(frame.width ?? 640, contentW + FRAME_PAD * 2)
-      const nextH = Math.max(frame.height ?? 420, contentH + FRAME_PAD * 2)
-      frame.width = nextW
-      frame.height = nextH
-      frame.style = { ...(frame.style as any), width: nextW, height: nextH }
-
-      // 4) edge stroke color follows target depth color
-      const quadIdSet = new Set(quadNodes.map((n) => n.id))
       for (const e of edges) {
-        if (!quadIdSet.has(e.source) || !quadIdSet.has(e.target)) continue
-        const td = depthByNodeId.get(e.target) ?? 0
-        const color = palette[td % palette.length]
-        ;(e.style as any) = {
-          ...(e.style ?? {}),
-          stroke: color,
-          '--xy-edge-stroke': color,
+        if (!quadIds.has(e.source) || !quadIds.has(e.target)) continue
+        indeg.set(e.target, (indeg.get(e.target) ?? 0) + 1)
+        outAdj.set(e.source, [...(outAdj.get(e.source) ?? []), e.target])
+      }
+
+      let roots = quadNodes.filter((n) => (indeg.get(n.id) ?? 0) === 0)
+      if (roots.length === 0 && quadNodes.length > 0) roots = [quadNodes[0]]
+
+      const depthByNodeId = new Map<string, number>()
+      const queue: string[] = []
+      for (const r of roots) {
+        depthByNodeId.set(r.id, 0)
+        queue.push(r.id)
+      }
+
+      while (queue.length > 0) {
+        const cur = queue.shift()!
+        const curDepth = depthByNodeId.get(cur) ?? 0
+        const nexts = outAdj.get(cur) ?? []
+        for (const nxt of nexts) {
+          const nextDepth = curDepth + 1
+          const prev = depthByNodeId.get(nxt)
+          if (prev === undefined || nextDepth < prev) {
+            depthByNodeId.set(nxt, nextDepth)
+            queue.push(nxt)
+          }
+        }
+      }
+
+      return depthByNodeId
+    }
+
+    if (wrapperFrames.length > 0) {
+      // Backward-compatible: older output may include a wrapper subgraph/frame.
+      for (const frame of wrapperFrames) {
+        const frameId = frame.id
+        const quadNodes = safeNodes.filter((n) => n.type === 'quad' && n.parentId === frameId) as Array<Node<any>>
+        if (quadNodes.length === 0) continue
+
+        const { depthByNodeId } = getDepthForFrame(frameId)
+
+        for (const n of quadNodes) {
+          const d = depthByNodeId.get(n.id) ?? 0
+          const color = palette[d % palette.length]
+          n.data = {
+            ...(n.data ?? {}),
+            stroke: color,
+            strokeWidth: 2,
+          }
+        }
+
+        const byDepth = new Map<number, Array<Node<any>>>()
+        for (const n of quadNodes) {
+          const d = depthByNodeId.get(n.id) ?? 0
+          const arr = byDepth.get(d) ?? []
+          arr.push(n)
+          byDepth.set(d, arr)
+        }
+        const depths = [...byDepth.keys()].sort((a, b) => a - b)
+
+        for (const d of depths) {
+          const arr = byDepth.get(d) ?? []
+          arr.sort((a, b) => a.id.localeCompare(b.id))
+          for (let i = 0; i < arr.length; i += 1) {
+            const n = arr[i]
+            const { h } = getNodeSize(n)
+            n.position = { x: d * COL_GAP, y: i * (h + ROW_GAP) }
+          }
+        }
+
+        let minX = Number.POSITIVE_INFINITY
+        let minY = Number.POSITIVE_INFINITY
+        let maxX = Number.NEGATIVE_INFINITY
+        let maxY = Number.NEGATIVE_INFINITY
+        for (const n of quadNodes) {
+          const { w, h } = getNodeSize(n)
+          minX = Math.min(minX, n.position?.x ?? 0)
+          minY = Math.min(minY, n.position?.y ?? 0)
+          maxX = Math.max(maxX, (n.position?.x ?? 0) + w)
+          maxY = Math.max(maxY, (n.position?.y ?? 0) + h)
+        }
+
+        const contentW = Math.max(1, maxX - minX)
+        const contentH = Math.max(1, maxY - minY)
+        const shiftX = FRAME_PAD - minX
+        const shiftY = FRAME_PAD - minY
+        for (const n of quadNodes) {
+          n.position = { x: (n.position?.x ?? 0) + shiftX, y: (n.position?.y ?? 0) + shiftY }
+        }
+
+        const nextW = Math.max(frame.width ?? 640, contentW + FRAME_PAD * 2)
+        const nextH = Math.max(frame.height ?? 420, contentH + FRAME_PAD * 2)
+        frame.width = nextW
+        frame.height = nextH
+        frame.style = { ...(frame.style as any), width: nextW, height: nextH }
+
+        const quadIdSet = new Set(quadNodes.map((n) => n.id))
+        for (const e of edges) {
+          if (!quadIdSet.has(e.source) || !quadIdSet.has(e.target)) continue
+          const td = depthByNodeId.get(e.target) ?? 0
+          const color = palette[td % palette.length]
+          ;(e.style as any) = {
+            ...(e.style ?? {}),
+            stroke: color,
+            '--xy-edge-stroke': color,
+          }
+        }
+      }
+    } else {
+      // New mind-map mode: no wrapper subgraph/frame; layout top-level quads directly.
+      const quadNodes = safeNodes.filter((n) => n.type === 'quad' && !n.parentId) as Array<Node<any>>
+      if (quadNodes.length > 0) {
+        const depthByNodeId = getDepthForQuadNodes(quadNodes)
+
+        for (const n of quadNodes) {
+          const d = depthByNodeId.get(n.id) ?? 0
+          const color = palette[d % palette.length]
+          n.data = {
+            ...(n.data ?? {}),
+            stroke: color,
+            strokeWidth: 2,
+          }
+        }
+
+        const byDepth = new Map<number, Array<Node<any>>>()
+        for (const n of quadNodes) {
+          const d = depthByNodeId.get(n.id) ?? 0
+          const arr = byDepth.get(d) ?? []
+          arr.push(n)
+          byDepth.set(d, arr)
+        }
+        const depths = [...byDepth.keys()].sort((a, b) => a - b)
+        for (const d of depths) {
+          const arr = byDepth.get(d) ?? []
+          arr.sort((a, b) => a.id.localeCompare(b.id))
+          for (let i = 0; i < arr.length; i += 1) {
+            const n = arr[i]
+            const { h } = getNodeSize(n)
+            n.position = { x: d * COL_GAP, y: i * (h + ROW_GAP) }
+          }
+        }
+
+        let minX = Number.POSITIVE_INFINITY
+        let minY = Number.POSITIVE_INFINITY
+        let maxX = Number.NEGATIVE_INFINITY
+        let maxY = Number.NEGATIVE_INFINITY
+        for (const n of quadNodes) {
+          const { w, h } = getNodeSize(n)
+          minX = Math.min(minX, n.position?.x ?? 0)
+          minY = Math.min(minY, n.position?.y ?? 0)
+          maxX = Math.max(maxX, (n.position?.x ?? 0) + w)
+          maxY = Math.max(maxY, (n.position?.y ?? 0) + h)
+        }
+
+        const shiftX = FRAME_PAD - minX
+        const shiftY = FRAME_PAD - minY
+        for (const n of quadNodes) {
+          n.position = { x: (n.position?.x ?? 0) + shiftX, y: (n.position?.y ?? 0) + shiftY }
+        }
+
+        const quadIdSet = new Set(quadNodes.map((n) => n.id))
+        for (const e of edges) {
+          if (!quadIdSet.has(e.source) || !quadIdSet.has(e.target)) continue
+          const td = depthByNodeId.get(e.target) ?? 0
+          const color = palette[td % palette.length]
+          ;(e.style as any) = {
+            ...(e.style ?? {}),
+            stroke: color,
+            '--xy-edge-stroke': color,
+          }
         }
       }
     }
