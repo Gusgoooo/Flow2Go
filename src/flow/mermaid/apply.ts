@@ -213,6 +213,7 @@ function wrapFramesToContents(allNodes: Array<Node<any>>, businessMode: boolean)
     return hasAny50 ? BUSINESS_CHAPTER_W_50 : BUSINESS_CHAPTER_W_30
   }
   const businessUnifiedTopChapterWidth = calcBusinessUnifiedTopChapterWidth()
+  const enforceAllFramesTo50 = businessUnifiedTopChapterWidth === BUSINESS_CHAPTER_W_50
   const getBusinessChapterWidth = (isTop: boolean): number => (isTop ? businessUnifiedTopChapterWidth : BUSINESS_CHAPTER_W_30)
 
   const frames = allNodes.filter(isFrame)
@@ -352,14 +353,22 @@ function wrapFramesToContents(allNodes: Array<Node<any>>, businessMode: boolean)
       const isTop = !frame.parentId
       // Top chapter width is selected by the generated structure.
       // Nested frames follow the width allocated by their parent.
-      const frameW = isTop ? getBusinessChapterWidth(true) : Math.max(forcedWidth ?? MIN_W_DEFAULT, MIN_W_DEFAULT)
+      const frameW = enforceAllFramesTo50
+        ? BUSINESS_CHAPTER_W_50
+        : isTop
+          ? getBusinessChapterWidth(true)
+          : Math.max(forcedWidth ?? MIN_W_DEFAULT, MIN_W_DEFAULT)
       const availableW = Math.max(1, frameW - padX * 2)
 
       // 1) 先拉伸并布局子画框（父层决定子画框宽度）
       let yCursor = 0
       if (childFrames.length > 0) {
-        const cols = Math.max(1, Math.ceil(childFrames.length / rowsPerColumn))
-        const cellW = Math.max(120, Math.floor((availableW - (cols - 1) * UNIT) / cols))
+        // If 50-tier is active, every frame must stay 50 units wide.
+        // In this mode, nest child frames in a single column to keep width invariant.
+        const cols = enforceAllFramesTo50 ? 1 : Math.max(1, Math.ceil(childFrames.length / rowsPerColumn))
+        const cellW = enforceAllFramesTo50
+          ? BUSINESS_CHAPTER_W_50
+          : Math.max(120, Math.floor((availableW - (cols - 1) * UNIT) / cols))
 
         // 先把宽度下发给子画框，再递归布局子画框内部节点
         for (const cf of childFrames) {
