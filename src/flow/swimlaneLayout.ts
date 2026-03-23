@@ -38,6 +38,36 @@ function estimateNodeSize(n: Node<any>): { w: number; h: number } {
   }
 }
 
+function getAbsolutePosition(node: Node<any>, nodeById: Map<string, Node<any>>): { x: number; y: number } {
+  let x = node.position?.x ?? 0
+  let y = node.position?.y ?? 0
+  let cur = node
+  const seen = new Set<string>()
+  while (cur.parentId) {
+    if (seen.has(cur.id)) break
+    seen.add(cur.id)
+    const p = nodeById.get(cur.parentId)
+    if (!p) break
+    x += p.position?.x ?? 0
+    y += p.position?.y ?? 0
+    cur = p
+  }
+  return { x, y }
+}
+
+function getHandlePoint(
+  node: Node<any>,
+  handle: string,
+  nodeById: Map<string, Node<any>>,
+): { x: number; y: number } {
+  const abs = getAbsolutePosition(node, nodeById)
+  const size = estimateNodeSize(node)
+  if (handle.endsWith('-top')) return { x: abs.x + size.w / 2, y: abs.y }
+  if (handle.endsWith('-bottom')) return { x: abs.x + size.w / 2, y: abs.y + size.h }
+  if (handle.endsWith('-left')) return { x: abs.x, y: abs.y + size.h / 2 }
+  return { x: abs.x + size.w, y: abs.y + size.h / 2 }
+}
+
 /**
  * 简单拓扑排序：用边关系决定节点顺序。
  * 若有环或不连通则按 nodeOrder / 创建顺序回退。
@@ -207,6 +237,7 @@ export function autoLayoutSwimlane(args: {
 
   // ── Phase C: edge 路由修正 ──
   const nodeById = new Map(nodes.map((n) => [n.id, n]))
+  const edgeLaneCounter = new Map<string, number>()
   const updatedEdges = edges.map((e) => {
     const srcNode = nodeById.get(e.source)
     const tgtNode = nodeById.get(e.target)
@@ -259,8 +290,9 @@ export function autoLayoutSwimlane(args: {
           targetHandle = 't-bottom'
         }
       } else if (isReturnFlow) {
-        sourceHandle = 's-bottom'
-        targetHandle = 't-bottom'
+        // 回流边从另一组 handle 走顶边，避免和主流 right->left 重叠
+        sourceHandle = 's-top'
+        targetHandle = 't-top'
       } else {
         sourceHandle = 's-right'
         targetHandle = 't-left'
@@ -279,13 +311,46 @@ export function autoLayoutSwimlane(args: {
           targetHandle = 't-right'
         }
       } else if (isReturnFlow) {
-        sourceHandle = 's-right'
-        targetHandle = 't-right'
+        // 纵向泳道时，回流边改走 left 侧，与主流 bottom->top 分离
+        sourceHandle = 's-left'
+        targetHandle = 't-left'
       } else {
         sourceHandle = 's-bottom'
         targetHandle = 't-top'
       }
     }
+
+    const lanePairKey = `${String(srcLaneId ?? 'none')}->${String(tgtLaneId ?? 'none')}:${semanticType}`
+    const laneOrder = edgeLaneCounter.get(lanePairKey) ?? 0
+    edgeLaneCounter.set(lanePairKey, laneOrder + 1)
+    const signed = laneOrder % 2 === 0 ? laneOrder / 2 : -((laneOrder + 1) / 2)
+    const autoOffset = signed * 18
+
+    let waypoints: Array<{ x: number; y: number }> | undefined
+    if (semanticType === 'returnFlow') {
+      const srcPt = getHandlePoint(srcNode, sourceHandle, nodeById)
+      const tgtPt = getHandlePoint(tgtNode, targetHandle, nodeById)
+      if (isHorizontal) {
+        const detourY = Math.min(srcPt.y, tgtPt.y) - 56 - Math.abs(autoOffset)
+        waypoints = [
+          { x: srcPt.x, y: detourY },
+          { x: tgtPt.x, y: detourY },
+        ]
+      } else {
+        const detourX = Math.min(srcPt.x, tgtPt.x) - 56 - Math.abs(autoOffset)
+        waypoints = [
+          { x: detourX, y: srcPt.y },
+          { x: detourX, y: tgtPt.y },
+        ]
+      }
+    }
+
+    const labelLayout =
+      semanticType === 'returnFlow'
+        ? { placement: 'manual', offsetX: 0, offsetY: isHorizontal ? -28 : -16 }
+        : semanticType === 'crossLane'
+          ? { placement: 'manual', offsetX: 0, offsetY: -16 }
+          : { placement: 'center' }
 
     return {
       ...e,
@@ -298,7 +363,9 @@ export function autoLayoutSwimlane(args: {
         semanticType,
         sourceLaneId: srcLaneId,
         targetLaneId: tgtLaneId,
-        autoOffset: 0,
+        autoOffset,
+        ...(waypoints ? { waypoints } : {}),
+        labelLayout,
       },
     }
   })
