@@ -1175,6 +1175,10 @@ export async function materializeGraphBatchPayloadToSnapshot(
     }
 
     if (op.op === 'graph.autoLayout') {
+      // 业务大图：禁用所有自动排版步骤，仅保留递归拉伸布局。
+      if (businessMode) {
+        continue
+      }
       const withinFrameDir: FlowDirection = dagreFlowMode ? op.params.direction : effectiveDirection
       const topLevelDir: FlowDirection = dagreFlowMode ? 'LR' : effectiveDirection
       if (op.params.scope === 'withinFrame' && op.params.frameId) {
