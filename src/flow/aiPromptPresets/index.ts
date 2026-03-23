@@ -87,6 +87,19 @@ export const AI_SCENE_CAPSULE_PRESETS: AiSceneCapsulePreset[] = [
       '5. 所有人工处理节点，如果处理成功，都应尽量回流到原正常主流程，而不是直接结束。',
     ].join('\n'),
   },
+  {
+    id: 'flowchart-json-test',
+    label: '流程图JSON测试',
+    scene: 'flowchart-json-test' as AiDiagramSceneHint,
+    accentHex: AI_SCENE_CAPSULE_ACCENT_COLORS[0],
+    prompt: [
+      '请把以下业务过程整理为流程图（JSON测试链路）：',
+      '',
+      '用户提交申请 -> 系统校验 -> 审核员审批 -> 系统通知结果。',
+      '若审批驳回，用户补充材料后重新提交。',
+      '若系统校验失败，返回错误并允许用户重试。',
+    ].join('\n'),
+  },
 ]
 
 /** @deprecated 旧多胶囊列表已收敛为 AI_SCENE_CAPSULE_PRESETS */
