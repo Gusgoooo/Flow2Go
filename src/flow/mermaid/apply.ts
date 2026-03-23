@@ -1061,6 +1061,41 @@ function applyMindMapHorizontalHandles(nodes: Array<Node<any>>, edges: Array<Edg
 }
 
 /**
+ * 流程图：强制边从规范 handle 出入，避免布局后出现“看起来不贴 handle”的情况。
+ */
+function applyFlowchartStrictHandles(
+  nodes: Array<Node<any>>,
+  edges: Array<Edge<any>>,
+  direction: FlowDirection,
+): Array<Edge<any>> {
+  const nodeById = new Map(nodes.map((n) => [n.id, n]))
+  return edges.map((e) => {
+    const centers = getCenters(e.source, e.target, nodeById)
+    if (!centers) return e
+    const dx = centers.tCx - centers.sCx
+    const dy = centers.tCy - centers.sCy
+
+    let sourceHandle: string
+    let targetHandle: string
+    if (direction === 'LR' || direction === 'RL') {
+      sourceHandle = dx >= 0 ? 's-right' : 's-left'
+      targetHandle = dx >= 0 ? 't-left' : 't-right'
+    } else if (direction === 'TB' || direction === 'BT') {
+      sourceHandle = dy >= 0 ? 's-bottom' : 's-top'
+      targetHandle = dy >= 0 ? 't-top' : 't-bottom'
+    } else {
+      const inferred = inferHandlesForEdge(e.source, e.target, nodeById)
+      if (!inferred) return e
+      sourceHandle = inferred.sourceHandle
+      targetHandle = inferred.targetHandle
+    }
+
+    const d = { ...((e.data ?? {}) as any), autoOffset: 0 }
+    return { ...e, sourceHandle, targetHandle, data: d }
+  })
+}
+
+/**
  * 将 GraphBatchPayload “物化”为一份 Flow2Go 可用的 nodes/edges 快照。
  * v1 策略：默认 replace（从空图生成）；坐标由 autoLayout op 决定。
  */
@@ -1409,6 +1444,9 @@ export async function materializeGraphBatchPayloadToSnapshot(
       d.autoOffset = 0
       e.data = d
     }
+  }
+  if (flowchartMode) {
+    safeEdges = applyFlowchartStrictHandles(safeNodes, safeEdges, effectiveDirection)
   }
 
   return { nodes: safeNodes, edges: safeEdges }
