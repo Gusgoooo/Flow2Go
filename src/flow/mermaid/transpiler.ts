@@ -138,7 +138,7 @@ export function transpileMermaidFlowIR(
         source: edge.source,
         target: edge.target,
         ...(edge.label ? { label: edge.label } : {}),
-        type: 'smoothstep',
+        type: 'bezier',
         arrowStyle: 'end',
       },
     })

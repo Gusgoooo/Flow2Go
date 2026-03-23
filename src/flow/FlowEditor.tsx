@@ -3171,28 +3171,6 @@ function EditorInner({ onBackHome, source, previewSnapshot, readOnly: _readOnly 
                             setAiModalProgress(null)
                             return
                           }
-                          if (aiModalScene === 'flowchart-json-test') {
-                            setAiModalProgress({ phase: '流程图JSON测试', detail: 'LLM 结构化中…' })
-                            const { generateFlowchartBatchWithLLM } = await import('./flowchartStructured')
-                            const { materializeGraphBatchPayloadToSnapshot } = await import('./mermaid/apply')
-                            const payload = await generateFlowchartBatchWithLLM({
-                              apiKey: aiModalKey.trim(),
-                              model: aiModalModel.trim() || 'openai/gpt-5.4-nano',
-                              prompt: p,
-                              signal: ac.signal,
-                            })
-                            setAiModalProgress({ phase: '流程图JSON测试', detail: '物化布局中…' })
-                            const snap = await materializeGraphBatchPayloadToSnapshot(payload)
-                            const nextNodes = (snap.nodes ?? []) as FlowNode[]
-                            const nextEdges = (snap.edges ?? []) as FlowEdge[]
-                            setNodes(nextNodes)
-                            setEdges(nextEdges)
-                            pushHistory(nextNodes, nextEdges, 'ai-flowchart-json-test')
-                            setAiModalOpen(false)
-                            setAiModalGenerating(false)
-                            setAiModalProgress(null)
-                            return
-                          }
                           const draft = await openRouterGenerateDiagram({
                             apiKey: aiModalKey.trim(),
                             model: aiModalModel.trim() || 'openai/gpt-5.4-nano',

@@ -54,12 +54,12 @@ B --> C{菱形}`)
     expect(byId.get('C')!.shape).toBe('diamond')
   })
 
-  it('edges are smoothstep + arrowStyle=end with optional label', () => {
+  it('edges are bezier + arrowStyle=end with optional label', () => {
     const parsed = parseMermaidFlowchart(`flowchart LR
 A -->|提交| B`)
     const out = transpileMermaidFlowIR(parsed.ir!, 'raw', parsed.warnings)
     const edgeOp = (out.data!.operations as GraphOperation[]).find((o: GraphOperation) => o.op === 'graph.createEdge') as any
-    expect(edgeOp.params.type).toBe('smoothstep')
+    expect(edgeOp.params.type).toBe('bezier')
     expect(edgeOp.params.arrowStyle).toBe('end')
     expect(edgeOp.params.label).toBe('提交')
   })

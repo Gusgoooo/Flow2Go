@@ -1215,7 +1215,7 @@ function applyFlowchartStrictHandles(
     addSide(incomingByNode, e.target, toSide(targetHandle))
     const d = { ...((e.data ?? {}) as any), autoOffset: 0 }
     const congested = (outDegree.get(e.source) ?? 0) > 1 || (inDegree.get(e.target) ?? 0) > 1
-    const nextType = congested ? 'smoothstep' : e.type
+        const nextType = congested ? 'bezier' : e.type
     return { ...e, sourceHandle, targetHandle, type: nextType, data: d }
   })
 }
