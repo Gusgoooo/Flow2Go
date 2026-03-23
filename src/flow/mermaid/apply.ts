@@ -178,31 +178,24 @@ function wrapFramesToContents(allNodes: Array<Node<any>>, businessMode: boolean)
       }
     }
 
-  // Business Big Map：回归“分档宽度 50/70/90/120 + 递归布局”。
-  // 顶层章节按结构复杂度选档，取全局最大档；子画框宽度来自父级递归分配。
-  const calcBusinessUnifiedTopChapterWidth = (): number => {
-    const topFrames = allNodes.filter((n) => isFrame(n) && !n.parentId)
-    const countGrandchildren = (topId: string) => {
-      const directFrames = (childrenByParent.get(topId) ?? []).filter(isFrame)
-      let grandCount = 0
-      for (const c of directFrames) grandCount += (childrenByParent.get(c.id) ?? []).filter(isFrame).length
-      return { directCount: directFrames.length, grandCount }
-    }
-    const tierFor = (directCount: number, grandCount: number): number => {
-      if (directCount <= 2) return BUSINESS_CHAPTER_W_50
-      if (directCount >= 5 || grandCount >= 6) return BUSINESS_CHAPTER_W_120
-      if (directCount === 4 || grandCount >= 3) return BUSINESS_CHAPTER_W_90
-      return BUSINESS_CHAPTER_W_70
-    }
-    let globalTier = BUSINESS_CHAPTER_W_50
-    for (const chapter of topFrames) {
-      const { directCount, grandCount } = countGrandchildren(chapter.id)
-      globalTier = Math.max(globalTier, tierFor(directCount, grandCount))
-    }
-    return globalTier
+  // Business Big Map：顶层每个章节按“内容负载”独立选档（50/70/90/120），
+  // 再递归把宽度下发到子画框与节点，不再强制所有章节等宽。
+  const topChapterWidthById = new Map<string, number>()
+  const calcTopChapterWidthTier = (topFrame: Node<any>): number => {
+    const directFrames = (childrenByParent.get(topFrame.id) ?? []).filter(isFrame)
+    const directNodes = (childrenByParent.get(topFrame.id) ?? []).filter((n) => !isFrame(n))
+    let grandCount = 0
+    for (const cf of directFrames) grandCount += (childrenByParent.get(cf.id) ?? []).filter(isFrame).length
+    const textLoad = [...directNodes, ...directFrames]
+      .map((n) => String((n.data as any)?.title ?? (n.data as any)?.label ?? ''))
+      .reduce((acc, s) => acc + Math.max(0, s.trim().length), 0)
+    const loadScore = directFrames.length * 5 + directNodes.length * 3 + grandCount * 2 + Math.ceil(textLoad / 8)
+    if (loadScore >= 28 || directFrames.length >= 6 || grandCount >= 8) return BUSINESS_CHAPTER_W_120
+    if (loadScore >= 18 || directFrames.length >= 4 || grandCount >= 4) return BUSINESS_CHAPTER_W_90
+    if (loadScore >= 10 || directFrames.length >= 2 || directNodes.length >= 4) return BUSINESS_CHAPTER_W_70
+    // 顶层尽量宽松，默认从 70 起步，不轻易掉到 50。
+    return BUSINESS_CHAPTER_W_70
   }
-  const businessUnifiedTopChapterWidth = calcBusinessUnifiedTopChapterWidth()
-  const getBusinessChapterWidth = (isTop: boolean): number => (isTop ? businessUnifiedTopChapterWidth : BUSINESS_CHAPTER_W_50)
 
   const frames = allNodes.filter(isFrame)
 
@@ -344,7 +337,15 @@ function wrapFramesToContents(allNodes: Array<Node<any>>, businessMode: boolean)
       // Nested frames follow the width allocated by their parent.
       // Non-top frames must strictly follow recursive parent allocation.
       // Avoid forcing MIN_W_DEFAULT here, otherwise shallow mixed nesting will break the "recursive unit width" contract.
-      let targetW = isTop ? getBusinessChapterWidth(true) : forcedWidth ?? MIN_W_DEFAULT
+      let targetW =
+        isTop
+          ? (topChapterWidthById.get(frame.id) ??
+            (() => {
+              const tier = calcTopChapterWidthTier(frame)
+              topChapterWidthById.set(frame.id, tier)
+              return tier
+            })())
+          : forcedWidth ?? BUSINESS_CHAPTER_W_50
       const MAX_EXPAND_ROUNDS = 1
       for (let round = 0; round < MAX_EXPAND_ROUNDS; round += 1) {
         const availableW = Math.max(1, targetW - padX * 2)
@@ -379,25 +380,41 @@ function wrapFramesToContents(allNodes: Array<Node<any>>, businessMode: boolean)
           yCursor = maxBottom
         }
 
-        // 2) 再布局当前画框内的直接子节点（最多2列）
+        // 2) 再布局当前画框内的直接子节点
         if (childNodes.length > 0) {
           if (childFrames.length > 0) yCursor += UNIT
-          // 节点统一采用竖向“倒N”排列：先上下，再换列（最多2行）
-          const rows = Math.max(1, Math.min(2, childNodes.length))
-          const cols = Math.max(1, Math.ceil(childNodes.length / rows))
-          const cellW = Math.max(MIN_NODE_W, Math.floor((availableW - (cols - 1) * NODE_GAP) / cols))
-          for (let i = 0; i < childNodes.length; i += 1) {
-            const n = childNodes[i]
-            const { h } = getNodeSize(n)
-            const col = Math.floor(i / rows)
-            const row = i % rows
-            n.width = cellW
-            n.style = { ...(n.style as any), width: cellW }
-            ;(n as any).measured = undefined
-            // If this direct child is a subgroup container, keep quads inside aligned with its width.
-            // Otherwise quads may keep their default 160px width and ignore our min-unit shrink logic.
-            resizeQuadChildrenToWidth(n, cellW)
-            n.position = { x: col * (cellW + NODE_GAP), y: yCursor + row * (h + NODE_GAP) }
+          // 仅最父级白底画框下的直接子节点：优先左右排序，排不下再折行。
+          if (isTop && childFrames.length === 0) {
+            const preferredCellW = Math.max(MIN_NODE_W, Math.round(UNIT * 4.5))
+            const cols = Math.max(1, Math.floor((availableW + NODE_GAP) / (preferredCellW + NODE_GAP)))
+            const cellW = Math.max(MIN_NODE_W, Math.floor((availableW - (cols - 1) * NODE_GAP) / cols))
+            for (let i = 0; i < childNodes.length; i += 1) {
+              const n = childNodes[i]
+              const { h } = getNodeSize(n)
+              const col = i % cols
+              const row = Math.floor(i / cols)
+              n.width = cellW
+              n.style = { ...(n.style as any), width: cellW }
+              ;(n as any).measured = undefined
+              resizeQuadChildrenToWidth(n, cellW)
+              n.position = { x: col * (cellW + NODE_GAP), y: yCursor + row * (h + NODE_GAP) }
+            }
+          } else {
+            // 其他情况维持倒N：先上下，再换列（最多2行）
+            const rows = Math.max(1, Math.min(2, childNodes.length))
+            const cols = Math.max(1, Math.ceil(childNodes.length / rows))
+            const cellW = Math.max(MIN_NODE_W, Math.floor((availableW - (cols - 1) * NODE_GAP) / cols))
+            for (let i = 0; i < childNodes.length; i += 1) {
+              const n = childNodes[i]
+              const { h } = getNodeSize(n)
+              const col = Math.floor(i / rows)
+              const row = i % rows
+              n.width = cellW
+              n.style = { ...(n.style as any), width: cellW }
+              ;(n as any).measured = undefined
+              resizeQuadChildrenToWidth(n, cellW)
+              n.position = { x: col * (cellW + NODE_GAP), y: yCursor + row * (h + NODE_GAP) }
+            }
           }
         }
 
@@ -448,8 +465,9 @@ function wrapFramesToContents(allNodes: Array<Node<any>>, businessMode: boolean)
     }
 
     const topFrames = frames.filter((f) => !f.parentId).sort((a, b) => a.id.localeCompare(b.id))
+    for (const tf of topFrames) topChapterWidthById.set(tf.id, calcTopChapterWidthTier(tf))
     for (const tf of topFrames) {
-      layoutBusinessFrame(tf, getBusinessChapterWidth(true))
+      layoutBusinessFrame(tf, topChapterWidthById.get(tf.id))
     }
     return allNodes
   }
@@ -496,7 +514,7 @@ function wrapFramesToContents(allNodes: Array<Node<any>>, businessMode: boolean)
     // Business mode:
     // - Top-level frames clamp to selected chapter width.
     // - Inner frames should follow recursive parent allocation; do not force MIN_W_DEFAULT.
-    const minW = businessMode ? (isTop ? getBusinessChapterWidth(true) : 0) : MIN_W_DEFAULT
+    const minW = businessMode ? (isTop ? BUSINESS_CHAPTER_W_50 : 0) : MIN_W_DEFAULT
     let nextW = Math.max(minW, initialBounds.contentW + padX * 2)
     let nextH = Math.max(MIN_H, initialBounds.contentH + padTop + padBottom)
 
@@ -517,7 +535,7 @@ function wrapFramesToContents(allNodes: Array<Node<any>>, businessMode: boolean)
           typeof f.width === 'number'
             ? (f.width as number)
             : Math.round(initialBounds.contentW + padX * 2)
-        const targetW = Math.min(businessUnifiedTopChapterWidth, curW)
+        const targetW = Math.min(BUSINESS_CHAPTER_W_120, curW)
         f.width = targetW
         f.style = { ...(f.style as any), width: targetW }
         // Ensure the single quad node can reach the recursive min width (3 units).

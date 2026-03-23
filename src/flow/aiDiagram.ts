@@ -1309,7 +1309,7 @@ export async function openRouterGenerateDiagram(opts: OpenRouterChatOptions): Pr
     let lastErrors: string[] = []
 
     report('业务大图 Planner 校验', '检查 JSON 结构…')
-    for (let i = 0; i < 2; i += 1) {
+    for (let i = 0; i < 1; i += 1) {
       try {
         const parsed = JSON.parse(plannerText)
         const v = validateBusinessPlannerJson(parsed)
@@ -1559,7 +1559,6 @@ export async function openRouterGenerateDiagram(opts: OpenRouterChatOptions): Pr
   const hints = [
     '',
     '【结构配额器重试】请强制混合 3 种嵌套样式并显式覆盖：3层嵌套、2层嵌套、1层嵌套；不要只输出单一深度。',
-    '【结构配额器最终重试】前两次仍不达标。请优先保证 3 种嵌套样式最小覆盖，再优化美观与密度。',
   ]
   for (let i = 0; i < 2; i += 1) {
     const extra = hints[i] ? `${businessJsonMermaidHint}\n\n${hints[i]}` : businessJsonMermaidHint
@@ -1570,17 +1569,6 @@ export async function openRouterGenerateDiagram(opts: OpenRouterChatOptions): Pr
     if (analyses[i].count >= 3 && uniformities[i].ok) {
       report('生成完成', '业务大图（结构配额达标）')
       return normalizeBusinessBigMapDraft(d)
-    }
-  }
-  const sameSingleDepthTwice = analyses[0].count === 1 && analyses[1].count === 1 && analyses[0].onlyKind === analyses[1].onlyKind
-  if (sameSingleDepthTwice || analyses[1].count < 3) {
-    const d3 = await generateOnce(`${businessJsonMermaidHint}\n\n${hints[2]}`, '业务大图 第 3 轮')
-    attempts.push(d3)
-    analyses.push(analyzeBusinessNestingCoverage(d3))
-    uniformities.push(analyzeBusinessFrameUniformity(d3))
-    if (analyses[2].count >= 3 && uniformities[2].ok) {
-      report('生成完成', '业务大图（第 3 轮达标）')
-      return normalizeBusinessBigMapDraft(d3)
     }
   }
   // 兜底：选覆盖度最高的一次结果
