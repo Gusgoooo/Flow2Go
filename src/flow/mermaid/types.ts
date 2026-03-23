@@ -115,7 +115,7 @@ export type GraphBatchPayload = {
   operations: GraphOperation[]
   meta?: {
     rawMermaid?: string
-    /** 如 `business-big-map`、`mind-map`、`flowchart` 等 */
+    /** 如 `mind-map`、`flowchart` */
     layoutProfile?: string
   }
 }

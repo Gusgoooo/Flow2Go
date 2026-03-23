@@ -5,15 +5,15 @@
 export type LayoutEngine = 'native' | 'elk' | 'mind-elixir'
 
 /** 布局语义模式（指导 Mermaid 生成与后续渲染偏好，非 ELK 算法名） */
-export type LayoutMode = 'tree' | 'layered' | 'chaptered' | 'horizontal' | 'vertical'
+export type LayoutMode = 'tree' | 'layered' | 'horizontal' | 'vertical'
 
-/** 与 Scene Router / Planner 对齐：normal ≈ 原 chapters（更章节化） */
+/** 与 Scene Router / Planner 对齐：normal ≈ 原 chapters */
 export type ComplexityModePublic = 'compact' | 'normal'
 
 /** Planner 内部仍使用 compact | chapters */
 export type PlannerComplexityMode = 'compact' | 'chapters'
 
-/** 非业务大图、非思维导图的流程类布局 profile（原 6 个通用模板名保留作 id） */
+/** 流程类布局 profile（原 6 个通用模板名保留作 id） */
 export const LAYOUT_PROFILE_KEYS = [
   'Frontend-Backend Flow Template',
   'Data Pipeline Flow Template',
@@ -65,7 +65,7 @@ export function toPublicComplexity(mode: SceneRouteV2['complexityMode']): Comple
 }
 
 /**
- * 由场景与 profile 解析轻量布局决策（不替代 business_big_map 专属后处理）
+ * 由场景与 profile 解析轻量布局决策
  */
 export function resolveLayoutDecision(route: SceneRouteV2): LayoutDecision {
   if (route.pipeline === 'mind-map') {
@@ -107,7 +107,7 @@ function inferFlowLayoutMode(
   return { layoutMode: 'layered', layoutEngine: 'elk' }
 }
 
-/** 将旧版 templateKey（8 选 1）转为 SceneRouteV2 */
+/** 将旧版 templateKey 转为 SceneRouteV2 */
 export function sceneRouteFromLegacyTemplateKey(
   templateKey: string,
   complexityMode: PlannerComplexityMode,

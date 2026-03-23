@@ -136,9 +136,7 @@ export function GroupNode(props: NodeProps) {
       onDoubleClick={onDoubleClick}
     >
       <NodeResizer
-        // Business Big Map: group/subgroup 容器也必须允许和 quad 一样继续收缩。
-        // 业务内层单位=12px => 3 units = 36px
-        // Previously this was hard-coded to 160px, which prevented further shrinking.
+        // 允许 group/subgroup 容器继续收缩，避免最小宽度过大影响排版。
         minWidth={36}
         minHeight={120}
         handleStyle={{ width: 12, height: 12, borderRadius: 9999 }}

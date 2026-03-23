@@ -215,9 +215,7 @@ export function QuadNode(props: NodeProps) {
       onDoubleClick={onDoubleClick}
     >
       <NodeResizer
-        // Business Big Map: want quad nodes to be shrinkable down to ~3 layout units.
-        // Business inner unit = 12px => 3 units = 36px.
-        // Previously this was hard-coded to 80px, preventing further shrinking.
+        // 允许 quad 节点继续收缩，避免最小宽度过大影响排版。
         minWidth={QUAD_MIN_W}
         minHeight={QUAD_MIN_H}
         handleStyle={{ width: 12, height: 12, borderRadius: 9999 }}

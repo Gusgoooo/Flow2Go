@@ -20,7 +20,7 @@
    对 **无 `parentId` 的顶层节点**（含顶层 `group` 画框）与 **两端都在顶层** 的边，再跑一次 `autoLayout`。
 
 3. **`wrapFramesToContents` 之后**  
-   若非 `mind-map`、非旧版 `business-big-map`，且存在顶层 frame，会再调用 **`layoutTopLevel`**：同样只对顶层节点与顶层边做一次 ELK，用于拉开多个顶层画框/顶层节点的位置。
+   若非 `mind-map`，且存在顶层 frame，会再调用 **`layoutTopLevel`**：同样只对顶层节点与顶层边做一次 ELK，用于拉开多个顶层画框/顶层节点的位置。
 
 **结论**：ELK 每次看到的是「当前这一层的矩形节点 + 边」，**不会**把嵌套 frame 当成 ELK 的 `children` 层次图一次性整体求解（与「整图一个 ELK 根、子图嵌套」的用法不同）。
 
@@ -49,7 +49,7 @@
 
 | 节点/能力 | 进入 ELK 时 | 备注 |
 |-----------|-------------|------|
-| `group` + `data.role === 'frame'` | 与其它节点一样，矩形 w×h | 旧版 `business-big-map` 另有章节宽、纵向 tile、主题色等 **后处理**，与 ELK 默认无关 |
+| `group` + `data.role === 'frame'` | 与其它节点一样，矩形 w×h | 仅遵循当前通用布局链路 |
 | `quad`（rect/circle/diamond） | 仅外接矩形尺寸 | 形状不影响 ELK，只影响渲染 |
 | `text` 等 | 若出现在同一 batch 且参与 layout，同理 | 取决于图操作是否创建及是否在该 scope 内 |
 | `mind-map` | **不**走上述 ELK 流程图链 | 使用 `mind-elixir` 风格布局（`mindElixirLayout.ts`） |

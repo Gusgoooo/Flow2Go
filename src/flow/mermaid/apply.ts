@@ -78,13 +78,12 @@ function frameDefaults(title: string) {
 }
 
 const LAYOUT_UNIT = 24
-const BUSINESS_INNER_UNIT = 12
+const LEGACY_COMPACT_INNER_UNIT = 12
 const NODE_MIN_WIDTH_UNITS = 3
-const BUSINESS_CHAPTER_W_70 = LAYOUT_UNIT * 70 // 70 grid units
-const BUSINESS_CHAPTER_W_90 = LAYOUT_UNIT * 90 // 90 grid units
-const BUSINESS_CHAPTER_W_120 = LAYOUT_UNIT * 120 // 120 grid units
-const BUSINESS_CHAPTER_W_140 = LAYOUT_UNIT * 140 // 140 grid units
-// Business Big Map: restrict theme palette (rotating)
+const LEGACY_COMPACT_CHAPTER_W_70 = LAYOUT_UNIT * 70
+const LEGACY_COMPACT_CHAPTER_W_90 = LAYOUT_UNIT * 90
+const LEGACY_COMPACT_CHAPTER_W_120 = LAYOUT_UNIT * 120
+const LEGACY_COMPACT_CHAPTER_W_140 = LAYOUT_UNIT * 140
 const TOP_FRAME_THEME_COLORS = ['#4d9ef5', '#33d8ea', '#c059ff', '#ff6cc4']
 
 function hexToRgba(hex: string, alpha: number) {
@@ -145,16 +144,16 @@ async function layoutTopLevel(
   return allNodes.map((n) => (byId.has(n.id) ? { ...n, position: byId.get(n.id)! } : n))
 }
 
-function wrapFramesToContents(allNodes: Array<Node<any>>, businessMode: boolean) {
+function wrapFramesToContents(allNodes: Array<Node<any>>, compactLegacyMode: boolean) {
   const TITLE_H = 32
   const MIN_W_DEFAULT = 220
   const MIN_H = 140
-  const UNIT = businessMode ? BUSINESS_INNER_UNIT : LAYOUT_UNIT
+  const UNIT = compactLegacyMode ? LEGACY_COMPACT_INNER_UNIT : LAYOUT_UNIT
   const HALF_UNIT = Math.max(1, Math.round(UNIT * 0.5))
   const FRAME_GAP = HALF_UNIT
   const MIN_NODE_W = Math.round(UNIT * NODE_MIN_WIDTH_UNITS)
   const NODE_GAP = HALF_UNIT
-  const MAX_COLS = businessMode ? 6 : 6
+  const MAX_COLS = compactLegacyMode ? 6 : 6
 
   const nodeById = new Map(allNodes.map((n) => [n.id, n]))
   const childrenByParent = new Map<string, Array<Node<any>>>()
@@ -178,7 +177,7 @@ function wrapFramesToContents(allNodes: Array<Node<any>>, businessMode: boolean)
       }
     }
 
-  // Business Big Map: chapter width is unified by the largest bucket.
+  // Legacy compact frame mode: chapter width is unified by the largest bucket.
   // Rule:
   // - Top-level chapter chooses width tier by (direct child frames, grandchild frames).
   // - Global chapter width is unified to the MAX tier across all top-level chapters.
@@ -248,19 +247,19 @@ function wrapFramesToContents(allNodes: Array<Node<any>>, businessMode: boolean)
     }
 
     const tiers = [
-      { w: BUSINESS_CHAPTER_W_70, label: 70 },
-      { w: BUSINESS_CHAPTER_W_90, label: 90 },
-      { w: BUSINESS_CHAPTER_W_120, label: 120 },
-      { w: BUSINESS_CHAPTER_W_140, label: 140 },
+      { w: LEGACY_COMPACT_CHAPTER_W_70, label: 70 },
+      { w: LEGACY_COMPACT_CHAPTER_W_90, label: 90 },
+      { w: LEGACY_COMPACT_CHAPTER_W_120, label: 120 },
+      { w: LEGACY_COMPACT_CHAPTER_W_140, label: 140 },
     ]
 
     // 选择“最小可容纳档位”，避免无谓放大到更宽档。
     const firstFitIdx = tiers.findIndex((t) => t.w >= globalNeed)
-    if (firstFitIdx === -1) return BUSINESS_CHAPTER_W_140
+    if (firstFitIdx === -1) return LEGACY_COMPACT_CHAPTER_W_140
     return tiers[firstFitIdx].w
   }
-  const businessUnifiedTopChapterWidth = calcBusinessUnifiedTopChapterWidth()
-  const getBusinessChapterWidth = (isTop: boolean): number => (isTop ? businessUnifiedTopChapterWidth : BUSINESS_CHAPTER_W_70)
+  const compactUnifiedTopChapterWidth = calcBusinessUnifiedTopChapterWidth()
+  const getCompactChapterWidth = (isTop: boolean): number => (isTop ? compactUnifiedTopChapterWidth : LEGACY_COMPACT_CHAPTER_W_70)
 
   const frames = allNodes.filter(isFrame)
 
@@ -293,7 +292,7 @@ function wrapFramesToContents(allNodes: Array<Node<any>>, businessMode: boolean)
     if (ordered.length === 0) return { maxBottom: originY }
     const cols = chooseCols(ordered.length)
     const availableW = Math.max(1, parentW - padX * 2)
-    const gap = businessMode ? HALF_UNIT : UNIT
+    const gap = compactLegacyMode ? HALF_UNIT : UNIT
     const cellW = Math.max(MIN_NODE_W, Math.floor((availableW - (cols - 1) * gap) / cols))
     let maxBottom = originY
     for (let i = 0; i < ordered.length; i += 1) {
@@ -315,7 +314,7 @@ function wrapFramesToContents(allNodes: Array<Node<any>>, businessMode: boolean)
     return { maxBottom }
   }
 
-  if (businessMode) {
+  if (compactLegacyMode) {
 
     const isDescendantFrame = (ancestorId: string, nodeId: string): boolean => {
       let cur = nodeById.get(nodeId)
@@ -403,7 +402,7 @@ function wrapFramesToContents(allNodes: Array<Node<any>>, businessMode: boolean)
       // Nested frames follow the width allocated by their parent.
       // Non-top frames must strictly follow recursive parent allocation.
       // Avoid forcing MIN_W_DEFAULT here, otherwise shallow mixed nesting will break the "recursive unit width" contract.
-      let targetW = isTop ? getBusinessChapterWidth(true) : forcedWidth ?? MIN_W_DEFAULT
+      let targetW = isTop ? getCompactChapterWidth(true) : forcedWidth ?? MIN_W_DEFAULT
       const MAX_EXPAND_ROUNDS = 1
       for (let round = 0; round < MAX_EXPAND_ROUNDS; round += 1) {
         const availableW = Math.max(1, targetW - padX * 2)
@@ -507,7 +506,7 @@ function wrapFramesToContents(allNodes: Array<Node<any>>, businessMode: boolean)
 
     const topFrames = frames.filter((f) => !f.parentId).sort((a, b) => a.id.localeCompare(b.id))
     for (const tf of topFrames) {
-      layoutBusinessFrame(tf, getBusinessChapterWidth(true))
+      layoutBusinessFrame(tf, getCompactChapterWidth(true))
     }
     return allNodes
   }
@@ -525,9 +524,9 @@ function wrapFramesToContents(allNodes: Array<Node<any>>, businessMode: boolean)
     const childNodes = kids.filter((k) => !isFrame(k))
     const isTop = !f.parentId
     // Business mode：UNIT=12px；普通流程图：UNIT=24px。均只用 1 个 UNIT 作内边距，不在此人为拉大顶层画框「章节感」；框间距交给 ELK 默认。
-    const padX = businessMode ? HALF_UNIT : UNIT
-    const padBottom = businessMode ? HALF_UNIT : UNIT
-    const padTop = businessMode ? TITLE_H + Math.round(UNIT * 1.35) : TITLE_H + UNIT
+    const padX = compactLegacyMode ? HALF_UNIT : UNIT
+    const padBottom = compactLegacyMode ? HALF_UNIT : UNIT
+    const padTop = compactLegacyMode ? TITLE_H + Math.round(UNIT * 1.35) : TITLE_H + UNIT
     // Only top-level "chapter" frames should be clamped to the chapter width.
     // Inner frames must stay compact; otherwise horizontal padding becomes huge.
     // compute bounds AFTER any relayout to keep children in parent's local coordinate system
@@ -554,14 +553,14 @@ function wrapFramesToContents(allNodes: Array<Node<any>>, businessMode: boolean)
     // Business mode:
     // - Top-level frames clamp to selected chapter width.
     // - Inner frames should follow recursive parent allocation; do not force MIN_W_DEFAULT.
-    const minW = businessMode ? (isTop ? getBusinessChapterWidth(true) : 0) : MIN_W_DEFAULT
+    const minW = compactLegacyMode ? (isTop ? getCompactChapterWidth(true) : 0) : MIN_W_DEFAULT
     let nextW = Math.max(minW, initialBounds.contentW + padX * 2)
     let nextH = Math.max(MIN_H, initialBounds.contentH + padTop + padBottom)
 
     // Business mode: stable auto-stretch, no special-case math.
     // - Keep paddings/gaps uniform (1 unit)
     // - Stretch children to fill width under the same parent
-    if (businessMode) {
+    if (compactLegacyMode) {
       // Atomic rule v0:
       // When a frame directly contains exactly ONE node (no child frames),
       // clamp frame width to <= 26 grid units, and stretch the node to fill
@@ -575,7 +574,7 @@ function wrapFramesToContents(allNodes: Array<Node<any>>, businessMode: boolean)
           typeof f.width === 'number'
             ? (f.width as number)
             : Math.round(initialBounds.contentW + padX * 2)
-        const targetW = Math.min(businessUnifiedTopChapterWidth, curW)
+        const targetW = Math.min(compactUnifiedTopChapterWidth, curW)
         f.width = targetW
         f.style = { ...(f.style as any), width: targetW }
         // Ensure the single quad node can reach the recursive min width (3 units).
@@ -599,7 +598,7 @@ function wrapFramesToContents(allNodes: Array<Node<any>>, businessMode: boolean)
           nextW,
           padX,
           childNodes,
-          childFrames.length > 0 ? maxBottom + (businessMode ? HALF_UNIT : UNIT) : 0,
+          childFrames.length > 0 ? maxBottom + (compactLegacyMode ? HALF_UNIT : UNIT) : 0,
           true,
         )
         maxBottom = Math.max(maxBottom, res.maxBottom)
@@ -1105,10 +1104,10 @@ export async function materializeGraphBatchPayloadToSnapshot(
   const edges: Array<Edge<any>> = [...start.edges]
   const nodeById = new Map(nodes.map((n) => [n.id, n]))
   const edgeById = new Map(edges.map((e) => [e.id, e]))
-  const businessMode = ((payload.meta as any)?.layoutProfile ?? '') === 'business-big-map'
+  const compactLegacyMode = false
   const mindMapMode = ((payload.meta as any)?.layoutProfile ?? '') === 'mind-map'
   const dagreFlowMode = ((payload.meta as any)?.layoutProfile ?? '') === 'flowchart'
-  const flowchartMode = !businessMode && !mindMapMode
+  const flowchartMode = !mindMapMode
   const preferLR = flowchartMode && shouldPreferLeftToRightByComplexity(payload)
   const preferLRDefault = flowchartMode && payload.direction !== 'LR'
   // 流程图：不强制节点方向；仅在“麻花风险”下兜底优先 LR。
@@ -1131,7 +1130,7 @@ export async function materializeGraphBatchPayloadToSnapshot(
         (() => {
           // Nested frames live inside parent; place them at origin and let withinFrame layout handle children.
           if (isNested) return { x: 0, y: 0 }
-          // 顶层画框：先叠在原点，最终位置交给 ELK layoutTopLevel（非业务大图）或业务大图纵向 tile
+          // 顶层画框：先叠在原点，最终位置交给后续顶层布局流程。
           return { x: 0, y: 0 }
         })()
       const node: Node<any> = {
@@ -1204,8 +1203,8 @@ export async function materializeGraphBatchPayloadToSnapshot(
     }
 
     if (op.op === 'graph.autoLayout') {
-      // 业务大图：禁用所有自动排版步骤，仅保留递归拉伸布局。
-      if (businessMode) {
+      // Legacy compact frame mode: skip auto-layout ops and keep recursive stretch only.
+      if (compactLegacyMode) {
         continue
       }
       const withinFrameDir: FlowDirection = dagreFlowMode ? op.params.direction : effectiveDirection
@@ -1216,11 +1215,11 @@ export async function materializeGraphBatchPayloadToSnapshot(
           edges,
           op.params.frameId,
           withinFrameDir,
-          dagreFlowMode && !mindMapMode && !businessMode,
+          dagreFlowMode && !mindMapMode && !compactLegacyMode,
         )
         nodes.splice(0, nodes.length, ...next)
       } else if (op.params.scope === 'all') {
-        const next = await layoutTopLevel(nodes, edges, topLevelDir, dagreFlowMode && !mindMapMode && !businessMode)
+        const next = await layoutTopLevel(nodes, edges, topLevelDir, dagreFlowMode && !mindMapMode && !compactLegacyMode)
         nodes.splice(0, nodes.length, ...next)
       }
       continue
@@ -1237,7 +1236,7 @@ export async function materializeGraphBatchPayloadToSnapshot(
   }))
 
   // Make frames compact like manual grouping
-  safeNodes = wrapFramesToContents(safeNodes, businessMode)
+  safeNodes = wrapFramesToContents(safeNodes, compactLegacyMode)
 
   // Mind Map：纯节点 + Mind Elixir `layoutSSR` 左右分支分配 + 左右展开几何布局
   if (mindMapMode) {
@@ -1280,24 +1279,24 @@ export async function materializeGraphBatchPayloadToSnapshot(
     }
   }
 
-  // 业务大图：章节宽 + 纵向 tile；普通流程图 / ELK 业务大图：wrap 后由 ELK 再排顶层（含多画框、不连通子图）。
+  // Legacy compact frame mode: chapter width + vertical tiling.
   const safeById = new Map(safeNodes.map((n) => [n.id, n]))
   const framesInOrder = (frameOrder.length ? frameOrder : safeNodes.map((n) => n.id))
     .map((id) => safeById.get(id))
     .filter((n): n is Node<any> => n != null && !n.parentId && n.type === 'group' && (n.data as any)?.role === 'frame')
 
-  // 业务大图只保留“递归拉伸”这一条宽度链路：
+  // Keep a single recursive-stretch width pipeline:
   // 顶层 frame 宽度在 wrapFramesToContents(layoutBusinessFrame) 内一次性确定，
   // 这里不再做任何二次统一/放大，避免子元素在后处理后出现偏移感。
 
-  if (businessMode) {
+  if (compactLegacyMode) {
     let cursorX = 0
     let cursorY = 0
     for (const f of framesInOrder) {
       if (frameExplicitPos.has(f.id)) continue
       const h = f.measured?.height ?? f.height ?? (typeof (f.style as any)?.height === 'number' ? (f.style as any).height : undefined) ?? 420
       f.position = { x: cursorX, y: cursorY }
-      cursorY += h + Math.max(1, Math.round(BUSINESS_INNER_UNIT * 0.5))
+      cursorY += h + Math.max(1, Math.round(LEGACY_COMPACT_INNER_UNIT * 0.5))
     }
   } else if (!mindMapMode && framesInOrder.length > 0) {
     // 仅当有顶层画框时二次 ELK：wrapFramesToContents 会改画框尺寸，需按 ELK 拉开多画框/不连通子图。
@@ -1315,7 +1314,7 @@ export async function materializeGraphBatchPayloadToSnapshot(
     }
   }
 
-  if (businessMode) {
+  if (compactLegacyMode) {
     // Apply theme colors by top-level parent frame, and cascade to nested frames.
     const frameNodes = safeNodes.filter((n) => n.type === 'group' && (n.data as any)?.role === 'frame')
     const frameById = new Map(frameNodes.map((n) => [n.id, n]))
@@ -1359,7 +1358,7 @@ export async function materializeGraphBatchPayloadToSnapshot(
       const fill6 = hexToRgba(color, 0.06) // themed fill with 6% opacity
       const data = { ...(f.data as any) }
       const depth = depthOfFrame(f.id)
-      // IMPORTANT: Business Big Map level semantics (outer -> inner)
+      // Level semantics (outer -> inner)
       // - depth 0: Level 3 (outermost parent frame)
       // - depth 1: Level 2 (middle frames, tiled inside level 3)
       // - depth 2+: Level 1 (innermost frames that directly contain nodes)

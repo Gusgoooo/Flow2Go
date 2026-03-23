@@ -1,6 +1,6 @@
 /* 外层：仅提供尺寸与定位，不应用 clip-path，保证 Resizer/Handle 不被裁剪 */
 .node {
-  /* Allow business quad nodes to be shrinkable to ~3 layout units (12px * 3 = 36px). */
+  /* Keep quad nodes shrinkable to compact minimum width. */
   min-width: 80px;
   min-height: 44px;
   position: relative;

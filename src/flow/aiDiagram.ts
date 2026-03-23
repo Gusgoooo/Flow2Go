@@ -228,7 +228,7 @@ export type LayoutProfileSelectResult = {
 }
 
 /**
- * Layout Selector：返回轻量 profile（不含 business_big_map / mind-map，二者由 Scene Router 分流）
+ * Layout Selector：返回轻量 profile（mind-map 由 Scene Router 分流）
  */
 export async function openRouterSelectLayoutProfile(args: OpenRouterChatOptions): Promise<LayoutProfileSelectResult> {
   const { apiKey, model, prompt, signal, timeoutMs = DEFAULT_TIMEOUT_MS } = args
@@ -557,7 +557,7 @@ async function openRouterDiagramPlanner(
   const s = raw.trim()
   if (!s) throw new Error('Diagram Planner 返回空文本')
 
-  // planner 必须是严格 JSON；否则直接回退旧逻辑，避免影响现有 business big map 视觉稳定性。
+  // planner 必须是严格 JSON；否则回退旧逻辑，保持现有链路稳定性。
   const cleaned = stripCodeFences(s).trim()
   let obj: unknown
   try {
