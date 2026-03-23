@@ -300,8 +300,8 @@ export function autoLayoutSwimlane(args: {
       edgeType = 'smoothstep'
     } else if (semanticType === 'returnFlow') {
       edgeType = 'smoothstep'
-      edgeStyle.strokeDasharray = '6 3'
-      edgeStyle.opacity = 0.7
+      edgeStyle.strokeWidth = 1
+      edgeStyle.opacity = 0.95
     }
 
     // Handle 推断（相邻优先 + 禁止同 handle 同时 in/out）
@@ -365,16 +365,25 @@ export function autoLayoutSwimlane(args: {
       const srcPt = getHandlePoint(srcNode, sourceHandle, nodeById)
       const tgtPt = getHandlePoint(tgtNode, targetHandle, nodeById)
       if (isHorizontal) {
-        const detourY = Math.min(srcPt.y, tgtPt.y) - 56 - Math.abs(autoOffset)
+        // 回流：构造多弯 C/S 结构，避免直连和重叠
+        const detourY = Math.min(srcPt.y, tgtPt.y) - 72 - Math.abs(autoOffset) * 1.25
+        const shoulderOut = srcPt.x >= tgtPt.x ? 56 : -56
+        const shoulderIn = srcPt.x >= tgtPt.x ? -56 : 56
         waypoints = [
-          { x: srcPt.x, y: detourY },
-          { x: tgtPt.x, y: detourY },
+          { x: srcPt.x + shoulderOut, y: srcPt.y },
+          { x: srcPt.x + shoulderOut, y: detourY },
+          { x: tgtPt.x + shoulderIn, y: detourY },
+          { x: tgtPt.x + shoulderIn, y: tgtPt.y },
         ]
       } else {
-        const detourX = Math.min(srcPt.x, tgtPt.x) - 56 - Math.abs(autoOffset)
+        const detourX = Math.min(srcPt.x, tgtPt.x) - 72 - Math.abs(autoOffset) * 1.25
+        const shoulderOut = srcPt.y >= tgtPt.y ? 56 : -56
+        const shoulderIn = srcPt.y >= tgtPt.y ? -56 : 56
         waypoints = [
-          { x: detourX, y: srcPt.y },
-          { x: detourX, y: tgtPt.y },
+          { x: srcPt.x, y: srcPt.y + shoulderOut },
+          { x: detourX, y: srcPt.y + shoulderOut },
+          { x: detourX, y: tgtPt.y + shoulderIn },
+          { x: tgtPt.x, y: tgtPt.y + shoulderIn },
         ]
       }
     }
