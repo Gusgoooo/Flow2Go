@@ -50,6 +50,32 @@ const FLOWCHART_SIMPLIFY_SYSTEM_PROMPT = [
   '只输出中文要点列表，每行一个步骤，不要其它解释。',
 ].join('\n')
 
+const FLOWCHART_AGENT_PLANNER_SYSTEM_PROMPT = [
+  '你是 Flow2Go 的 Flowchart Agent Planner。',
+  '你的职责：先拆解用户需求，再给出“低复杂度、低交叉”的流程构建策略。',
+  '',
+  '目标：',
+  '- 节点少、边少、交叉少',
+  '- 主链清晰，异常分支最少且必要',
+  '- 节点标题短，语义明确',
+  '',
+  '输出要求：只输出严格 JSON，格式如下：',
+  '{',
+  '  "intentSummary": "一句话总结需求",',
+  '  "mainPath": ["步骤A","步骤B","步骤C"],',
+  '  "branches": [',
+  '    { "from":"步骤B", "condition":"失败", "path":["补救1","回到步骤B"] }',
+  '  ],',
+  '  "nodeBudget": 8-18 之间的整数,',
+  '  "edgeBudget": 10-24 之间的整数,',
+  '  "antiCrossingRules": [',
+  '    "避免远距离回跳",',
+  '    "优先邻近连接",',
+  '    "分支尽量回流主链而不是横向穿越"',
+  '  ]',
+  '}',
+].join('\n')
+
 function safeJsonParse(raw: string): any {
   const t = raw.trim()
   try {
@@ -177,6 +203,30 @@ export async function generateFlowchartBatchWithLLM(
   const onAbort = () => controller.abort(signal?.reason)
   signal?.addEventListener('abort', onAbort, { once: true })
   try {
+    // Agent Planner 层：先做需求拆解与复杂度预算
+    const plannerRes = await fetch('https://openrouter.ai/api/v1/chat/completions', {
+      method: 'POST',
+      headers: {
+        Authorization: `Bearer ${apiKey.trim()}`,
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify({
+        model,
+        temperature: 0.2,
+        messages: [
+          { role: 'system', content: FLOWCHART_AGENT_PLANNER_SYSTEM_PROMPT },
+          { role: 'user', content: prompt },
+        ],
+      }),
+      signal: controller.signal,
+    })
+    const plannerText = await plannerRes.text()
+    if (!plannerRes.ok) throw new Error(`OpenRouter Agent Planner 失败: ${plannerRes.status}`)
+    const plannerOuter = JSON.parse(plannerText)
+    const plannerContent = String(plannerOuter?.choices?.[0]?.message?.content ?? '').trim()
+    const plannerJson = safeJsonParse(plannerContent)
+    const plannerGuidance = JSON.stringify(plannerJson)
+
     // LLM 简化过滤层：先压缩成低交叉风险流程要点
     const simplifyRes = await fetch('https://openrouter.ai/api/v1/chat/completions', {
       method: 'POST',
@@ -189,7 +239,16 @@ export async function generateFlowchartBatchWithLLM(
         temperature: 0.2,
         messages: [
           { role: 'system', content: FLOWCHART_SIMPLIFY_SYSTEM_PROMPT },
-          { role: 'user', content: prompt },
+          {
+            role: 'user',
+            content: [
+              '【用户原始需求】',
+              prompt,
+              '',
+              '【Agent Planner 拆解】',
+              plannerGuidance,
+            ].join('\n'),
+          },
         ],
       }),
       signal: controller.signal,
@@ -210,7 +269,18 @@ export async function generateFlowchartBatchWithLLM(
         temperature: 0.2,
         messages: [
           { role: 'system', content: FLOWCHART_BATCH_SYSTEM_PROMPT },
-          { role: 'user', content: simplifiedPrompt },
+          {
+            role: 'user',
+            content: [
+              '【已简化流程要点】',
+              simplifiedPrompt,
+              '',
+              '【Agent Planner 约束】',
+              plannerGuidance,
+              '',
+              '请严格按上述约束输出低复杂度、低交叉、低边数的 GraphBatchPayload JSON。',
+            ].join('\n'),
+          },
         ],
       }),
       signal: controller.signal,
