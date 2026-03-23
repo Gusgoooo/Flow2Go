@@ -80,13 +80,12 @@ function frameDefaults(title: string) {
 const LAYOUT_UNIT = 24
 const BUSINESS_INNER_UNIT = 12
 const NODE_MIN_WIDTH_UNITS = 3
-const BUSINESS_CHAPTER_W_30 = LAYOUT_UNIT * 30 // 30 grid units = 720px
 const BUSINESS_CHAPTER_W_50 = LAYOUT_UNIT * 50 // 50 grid units = 1200px
 const BUSINESS_CHAPTER_W_70 = LAYOUT_UNIT * 70 // 70 grid units
 const BUSINESS_CHAPTER_W_90 = LAYOUT_UNIT * 90 // 90 grid units
 const BUSINESS_CHAPTER_W_120 = LAYOUT_UNIT * 120 // 120 grid units
 // Keep the old name for readability at call sites that still assume the "30 units" baseline.
-const BUSINESS_CHAPTER_W = BUSINESS_CHAPTER_W_30
+const BUSINESS_CHAPTER_W = BUSINESS_CHAPTER_W_50
 // Business Big Map: restrict theme palette (rotating)
 const TOP_FRAME_THEME_COLORS = ['#4d9ef5', '#33d8ea', '#c059ff', '#ff6cc4']
 
@@ -179,98 +178,31 @@ function wrapFramesToContents(allNodes: Array<Node<any>>, businessMode: boolean)
       }
     }
 
-  // Business Big Map: chapter width is unified by the largest bucket.
-  // Rule:
-  // - Top-level chapter chooses width tier by (direct child frames, grandchild frames).
-  // - Global chapter width is unified to the MAX tier across all top-level chapters.
-  //
-  // Tier thresholds (default):
-  // - directChildFrames <= 2 => 30
-  // - directChildFrames == 3:
-  //   - grandchildFrames == 0 => 50
-  //   - grandchildFrames 1..2 => 70  (3 子画框且子画框还包含子画框，原 50 容易不够)
-  //   - grandchildFrames 3..5 => 90
-  //   - grandchildFrames >= 6 => 120
+  // Business Big Map：回归“分档宽度 50/70/90/120 + 递归布局”。
+  // 顶层章节按结构复杂度选档，取全局最大档；子画框宽度来自父级递归分配。
   const calcBusinessUnifiedTopChapterWidth = (): number => {
     const topFrames = allNodes.filter((n) => isFrame(n) && !n.parentId)
-
-    // Leaf required width is derived from:
-    // - innermost frame's quad layout uses 2 columns
-    // - each column cell width target is 1.5 "units"
-    //
-    // We then propagate this minimum to parent frames based on how they tile child frames
-    // (cols = min(3, childFrames.length)).
-    //
-    // This avoids the previous overestimation that caused too often selecting the max tier.
-    const targetNodeCellW = UNIT * 3
-    const leafCols = 2
-    const leafAvailableWRequired = (leafCols - 1) * NODE_GAP + leafCols * targetNodeCellW
-    const BASE_LEAF_FRAME_W = leafAvailableWRequired + 2 * UNIT
-
-    const memo = new Map<string, number>()
-    const visiting = new Set<string>()
-
-    const requiredWidthForFrame = (frameId: string): number => {
-      const cached = memo.get(frameId)
-      if (cached != null) return cached
-      if (visiting.has(frameId)) {
-        // Defensive: break potential cycles; fall back to base.
-        return BASE_LEAF_FRAME_W
-      }
-      visiting.add(frameId)
-
-      const childFrames = (childrenByParent.get(frameId) ?? []).filter(isFrame)
-      if (childFrames.length === 0) {
-        memo.set(frameId, BASE_LEAF_FRAME_W)
-        visiting.delete(frameId)
-        return BASE_LEAF_FRAME_W
-      }
-
-      // layoutBusinessFrame places direct child frames with:
-      // cols = min(3, childFrames.length), and each child frame width ~= cellW.
-      const cols = Math.max(1, Math.min(3, childFrames.length))
-      const requiredChildW = Math.max(...childFrames.map((cf) => requiredWidthForFrame(cf.id)))
-
-      // parentW needs to satisfy:
-      // cellW = floor((availableW - (cols - 1) * UNIT) / cols)
-      // with availableW = parentW - 2 * padX, padX = UNIT.
-      // => parentW >= 2*padX + (cols-1)*UNIT + cols*requiredChildW
-      const padX = UNIT
-      const parentW = 2 * padX + (cols - 1) * UNIT + cols * requiredChildW
-
-      memo.set(frameId, parentW)
-      visiting.delete(frameId)
-      return parentW
+    const countGrandchildren = (topId: string) => {
+      const directFrames = (childrenByParent.get(topId) ?? []).filter(isFrame)
+      let grandCount = 0
+      for (const c of directFrames) grandCount += (childrenByParent.get(c.id) ?? []).filter(isFrame).length
+      return { directCount: directFrames.length, grandCount }
     }
-
-    let globalNeed = 0
+    const tierFor = (directCount: number, grandCount: number): number => {
+      if (directCount <= 2) return BUSINESS_CHAPTER_W_50
+      if (directCount >= 5 || grandCount >= 6) return BUSINESS_CHAPTER_W_120
+      if (directCount === 4 || grandCount >= 3) return BUSINESS_CHAPTER_W_90
+      return BUSINESS_CHAPTER_W_70
+    }
+    let globalTier = BUSINESS_CHAPTER_W_50
     for (const chapter of topFrames) {
-      globalNeed = Math.max(globalNeed, requiredWidthForFrame(chapter.id))
+      const { directCount, grandCount } = countGrandchildren(chapter.id)
+      globalTier = Math.max(globalTier, tierFor(directCount, grandCount))
     }
-
-    const tiers = [
-      { w: BUSINESS_CHAPTER_W_30, label: 30 },
-      { w: BUSINESS_CHAPTER_W_50, label: 50 },
-      { w: BUSINESS_CHAPTER_W_70, label: 70 },
-      { w: BUSINESS_CHAPTER_W_90, label: 90 },
-      { w: BUSINESS_CHAPTER_W_120, label: 120 },
-    ]
-
-    // 轻量安全裕量：避免“刚好卡边”导致内容溢出。
-    const withSafety = Math.max(BUSINESS_CHAPTER_W_30, Math.ceil(globalNeed * 1.12))
-    const roundTo = Math.max(1, UNIT * 2)
-    const roundedNeed = Math.ceil(withSafety / roundTo) * roundTo
-
-    // 优先贴近既有 tier；若超过最大 tier，直接使用自适应宽度，不再硬截断到 120 档。
-    const tierCeilIdx = tiers.findIndex((t) => t.w >= roundedNeed)
-    if (tierCeilIdx === -1) return roundedNeed
-
-    // 递进一档（仅对 >=50 档位）：降低“边缘值”误判导致的挤压。
-    const bumpedIdx = tierCeilIdx >= 1 && tierCeilIdx < tiers.length - 1 ? tierCeilIdx + 1 : tierCeilIdx
-    return tiers[bumpedIdx].w
+    return globalTier
   }
   const businessUnifiedTopChapterWidth = calcBusinessUnifiedTopChapterWidth()
-  const getBusinessChapterWidth = (isTop: boolean): number => (isTop ? businessUnifiedTopChapterWidth : BUSINESS_CHAPTER_W_30)
+  const getBusinessChapterWidth = (isTop: boolean): number => (isTop ? businessUnifiedTopChapterWidth : BUSINESS_CHAPTER_W_50)
 
   const frames = allNodes.filter(isFrame)
 
@@ -398,7 +330,7 @@ function wrapFramesToContents(allNodes: Array<Node<any>>, businessMode: boolean)
 
     const layoutBusinessFrame = (frame: Node<any>, forcedWidth: number | undefined) => {
       // 高密输入下放宽上限，避免过度重挂载导致宽度估计失真。
-      enforceMaxNestedFrames(frame.id, 6)
+      enforceMaxNestedFrames(frame.id, 3)
 
       const kids = childrenByParent.get(frame.id) ?? []
       const childFrames = kids.filter(isFrame).sort((a, b) => a.id.localeCompare(b.id))
@@ -413,7 +345,7 @@ function wrapFramesToContents(allNodes: Array<Node<any>>, businessMode: boolean)
       // Non-top frames must strictly follow recursive parent allocation.
       // Avoid forcing MIN_W_DEFAULT here, otherwise shallow mixed nesting will break the "recursive unit width" contract.
       let targetW = isTop ? getBusinessChapterWidth(true) : forcedWidth ?? MIN_W_DEFAULT
-      const MAX_EXPAND_ROUNDS = 3
+      const MAX_EXPAND_ROUNDS = 1
       for (let round = 0; round < MAX_EXPAND_ROUNDS; round += 1) {
         const availableW = Math.max(1, targetW - padX * 2)
 

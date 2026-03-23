@@ -293,6 +293,10 @@ function layoutDecisionSystemSnippet(ld: LayoutDecision): string {
 }
 
 function normalizeBusinessBigMapDraft(draft: AiDiagramDraft): AiDiagramDraft {
+  const shorten = (s: string, max = 7) => {
+    const t = s.trim()
+    return t.length > max ? t.slice(0, max) : t
+  }
   const rawNodes = Array.isArray(draft.nodes) ? draft.nodes : []
   const frameById = new Map<string, any>()
   for (const n of rawNodes as any[]) {
@@ -388,14 +392,21 @@ function normalizeBusinessBigMapDraft(draft: AiDiagramDraft): AiDiagramDraft {
     if (!n || typeof n !== 'object') return n
     const data = { ...(n.data ?? {}) }
     if (typeof data.title === 'string') {
-      data.title = data.title
+      data.title = shorten(
+        data.title
         .replace(/\s*[｜|]\s*Type\s*[A-F]\s*$/i, '')
-        .replace(/\s*[｜|]\s*T(?:ype)?\s*[A-F]?\s*$/i, '')
+        .replace(/\s*[｜|]\s*T(?:ype)?\s*[A-F]?\s*$/i, ''),
+      )
     }
     if (typeof data.label === 'string') {
-      data.label = data.label
+      data.label = shorten(
+        data.label
         .replace(/\s*[｜|]\s*Type\s*[A-F]\s*$/i, '')
-        .replace(/\s*[｜|]\s*T(?:ype)?\s*[A-F]?\s*$/i, '')
+        .replace(/\s*[｜|]\s*T(?:ype)?\s*[A-F]?\s*$/i, ''),
+      )
+    }
+    if (typeof data.subtitle === 'string') {
+      data.subtitle = shorten(data.subtitle)
     }
     return { ...n, data }
   })
@@ -903,6 +914,7 @@ const DIAGRAM_PLANNER_SYSTEM_PROMPT = [
   '',
   '当 templateKey 为 Business Big Map Template：',
   '- framesOrRoot 对应一级画框(frame)，并且每个 frame 必须给出 nesting case：case1/case2/case3。',
+  '- 所有节点文案（title/directPoints/children.title/children.points）必须精简：每条不超过 7 个字。',
   '- case1：frame 直接承载要点（directPoints），frame 的 children 必须为空数组（不出现任何子画框）。',
   '- case2：frame 下的 children 对应 group（模块），每个 children.points 对应该 group 内的 quad 要点（直接 quad，不创建 subgroup）。',
   '- case3：frame 下的 children 对应 group（模块），每个 children.points 对应 subgroup 标题（每个 subgroup 再承载 1 个 quad，要点 label 使用该标题）。',
@@ -1026,6 +1038,34 @@ async function openRouterDiagramPlanner(
     obj = JSON.parse(cleaned)
   } catch {
     throw new Error('Diagram Planner 输出不是合法 JSON')
+  }
+  // 业务大图：文案硬限制（每个节点 <= 7 字），避免标签过长导致布局失控。
+  if (templateKey === 'Business Big Map Template' && obj && typeof obj === 'object') {
+    const shorten = (s: string, max = 7) => {
+      const t = s.trim()
+      return t.length > max ? t.slice(0, max) : t
+    }
+    const planner = obj as any
+    const frames = Array.isArray(planner?.structure?.framesOrRoot) ? planner.structure.framesOrRoot : []
+    for (const f of frames) {
+      if (f && typeof f === 'object') {
+        if (typeof f.title === 'string') f.title = shorten(f.title)
+        if (Array.isArray(f.directPoints)) {
+          f.directPoints = f.directPoints.map((x: any) => (typeof x === 'string' ? shorten(x) : x))
+        }
+        if (Array.isArray(f.children)) {
+          f.children = f.children.map((c: any) => {
+            if (!c || typeof c !== 'object') return c
+            const cc = { ...c }
+            if (typeof cc.title === 'string') cc.title = shorten(cc.title)
+            if (Array.isArray(cc.points)) {
+              cc.points = cc.points.map((x: any) => (typeof x === 'string' ? shorten(x) : x))
+            }
+            return cc
+          })
+        }
+      }
+    }
   }
   // 压缩输出，减少 Mermaid 生成器的 token 消耗。
   return JSON.stringify(obj)
@@ -1405,6 +1445,7 @@ export async function openRouterGenerateDiagram(opts: OpenRouterChatOptions): Pr
   const businessJsonMermaidHint = [
     '【必须依据 Planner JSON 生成业务大图 Mermaid】',
     '你在 user 里收到的是严格 JSON（来自 Diagram Planner）。请严格按 JSON 字段生成，不要根据语义自行推断嵌套层级。',
+    '文案约束：所有节点标题必须不超过 7 个字。',
     '结构映射：',
     '1) chapters：structure.framesOrRoot 中每个 frame 对应一个“章节 frame”subgraph。',
     '2) frame.case 决定该章节内部的“嵌套层级类型”（且仅此一个类型）：',
