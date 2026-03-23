@@ -238,6 +238,38 @@ export function autoLayoutSwimlane(args: {
   // ── Phase C: edge 路由修正 ──
   const nodeById = new Map(nodes.map((n) => [n.id, n]))
   const edgeLaneCounter = new Map<string, number>()
+  const usedOutByNode = new Map<string, Set<string>>()
+  const usedInByNode = new Map<string, Set<string>>()
+  const oppositeHandle = (h: string) => {
+    if (h.endsWith('-top')) return h.replace('-top', '-bottom')
+    if (h.endsWith('-bottom')) return h.replace('-bottom', '-top')
+    if (h.endsWith('-left')) return h.replace('-left', '-right')
+    return h.replace('-right', '-left')
+  }
+  const chooseBestHandle = (nodeId: string, preferred: string[], mode: 'out' | 'in') => {
+    const outSet = usedOutByNode.get(nodeId) ?? new Set<string>()
+    const inSet = usedInByNode.get(nodeId) ?? new Set<string>()
+    let best = preferred[0]
+    let bestScore = Number.POSITIVE_INFINITY
+    for (const h of preferred) {
+      // 规则：同一个 handle 不能同时 in+out；并强惩罚对侧同时占用，避免 top/bottom 或 left/right 对冲重叠
+      const sameSideConflict = mode === 'out' ? inSet.has(h) : outSet.has(h)
+      const oppositeConflict = mode === 'out' ? inSet.has(oppositeHandle(h)) : outSet.has(oppositeHandle(h))
+      const selfReuse = mode === 'out' ? outSet.has(h) : inSet.has(h)
+      const score = (sameSideConflict ? 100 : 0) + (oppositeConflict ? 12 : 0) + (selfReuse ? 3 : 0)
+      if (score < bestScore) {
+        best = h
+        bestScore = score
+      }
+    }
+    return best
+  }
+  const markHandleUse = (nodeId: string, h: string, mode: 'out' | 'in') => {
+    const map = mode === 'out' ? usedOutByNode : usedInByNode
+    const set = map.get(nodeId) ?? new Set<string>()
+    set.add(h)
+    map.set(nodeId, set)
+  }
   const updatedEdges = edges.map((e) => {
     const srcNode = nodeById.get(e.source)
     const tgtNode = nodeById.get(e.target)
@@ -272,7 +304,7 @@ export function autoLayoutSwimlane(args: {
       edgeStyle.opacity = 0.7
     }
 
-    // Handle 推断
+    // Handle 推断（相邻优先 + 禁止同 handle 同时 in/out）
     let sourceHandle: string | undefined
     let targetHandle: string | undefined
     if (isHorizontal) {
@@ -283,19 +315,19 @@ export function autoLayoutSwimlane(args: {
         const srcLaneIdx = srcLane ? lanes.indexOf(srcLane) : 0
         const tgtLaneIdx = tgtLane ? lanes.indexOf(tgtLane) : 0
         if (tgtLaneIdx > srcLaneIdx) {
-          sourceHandle = 's-bottom'
-          targetHandle = 't-top'
+          sourceHandle = chooseBestHandle(e.source, ['s-bottom', 's-right', 's-left', 's-top'], 'out')
+          targetHandle = chooseBestHandle(e.target, ['t-top', 't-left', 't-right', 't-bottom'], 'in')
         } else {
-          sourceHandle = 's-top'
-          targetHandle = 't-bottom'
+          sourceHandle = chooseBestHandle(e.source, ['s-top', 's-right', 's-left', 's-bottom'], 'out')
+          targetHandle = chooseBestHandle(e.target, ['t-bottom', 't-left', 't-right', 't-top'], 'in')
         }
       } else if (isReturnFlow) {
-        // 回流边从另一组 handle 走顶边，避免和主流 right->left 重叠
-        sourceHandle = 's-top'
-        targetHandle = 't-top'
+        // 回流边优先相邻 handle（top/bottom），避免与主流 right->left 对冲重叠
+        sourceHandle = chooseBestHandle(e.source, ['s-top', 's-bottom', 's-right', 's-left'], 'out')
+        targetHandle = chooseBestHandle(e.target, ['t-top', 't-bottom', 't-left', 't-right'], 'in')
       } else {
-        sourceHandle = 's-right'
-        targetHandle = 't-left'
+        sourceHandle = chooseBestHandle(e.source, ['s-right', 's-top', 's-bottom', 's-left'], 'out')
+        targetHandle = chooseBestHandle(e.target, ['t-left', 't-top', 't-bottom', 't-right'], 'in')
       }
     } else {
       if (isCrossLane) {
@@ -304,21 +336,23 @@ export function autoLayoutSwimlane(args: {
         const srcLaneIdx = srcLane ? lanes.indexOf(srcLane) : 0
         const tgtLaneIdx = tgtLane ? lanes.indexOf(tgtLane) : 0
         if (tgtLaneIdx > srcLaneIdx) {
-          sourceHandle = 's-right'
-          targetHandle = 't-left'
+          sourceHandle = chooseBestHandle(e.source, ['s-right', 's-bottom', 's-top', 's-left'], 'out')
+          targetHandle = chooseBestHandle(e.target, ['t-left', 't-top', 't-bottom', 't-right'], 'in')
         } else {
-          sourceHandle = 's-left'
-          targetHandle = 't-right'
+          sourceHandle = chooseBestHandle(e.source, ['s-left', 's-bottom', 's-top', 's-right'], 'out')
+          targetHandle = chooseBestHandle(e.target, ['t-right', 't-top', 't-bottom', 't-left'], 'in')
         }
       } else if (isReturnFlow) {
-        // 纵向泳道时，回流边改走 left 侧，与主流 bottom->top 分离
-        sourceHandle = 's-left'
-        targetHandle = 't-left'
+        // 回流边优先相邻 handle（left/right），避免与主流 bottom->top 对冲重叠
+        sourceHandle = chooseBestHandle(e.source, ['s-left', 's-right', 's-bottom', 's-top'], 'out')
+        targetHandle = chooseBestHandle(e.target, ['t-left', 't-right', 't-top', 't-bottom'], 'in')
       } else {
-        sourceHandle = 's-bottom'
-        targetHandle = 't-top'
+        sourceHandle = chooseBestHandle(e.source, ['s-bottom', 's-left', 's-right', 's-top'], 'out')
+        targetHandle = chooseBestHandle(e.target, ['t-top', 't-left', 't-right', 't-bottom'], 'in')
       }
     }
+    markHandleUse(e.source, sourceHandle, 'out')
+    markHandleUse(e.target, targetHandle, 'in')
 
     const lanePairKey = `${String(srcLaneId ?? 'none')}->${String(tgtLaneId ?? 'none')}:${semanticType}`
     const laneOrder = edgeLaneCounter.get(lanePairKey) ?? 0
@@ -347,10 +381,10 @@ export function autoLayoutSwimlane(args: {
 
     const labelLayout =
       semanticType === 'returnFlow'
-        ? { placement: 'manual', offsetX: 0, offsetY: isHorizontal ? -28 : -16 }
+        ? { placement: 'manual', offsetX: isHorizontal ? 10 : -12, offsetY: isHorizontal ? -20 : -10 }
         : semanticType === 'crossLane'
-          ? { placement: 'manual', offsetX: 0, offsetY: -16 }
-          : { placement: 'center' }
+          ? { placement: 'manual', offsetX: isHorizontal ? 8 : -10, offsetY: isHorizontal ? -14 : -8 }
+          : { placement: 'manual', offsetX: isHorizontal ? 8 : -8, offsetY: isHorizontal ? -10 : -6 }
 
     return {
       ...e,

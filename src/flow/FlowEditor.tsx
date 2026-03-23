@@ -3136,7 +3136,7 @@ function EditorInner({ onBackHome, source, previewSnapshot, readOnly: _readOnly 
                       onClick={async () => {
                         const p = aiModalPrompt.trim()
                         if (!p) return
-                        if (!aiModalKey.trim()) {
+                        if (aiModalScene !== 'swimlane' && !aiModalKey.trim()) {
                           setAiModalError('请先填写 OpenRouter API Key')
                           setAiConfigOpen(true)
                           return
@@ -3148,10 +3148,10 @@ function EditorInner({ onBackHome, source, previewSnapshot, readOnly: _readOnly 
                           // Swimlane 独立链路：不走 LLM，直接用 SwimlaneDraft -> GraphBatchPayload
                           if (aiModalScene === 'swimlane') {
                             setAiModalProgress({ phase: '生成泳道图', detail: '解析中…' })
-                            const { SWIMLANE_EXAMPLE_DRAFT } = await import('./swimlaneExample')
-                            const { swimlaneDraftToGraphBatchPayload } = await import('./swimlaneDraft')
+                            const { buildSwimlaneDraftFromPrompt, swimlaneDraftToGraphBatchPayload } = await import('./swimlaneDraft')
                             const { materializeGraphBatchPayloadToSnapshot } = await import('./mermaid/apply')
-                            const payload = swimlaneDraftToGraphBatchPayload(SWIMLANE_EXAMPLE_DRAFT)
+                            const draftFromPrompt = buildSwimlaneDraftFromPrompt(p)
+                            const payload = swimlaneDraftToGraphBatchPayload(draftFromPrompt)
                             const snap = await materializeGraphBatchPayloadToSnapshot(payload)
                             const nextNodes = (snap.nodes ?? []) as FlowNode[]
                             const nextEdges = (snap.edges ?? []) as FlowEdge[]

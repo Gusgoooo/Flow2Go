@@ -199,6 +199,7 @@ export function SmartEdgeLabel(props: SmartEdgeLabelProps) {
     onPointerDown,
     onDoubleClick,
     maxLabelWidth = 168,
+    textOnly = false,
   } = props
 
   const { getResolved, register, unregister, bumpLayout } = useEdgeLabelLayout()
@@ -267,13 +268,13 @@ export function SmartEdgeLabel(props: SmartEdgeLabelProps) {
             title={text}
             style={{
               maxWidth: maxLabelWidth,
-              padding: '4px 10px',
-              borderRadius: 8,
-              background: 'rgba(255,255,255,0.5)',
-              backdropFilter: 'blur(2px)',
-              WebkitBackdropFilter: 'blur(2px)',
-              border: '1px solid rgba(148,163,184,0.55)',
-              boxShadow: '0 1px 3px rgba(15,23,42,0.08)',
+              padding: textOnly ? '0' : '4px 10px',
+              borderRadius: textOnly ? 0 : 8,
+              background: textOnly ? 'transparent' : 'rgba(255,255,255,0.5)',
+              backdropFilter: textOnly ? 'none' : 'blur(2px)',
+              WebkitBackdropFilter: textOnly ? 'none' : 'blur(2px)',
+              border: textOnly ? 'none' : '1px solid rgba(148,163,184,0.55)',
+              boxShadow: textOnly ? 'none' : '0 1px 3px rgba(15,23,42,0.08)',
               fontSize,
               fontWeight,
               color,

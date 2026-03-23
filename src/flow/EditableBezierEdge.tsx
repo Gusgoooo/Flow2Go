@@ -310,6 +310,7 @@ export function EditableBezierEdge(props: EdgeProps) {
         text={labelText}
         editing={editing}
         editChildren={editChildren}
+        textOnly={Boolean(dataTyped.semanticType)}
         onDoubleClick={(e) => {
           e.stopPropagation()
           if (!editing) {

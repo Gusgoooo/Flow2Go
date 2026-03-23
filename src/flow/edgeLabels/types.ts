@@ -52,6 +52,8 @@ export type SmartEdgeLabelProps = {
   onDoubleClick?: React.MouseEventHandler<HTMLDivElement>
   /** 标签块最大宽度（px，CSS），过长省略 */
   maxLabelWidth?: number
+  /** 纯文本模式：无底色/描边，仅显示文字 */
+  textOnly?: boolean
 }
 
 export type FlowRect = {
