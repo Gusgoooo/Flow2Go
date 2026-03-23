@@ -17,6 +17,7 @@ type EdgeData = {
   semanticType?: SwimlaneEdgeSemanticType
   sourceLaneId?: string
   targetLaneId?: string
+  labelTextOnly?: boolean
 }
 
 function markerColorFrom(style: EdgeProps['style'], marker: unknown): string {
@@ -310,7 +311,7 @@ export function EditableBezierEdge(props: EdgeProps) {
         text={labelText}
         editing={editing}
         editChildren={editChildren}
-        textOnly={Boolean(dataTyped.semanticType)}
+        textOnly={Boolean(dataTyped.semanticType) || Boolean(dataTyped.labelTextOnly)}
         onDoubleClick={(e) => {
           e.stopPropagation()
           if (!editing) {

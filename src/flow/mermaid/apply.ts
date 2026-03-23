@@ -1079,6 +1079,37 @@ function applyFlowchartStrictHandles(
   direction: FlowDirection,
 ): Array<Edge<any>> {
   const nodeById = new Map(nodes.map((n) => [n.id, n]))
+  const incomingByNode = new Map<string, Set<Side>>()
+  const outgoingByNode = new Map<string, Set<Side>>()
+  const toSide = (h: string): Side => (h.endsWith('-top') ? 'top' : h.endsWith('-right') ? 'right' : h.endsWith('-bottom') ? 'bottom' : 'left')
+  const addSide = (m: Map<string, Set<Side>>, id: string, side: Side) => {
+    const s = m.get(id) ?? new Set<Side>()
+    s.add(side)
+    m.set(id, s)
+  }
+  const sideCandidates = (preferred: Side): Side[] => {
+    if (preferred === 'top') return ['top', 'left', 'right', 'bottom']
+    if (preferred === 'bottom') return ['bottom', 'left', 'right', 'top']
+    if (preferred === 'left') return ['left', 'top', 'bottom', 'right']
+    return ['right', 'top', 'bottom', 'left']
+  }
+  const pickSourceSide = (nodeId: string, preferred: Side): Side => {
+    const incoming = incomingByNode.get(nodeId) ?? new Set<Side>()
+    const cands = sideCandidates(preferred)
+    for (const c of cands) {
+      if (!incoming.has(c)) return c
+    }
+    return preferred
+  }
+  const pickTargetSide = (nodeId: string, preferred: Side): Side => {
+    const outgoing = outgoingByNode.get(nodeId) ?? new Set<Side>()
+    const cands = sideCandidates(preferred)
+    for (const c of cands) {
+      if (!outgoing.has(c)) return c
+    }
+    return preferred
+  }
+
   return edges.map((e) => {
     const centers = getCenters(e.source, e.target, nodeById)
     if (!centers) return e
@@ -1088,18 +1119,32 @@ function applyFlowchartStrictHandles(
     let sourceHandle: string
     let targetHandle: string
     if (direction === 'LR' || direction === 'RL') {
-      sourceHandle = dx >= 0 ? 's-right' : 's-left'
-      targetHandle = dx >= 0 ? 't-left' : 't-right'
+      const srcPref: Side = dx >= 0 ? 'right' : 'left'
+      const tgtPref: Side = dx >= 0 ? 'left' : 'right'
+      const srcSide = pickSourceSide(e.source, srcPref)
+      const tgtSide = pickTargetSide(e.target, tgtPref)
+      sourceHandle = `s-${srcSide}`
+      targetHandle = `t-${tgtSide}`
     } else if (direction === 'TB' || direction === 'BT') {
-      sourceHandle = dy >= 0 ? 's-bottom' : 's-top'
-      targetHandle = dy >= 0 ? 't-top' : 't-bottom'
+      const srcPref: Side = dy >= 0 ? 'bottom' : 'top'
+      const tgtPref: Side = dy >= 0 ? 'top' : 'bottom'
+      const srcSide = pickSourceSide(e.source, srcPref)
+      const tgtSide = pickTargetSide(e.target, tgtPref)
+      sourceHandle = `s-${srcSide}`
+      targetHandle = `t-${tgtSide}`
     } else {
       const inferred = inferHandlesForEdge(e.source, e.target, nodeById)
       if (!inferred) return e
-      sourceHandle = inferred.sourceHandle
-      targetHandle = inferred.targetHandle
+      const srcPref = toSide(inferred.sourceHandle)
+      const tgtPref = toSide(inferred.targetHandle)
+      const srcSide = pickSourceSide(e.source, srcPref)
+      const tgtSide = pickTargetSide(e.target, tgtPref)
+      sourceHandle = `s-${srcSide}`
+      targetHandle = `t-${tgtSide}`
     }
 
+    addSide(outgoingByNode, e.source, toSide(sourceHandle))
+    addSide(incomingByNode, e.target, toSide(targetHandle))
     const d = { ...((e.data ?? {}) as any), autoOffset: 0 }
     return { ...e, sourceHandle, targetHandle, data: d }
   })
@@ -1271,7 +1316,10 @@ export async function materializeGraphBatchPayloadToSnapshot(
         target: op.params.target,
         type: edgeType,
         ...(trimmedLabel ? { label: op.params.label } : {}),
-        data: edgeData,
+        data: {
+          ...edgeData,
+          ...(flowchartMode ? { labelTextOnly: true } : {}),
+        },
         style: mergedStyle as any,
         ...(arrowStyle === 'none' ? { markerEnd: undefined, markerStart: undefined } : {}),
       }

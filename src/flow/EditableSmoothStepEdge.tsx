@@ -18,6 +18,7 @@ type EdgeData = {
   semanticType?: SwimlaneEdgeSemanticType
   sourceLaneId?: string
   targetLaneId?: string
+  labelTextOnly?: boolean
 }
 type Point = { x: number; y: number }
 
@@ -628,7 +629,7 @@ export function EditableSmoothStepEdge(props: EdgeProps) {
         labelStyle={labelStyleObj}
         text={typeof label === 'string' ? label : ''}
         editing={editing}
-        textOnly={Boolean(dataTyped.semanticType)}
+        textOnly={Boolean(dataTyped.semanticType) || Boolean(dataTyped.labelTextOnly)}
         onPointerDown={handleLabelDrag}
         onDoubleClick={(e) => {
           e.stopPropagation()
