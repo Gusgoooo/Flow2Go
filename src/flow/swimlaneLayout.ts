@@ -5,6 +5,7 @@
  */
 import type { Edge, Node } from '@xyflow/react'
 import type { FlowDirection } from './mermaid/types'
+import { rerouteSwimlaneEdges } from './layout/routing/rerouteSwimlaneEdges'
 
 const LANE_HEADER_SIZE = 44
 const LANE_GAP = 24
@@ -21,8 +22,6 @@ const DEFAULT_NODE_SIZES: Record<string, { w: number; h: number }> = {
   circle: { w: 64, h: 64 },
   diamond: { w: 96, h: 64 },
 }
-type Side = 'top' | 'right' | 'bottom' | 'left'
-
 function getNodeSize(n: Node<any>): { w: number; h: number } {
   const w = n.measured?.width ?? n.width ?? (typeof (n.style as any)?.width === 'number' ? (n.style as any).width : undefined) ?? 160
   const h = n.measured?.height ?? n.height ?? (typeof (n.style as any)?.height === 'number' ? (n.style as any).height : undefined) ?? 44
@@ -37,36 +36,6 @@ function estimateNodeSize(n: Node<any>): { w: number; h: number } {
     w: existing.w > 1 ? existing.w : preset.w,
     h: existing.h > 1 ? existing.h : preset.h,
   }
-}
-
-function getAbsolutePosition(node: Node<any>, nodeById: Map<string, Node<any>>): { x: number; y: number } {
-  let x = node.position?.x ?? 0
-  let y = node.position?.y ?? 0
-  let cur = node
-  const seen = new Set<string>()
-  while (cur.parentId) {
-    if (seen.has(cur.id)) break
-    seen.add(cur.id)
-    const p = nodeById.get(cur.parentId)
-    if (!p) break
-    x += p.position?.x ?? 0
-    y += p.position?.y ?? 0
-    cur = p
-  }
-  return { x, y }
-}
-
-function getHandlePoint(
-  node: Node<any>,
-  handle: string,
-  nodeById: Map<string, Node<any>>,
-): { x: number; y: number } {
-  const abs = getAbsolutePosition(node, nodeById)
-  const size = estimateNodeSize(node)
-  if (handle.endsWith('-top')) return { x: abs.x + size.w / 2, y: abs.y }
-  if (handle.endsWith('-bottom')) return { x: abs.x + size.w / 2, y: abs.y + size.h }
-  if (handle.endsWith('-left')) return { x: abs.x, y: abs.y + size.h / 2 }
-  return { x: abs.x + size.w, y: abs.y + size.h / 2 }
 }
 
 /**
@@ -236,213 +205,7 @@ export function autoLayoutSwimlane(args: {
     }
   }
 
-  // ── Phase C: edge 路由修正 ──
-  const nodeById = new Map(nodes.map((n) => [n.id, n]))
-  const GEOM_DOMINANT_RATIO = 1.15
-  const inferPreferredSidesByGeometry = (dx: number, dy: number): { src: Side; tgt: Side } => {
-    const adx = Math.abs(dx)
-    const ady = Math.abs(dy)
-    if (adx >= ady * GEOM_DOMINANT_RATIO) {
-      return dx >= 0 ? { src: 'right', tgt: 'left' } : { src: 'left', tgt: 'right' }
-    }
-    if (ady >= adx * GEOM_DOMINANT_RATIO) {
-      return dy >= 0 ? { src: 'bottom', tgt: 'top' } : { src: 'top', tgt: 'bottom' }
-    }
-    if (dx >= 0 && dy >= 0) return ady > adx ? { src: 'bottom', tgt: 'top' } : { src: 'right', tgt: 'left' }
-    if (dx >= 0 && dy < 0) return ady > adx ? { src: 'top', tgt: 'bottom' } : { src: 'right', tgt: 'left' }
-    if (dx < 0 && dy >= 0) return ady > adx ? { src: 'bottom', tgt: 'top' } : { src: 'left', tgt: 'right' }
-    return ady > adx ? { src: 'top', tgt: 'bottom' } : { src: 'left', tgt: 'right' }
-  }
-  const sidePriority = (s: Side): Side[] => {
-    if (s === 'top') return ['top', 'left', 'right', 'bottom']
-    if (s === 'bottom') return ['bottom', 'right', 'left', 'top']
-    if (s === 'left') return ['left', 'bottom', 'top', 'right']
-    return ['right', 'top', 'bottom', 'left']
-  }
-  const edgeLaneCounter = new Map<string, number>()
-  const usedOutByNode = new Map<string, Set<string>>()
-  const usedInByNode = new Map<string, Set<string>>()
-  const oppositeHandle = (h: string) => {
-    if (h.endsWith('-top')) return h.replace('-top', '-bottom')
-    if (h.endsWith('-bottom')) return h.replace('-bottom', '-top')
-    if (h.endsWith('-left')) return h.replace('-left', '-right')
-    return h.replace('-right', '-left')
-  }
-  const chooseBestHandle = (nodeId: string, preferred: string[], mode: 'out' | 'in') => {
-    const outSet = usedOutByNode.get(nodeId) ?? new Set<string>()
-    const inSet = usedInByNode.get(nodeId) ?? new Set<string>()
-    let best = preferred[0]
-    let bestScore = Number.POSITIVE_INFINITY
-    for (const h of preferred) {
-      // 规则：同一个 handle 不能同时 in+out；并强惩罚对侧同时占用，避免 top/bottom 或 left/right 对冲重叠
-      const sameSideConflict = mode === 'out' ? inSet.has(h) : outSet.has(h)
-      const oppositeConflict = mode === 'out' ? inSet.has(oppositeHandle(h)) : outSet.has(oppositeHandle(h))
-      const selfReuse = mode === 'out' ? outSet.has(h) : inSet.has(h)
-      const score = (sameSideConflict ? 100 : 0) + (oppositeConflict ? 12 : 0) + (selfReuse ? 3 : 0)
-      if (score < bestScore) {
-        best = h
-        bestScore = score
-      }
-    }
-    return best
-  }
-  const markHandleUse = (nodeId: string, h: string, mode: 'out' | 'in') => {
-    const map = mode === 'out' ? usedOutByNode : usedInByNode
-    const set = map.get(nodeId) ?? new Set<string>()
-    set.add(h)
-    map.set(nodeId, set)
-  }
-  const updatedEdges = edges.map((e) => {
-    const srcNode = nodeById.get(e.source)
-    const tgtNode = nodeById.get(e.target)
-    if (!srcNode || !tgtNode) return e
-
-    const srcLaneId = (srcNode.data as any)?.laneId ?? srcNode.parentId
-    const tgtLaneId = (tgtNode.data as any)?.laneId ?? tgtNode.parentId
-    const isCrossLane = srcLaneId && tgtLaneId && srcLaneId !== tgtLaneId
-
-    // 判断回流：同 lane 内 source 的 order > target 的 order
-    const srcOrder = (srcNode.data as any)?.nodeOrder ?? 0
-    const tgtOrder = (tgtNode.data as any)?.nodeOrder ?? 0
-    const isReturnFlow =
-      !isCrossLane && srcLaneId === tgtLaneId && srcOrder > tgtOrder
-
-    const semanticType = (e.data as any)?.semanticType === 'returnFlow'
-      ? 'returnFlow'
-      : isReturnFlow
-        ? 'returnFlow'
-        : isCrossLane
-          ? 'crossLane'
-          : 'normal'
-
-    let edgeType = e.type
-    let edgeStyle = { ...(e.style as any) }
-
-    if (semanticType === 'crossLane') {
-      edgeType = 'smoothstep'
-    } else if (semanticType === 'returnFlow') {
-      edgeType = 'smoothstep'
-      edgeStyle.strokeWidth = 1
-      edgeStyle.opacity = 0.95
-    }
-
-    // Handle 推断（几何优先 + 相邻回退 + 禁止同 handle 同时 in/out）
-    let sourceHandle: string | undefined
-    let targetHandle: string | undefined
-    const srcAbs = getAbsolutePosition(srcNode, nodeById)
-    const tgtAbs = getAbsolutePosition(tgtNode, nodeById)
-    const srcSize = estimateNodeSize(srcNode)
-    const tgtSize = estimateNodeSize(tgtNode)
-    const dx = (tgtAbs.x + tgtSize.w / 2) - (srcAbs.x + srcSize.w / 2)
-    const dy = (tgtAbs.y + tgtSize.h / 2) - (srcAbs.y + srcSize.h / 2)
-    const geomPref = inferPreferredSidesByGeometry(dx, dy)
-    const srcGeomCand = sidePriority(geomPref.src).map((s) => `s-${s}`)
-    const tgtGeomCand = sidePriority(geomPref.tgt).map((s) => `t-${s}`)
-    if (isHorizontal) {
-      if (isCrossLane) {
-        // 跨 lane：上下出入
-        const srcLane = lanes.find((l) => l.id === srcLaneId)
-        const tgtLane = lanes.find((l) => l.id === tgtLaneId)
-        const srcLaneIdx = srcLane ? lanes.indexOf(srcLane) : 0
-        const tgtLaneIdx = tgtLane ? lanes.indexOf(tgtLane) : 0
-        if (tgtLaneIdx > srcLaneIdx) {
-          sourceHandle = chooseBestHandle(e.source, ['s-bottom', ...srcGeomCand], 'out')
-          targetHandle = chooseBestHandle(e.target, ['t-top', ...tgtGeomCand], 'in')
-        } else {
-          sourceHandle = chooseBestHandle(e.source, ['s-top', ...srcGeomCand], 'out')
-          targetHandle = chooseBestHandle(e.target, ['t-bottom', ...tgtGeomCand], 'in')
-        }
-      } else if (isReturnFlow) {
-        // 回流边优先“邻近侧”+几何侧，避免对向侧对冲
-        sourceHandle = chooseBestHandle(e.source, ['s-bottom', 's-top', ...srcGeomCand], 'out')
-        targetHandle = chooseBestHandle(e.target, ['t-right', 't-left', ...tgtGeomCand], 'in')
-      } else {
-        sourceHandle = chooseBestHandle(e.source, srcGeomCand, 'out')
-        targetHandle = chooseBestHandle(e.target, tgtGeomCand, 'in')
-      }
-    } else {
-      if (isCrossLane) {
-        const srcLane = lanes.find((l) => l.id === srcLaneId)
-        const tgtLane = lanes.find((l) => l.id === tgtLaneId)
-        const srcLaneIdx = srcLane ? lanes.indexOf(srcLane) : 0
-        const tgtLaneIdx = tgtLane ? lanes.indexOf(tgtLane) : 0
-        if (tgtLaneIdx > srcLaneIdx) {
-          sourceHandle = chooseBestHandle(e.source, ['s-right', ...srcGeomCand], 'out')
-          targetHandle = chooseBestHandle(e.target, ['t-left', ...tgtGeomCand], 'in')
-        } else {
-          sourceHandle = chooseBestHandle(e.source, ['s-left', ...srcGeomCand], 'out')
-          targetHandle = chooseBestHandle(e.target, ['t-right', ...tgtGeomCand], 'in')
-        }
-      } else if (isReturnFlow) {
-        sourceHandle = chooseBestHandle(e.source, ['s-right', 's-left', ...srcGeomCand], 'out')
-        targetHandle = chooseBestHandle(e.target, ['t-bottom', 't-top', ...tgtGeomCand], 'in')
-      } else {
-        sourceHandle = chooseBestHandle(e.source, srcGeomCand, 'out')
-        targetHandle = chooseBestHandle(e.target, tgtGeomCand, 'in')
-      }
-    }
-    markHandleUse(e.source, sourceHandle, 'out')
-    markHandleUse(e.target, targetHandle, 'in')
-
-    const lanePairKey = `${String(srcLaneId ?? 'none')}->${String(tgtLaneId ?? 'none')}:${semanticType}`
-    const laneOrder = edgeLaneCounter.get(lanePairKey) ?? 0
-    edgeLaneCounter.set(lanePairKey, laneOrder + 1)
-    const signed = laneOrder % 2 === 0 ? laneOrder / 2 : -((laneOrder + 1) / 2)
-    const autoOffset = signed * 18
-
-    let waypoints: Array<{ x: number; y: number }> | undefined
-    if (semanticType === 'returnFlow') {
-      const srcPt = getHandlePoint(srcNode, sourceHandle, nodeById)
-      const tgtPt = getHandlePoint(tgtNode, targetHandle, nodeById)
-      if (isHorizontal) {
-        // 回流：构造多弯 C/S 结构，避免直连和重叠
-        const detourY = Math.min(srcPt.y, tgtPt.y) - 72 - Math.abs(autoOffset) * 1.25
-        const shoulderOut = srcPt.x >= tgtPt.x ? 56 : -56
-        const shoulderIn = srcPt.x >= tgtPt.x ? -56 : 56
-        waypoints = [
-          { x: srcPt.x + shoulderOut, y: srcPt.y },
-          { x: srcPt.x + shoulderOut, y: detourY },
-          { x: tgtPt.x + shoulderIn, y: detourY },
-          { x: tgtPt.x + shoulderIn, y: tgtPt.y },
-        ]
-      } else {
-        const detourX = Math.min(srcPt.x, tgtPt.x) - 72 - Math.abs(autoOffset) * 1.25
-        const shoulderOut = srcPt.y >= tgtPt.y ? 56 : -56
-        const shoulderIn = srcPt.y >= tgtPt.y ? -56 : 56
-        waypoints = [
-          { x: srcPt.x, y: srcPt.y + shoulderOut },
-          { x: detourX, y: srcPt.y + shoulderOut },
-          { x: detourX, y: tgtPt.y + shoulderIn },
-          { x: tgtPt.x, y: tgtPt.y + shoulderIn },
-        ]
-      }
-    }
-
-    const labelLayout =
-      semanticType === 'returnFlow'
-        ? { placement: 'manual', offsetX: isHorizontal ? 10 : -12, offsetY: isHorizontal ? -20 : -10 }
-        : semanticType === 'crossLane'
-          ? { placement: 'manual', offsetX: isHorizontal ? 8 : -10, offsetY: isHorizontal ? -14 : -8 }
-          : { placement: 'manual', offsetX: isHorizontal ? 8 : -8, offsetY: isHorizontal ? -10 : -6 }
-
-    return {
-      ...e,
-      type: edgeType,
-      style: edgeStyle,
-      sourceHandle,
-      targetHandle,
-      data: {
-        ...(e.data as any),
-        semanticType,
-        sourceLaneId: srcLaneId,
-        targetLaneId: tgtLaneId,
-        // Swimlane: 端点必须严格贴 handle，不做端点层 autoOffset 位移。
-        autoOffset: 0,
-        ...(waypoints ? { waypoints } : {}),
-        labelLayout,
-      },
-    }
-  })
-
+  // ── Phase C: 泳道路由修正（crossLane corridor + exclusion + 普通节点左右句柄） ──
+  const updatedEdges = rerouteSwimlaneEdges(nodes, edges)
   return { nodes, edges: updatedEdges }
 }

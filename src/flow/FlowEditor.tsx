@@ -1031,13 +1031,29 @@ function EditorInner({ onBackHome, source, previewSnapshot, readOnly: _readOnly 
   const onConnect = useCallback(
     (conn: Connection) =>
       setEdges((eds) => {
+        const srcNode = nodes.find((n) => n.id === conn.source)
+        const tgtNode = nodes.find((n) => n.id === conn.target)
+        const srcLaneId = ((srcNode?.data as any)?.laneId ?? srcNode?.parentId) as string | undefined
+        const tgtLaneId = ((tgtNode?.data as any)?.laneId ?? tgtNode?.parentId) as string | undefined
+        const inSwimlane = Boolean(srcLaneId || tgtLaneId)
+        const isCrossLane = Boolean(srcLaneId && tgtLaneId && srcLaneId !== tgtLaneId)
         const next = addEdge(
           {
             ...conn,
-            type: 'smoothstep',
+            ...(inSwimlane ? { sourceHandle: conn.sourceHandle ?? 's-right', targetHandle: conn.targetHandle ?? 't-left' } : {}),
+            type: inSwimlane ? (isCrossLane ? 'smoothstep' : 'bezier') : 'smoothstep',
             style: { stroke: DEFAULT_EDGE_COLOR, strokeWidth: 2 },
             markerEnd: { type: MarkerType.ArrowClosed, color: DEFAULT_EDGE_COLOR },
-            data: { arrowStyle: 'end' },
+            data: {
+              arrowStyle: 'end',
+              ...(inSwimlane
+                ? {
+                    semanticType: isCrossLane ? 'crossLane' : 'normal',
+                    sourceLaneId: srcLaneId,
+                    targetLaneId: tgtLaneId,
+                  }
+                : {}),
+            },
           },
           eds,
         )

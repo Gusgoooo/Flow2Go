@@ -1358,6 +1358,24 @@ export async function materializeGraphBatchPayloadToSnapshot(
       }
 
       const edgeData: Record<string, any> = { arrowStyle }
+      const isDecisionNode = (n?: Node<any>) => {
+        const st = (n?.data as any)?.semanticType
+        const shape = (n?.data as any)?.shape
+        return st === 'decision' || shape === 'diamond'
+      }
+      const isOrdinarySwimlaneNode = (n?: Node<any>) => {
+        if (!n) return false
+        const laneId = (n.data as any)?.laneId ?? n.parentId
+        if (!laneId) return false
+        if (isDecisionNode(n)) return false
+        const st = (n.data as any)?.semanticType
+        const shape = (n.data as any)?.shape
+        if (st && ['start', 'task', 'end', 'data'].includes(String(st))) return true
+        if (shape && ['rect', 'circle'].includes(String(shape))) return true
+        return true
+      }
+      let sourceHandle: string | undefined
+      let targetHandle: string | undefined
       if (swimlaneMode) {
         const srcNode = nodeById.get(op.params.source)
         const tgtNode = nodeById.get(op.params.target)
@@ -1373,6 +1391,12 @@ export async function materializeGraphBatchPayloadToSnapshot(
         } else {
           edgeData.semanticType = 'normal'
         }
+        if (isOrdinarySwimlaneNode(srcNode)) sourceHandle = 's-right'
+        if (isOrdinarySwimlaneNode(tgtNode)) targetHandle = 't-left'
+        if (edgeData.semanticType === 'crossLane') {
+          sourceHandle = sourceHandle ?? 's-right'
+          targetHandle = targetHandle ?? 't-left'
+        }
       }
 
       const isCrossLane = edgeData.semanticType === 'crossLane'
@@ -1385,6 +1409,8 @@ export async function materializeGraphBatchPayloadToSnapshot(
         source: op.params.source,
         target: op.params.target,
         type: edgeType,
+        ...(sourceHandle ? { sourceHandle } : {}),
+        ...(targetHandle ? { targetHandle } : {}),
         ...(trimmedLabel ? { label: op.params.label } : {}),
         data: {
           ...edgeData,
