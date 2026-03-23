@@ -16,6 +16,7 @@
     "dagre": "^0.8.5",
     "jszip": "^3.10.1",
     "lucide-react": "^0.577.0",
+    "mind-elixir": "^5.9.3",
     "react": "^19.2.0",
     "react-colorful": "^5.6.1",
     "react-dom": "^19.2.0"
@@ -34,7 +35,7 @@
     "globals": "^16.5.0",
     "typescript": "~5.9.3",
     "typescript-eslint": "^8.48.0",
-    "vitest": "^3.2.4",
-    "vite": "^7.3.1"
+    "vite": "^7.3.1",
+    "vitest": "^3.2.4"
   }
 }

@@ -1,5 +1,6 @@
 import type { Edge, Node } from '@xyflow/react'
 import { autoLayout } from '../layout'
+import { layoutMindMapMindElixirStyle } from '../mindMap/mindElixirLayout'
 import type { FlowDirection, GraphBatchPayload, GraphOperation } from './types'
 
 export type ApplyMermaidContext = {
@@ -1001,6 +1002,60 @@ function applyInferredEdgeHandles(nodes: Array<Node<any>>, edges: Array<Edge<any
   })
 }
 
+/** 思维导图森林：按入度为 0 的根做 BFS 深度（用于主题色分层）。 */
+function computeMindMapForestDepth(quadNodes: Array<Node<any>>, edges: Array<Edge<any>>): Map<string, number> {
+  const ids = new Set(quadNodes.map((n) => n.id))
+  const out = new Map<string, string[]>()
+  const indeg = new Map<string, number>()
+  for (const id of ids) {
+    out.set(id, [])
+    indeg.set(id, 0)
+  }
+  for (const e of edges) {
+    if (!ids.has(e.source) || !ids.has(e.target)) continue
+    out.get(e.source)!.push(e.target)
+    indeg.set(e.target, (indeg.get(e.target) ?? 0) + 1)
+  }
+  const roots = quadNodes.filter((n) => (indeg.get(n.id) ?? 0) === 0)
+  const depth = new Map<string, number>()
+  const queue: string[] = []
+  for (const r of roots) {
+    depth.set(r.id, 0)
+    queue.push(r.id)
+  }
+  if (queue.length === 0 && quadNodes.length > 0) {
+    depth.set(quadNodes[0].id, 0)
+    queue.push(quadNodes[0].id)
+  }
+  while (queue.length > 0) {
+    const cur = queue.shift()!
+    const d = depth.get(cur) ?? 0
+    for (const nxt of out.get(cur) ?? []) {
+      const nextDepth = d + 1
+      const prev = depth.get(nxt)
+      if (prev === undefined || nextDepth < prev) {
+        depth.set(nxt, nextDepth)
+        queue.push(nxt)
+      }
+    }
+  }
+  return depth
+}
+
+/**
+ * 思维导图：连线只能从左右句柄进出（标准思维导图观感），不走上/下。
+ */
+function applyMindMapHorizontalHandles(nodes: Array<Node<any>>, edges: Array<Edge<any>>): Array<Edge<any>> {
+  const nodeById = new Map(nodes.map((n) => [n.id, n]))
+  return edges.map((e) => {
+    const tgt = nodeById.get(e.target)
+    const side = (tgt?.data as any)?.mindMapSide as 'L' | 'R' | undefined
+    if (side === 'R') return { ...e, sourceHandle: 's-right', targetHandle: 't-left' }
+    if (side === 'L') return { ...e, sourceHandle: 's-left', targetHandle: 't-right' }
+    return e
+  })
+}
+
 /**
  * 将 GraphBatchPayload “物化”为一份 Flow2Go 可用的 nodes/edges 快照。
  * v1 策略：默认 replace（从空图生成）；坐标由 autoLayout op 决定。
@@ -1130,20 +1185,11 @@ export function materializeGraphBatchPayloadToSnapshot(
   // Make frames compact like manual grouping
   safeNodes = wrapFramesToContents(safeNodes, businessMode)
 
-  // Mind Map layout:
-  // - only expect one outer wrapper frame from model prompt
-  // - each depth layer is mapped to a column (LR), and each node is a quad (no internal frames)
-  // - apply themed strokes per depth and make edges use bezier curves
+  // Mind Map：纯节点 + Mind Elixir `layoutSSR` 左右分支分配 + 左右展开几何布局
   if (mindMapMode) {
-    const FRAME_PAD = LAYOUT_UNIT * 0.9
-    // 用户要求：列间距至少 8 个单位宽度
-    // 这里给更稳的余量，避免节点/曲线的视觉重叠导致“看起来像没从 handle 出来”
-    const COL_GAP = LAYOUT_UNIT * 10
-    const ROW_GAP = LAYOUT_UNIT * 1 // 同列纵向间距（结合节点高度避免重叠）
+    const palette = TOP_FRAME_THEME_COLORS
 
-    // 思维导图：不允许任何画框/编组容器。
-    // 有些模型输出可能仍带着 subgraph/frame（即 group(role=frame)），
-    // 这里强制把 quad 拉到根，并从 nodes 里移除所有 frame groups，确保“纯节点思维导图”。
+    // 思维导图：不允许任何画框/编组容器（group role=frame）。
     const frameRoleNodes = safeNodes.filter((n) => n.type === 'group' && (n.data as any)?.role === 'frame')
     if (frameRoleNodes.length > 0) {
       const frameIdSet = new Set(frameRoleNodes.map((f) => f.id))
@@ -1155,240 +1201,39 @@ export function materializeGraphBatchPayloadToSnapshot(
       safeNodes = safeNodes.filter((n) => !(n.type === 'group' && (n.data as any)?.role === 'frame'))
     }
 
-    const frameNodes = safeNodes.filter((n) => n.type === 'group' && (n.data as any)?.role === 'frame')
-    const wrapperFrames = frameNodes.filter((f) => !f.parentId)
-    const palette = TOP_FRAME_THEME_COLORS
-
-    const getDepthForFrame = (frameId: string): { depthByNodeId: Map<string, number>; internalEdgeBySource: Map<string, string[]> } => {
-      const quadNodes = safeNodes.filter((n) => n.type === 'quad' && n.parentId === frameId) as Array<Node<any>>
-      const quadIds = new Set(quadNodes.map((n) => n.id))
-
-      const indeg = new Map<string, number>()
-      const outAdj = new Map<string, string[]>()
-      for (const id of quadIds) {
-        indeg.set(id, 0)
-        outAdj.set(id, [])
+    const quadNodes = safeNodes.filter((n) => n.type === 'quad') as Array<Node<any>>
+    if (quadNodes.length > 0) {
+      const { positions, sides } = layoutMindMapMindElixirStyle(quadNodes, edges)
+      for (const n of quadNodes) {
+        const p = positions.get(n.id)
+        if (p) n.position = { ...n.position, x: p.x, y: p.y }
+        const side = sides.get(n.id)
+        if (side) {
+          n.data = { ...(n.data ?? {}), mindMapSide: side }
+        }
       }
 
+      const depthByNodeId = computeMindMapForestDepth(quadNodes, edges)
+      for (const n of quadNodes) {
+        const d = depthByNodeId.get(n.id) ?? 0
+        const color = palette[d % palette.length]
+        n.data = {
+          ...(n.data ?? {}),
+          stroke: color,
+          strokeWidth: 2,
+          handleMode: 'leftRight',
+        }
+      }
+
+      const quadIdSet = new Set(quadNodes.map((n) => n.id))
       for (const e of edges) {
-        if (!quadIds.has(e.source) || !quadIds.has(e.target)) continue
-        indeg.set(e.target, (indeg.get(e.target) ?? 0) + 1)
-        outAdj.set(e.source, [...(outAdj.get(e.source) ?? []), e.target])
-      }
-
-      let roots = quadNodes.filter((n) => (indeg.get(n.id) ?? 0) === 0)
-      if (roots.length === 0 && quadNodes.length > 0) roots = [quadNodes[0]]
-
-      const depthByNodeId = new Map<string, number>()
-      const queue: string[] = []
-      for (const r of roots) {
-        depthByNodeId.set(r.id, 0)
-        queue.push(r.id)
-      }
-
-      // BFS with "shortest distance" semantics (helps if input has extra edges)
-      while (queue.length > 0) {
-        const cur = queue.shift()!
-        const curDepth = depthByNodeId.get(cur) ?? 0
-        const nexts = outAdj.get(cur) ?? []
-        for (const nxt of nexts) {
-          const nextDepth = curDepth + 1
-          const prev = depthByNodeId.get(nxt)
-          if (prev === undefined || nextDepth < prev) {
-            depthByNodeId.set(nxt, nextDepth)
-            queue.push(nxt)
-          }
-        }
-      }
-
-      return { depthByNodeId, internalEdgeBySource: outAdj }
-    }
-
-    const getDepthForQuadNodes = (quadNodes: Array<Node<any>>): Map<string, number> => {
-      const quadIds = new Set(quadNodes.map((n) => n.id))
-
-      const indeg = new Map<string, number>()
-      const outAdj = new Map<string, string[]>()
-      for (const id of quadIds) {
-        indeg.set(id, 0)
-        outAdj.set(id, [])
-      }
-
-      for (const e of edges) {
-        if (!quadIds.has(e.source) || !quadIds.has(e.target)) continue
-        indeg.set(e.target, (indeg.get(e.target) ?? 0) + 1)
-        outAdj.set(e.source, [...(outAdj.get(e.source) ?? []), e.target])
-      }
-
-      let roots = quadNodes.filter((n) => (indeg.get(n.id) ?? 0) === 0)
-      if (roots.length === 0 && quadNodes.length > 0) roots = [quadNodes[0]]
-
-      const depthByNodeId = new Map<string, number>()
-      const queue: string[] = []
-      for (const r of roots) {
-        depthByNodeId.set(r.id, 0)
-        queue.push(r.id)
-      }
-
-      while (queue.length > 0) {
-        const cur = queue.shift()!
-        const curDepth = depthByNodeId.get(cur) ?? 0
-        const nexts = outAdj.get(cur) ?? []
-        for (const nxt of nexts) {
-          const nextDepth = curDepth + 1
-          const prev = depthByNodeId.get(nxt)
-          if (prev === undefined || nextDepth < prev) {
-            depthByNodeId.set(nxt, nextDepth)
-            queue.push(nxt)
-          }
-        }
-      }
-
-      return depthByNodeId
-    }
-
-    if (wrapperFrames.length > 0) {
-      // Backward-compatible: older output may include a wrapper subgraph/frame.
-      for (const frame of wrapperFrames) {
-        const frameId = frame.id
-        const quadNodes = safeNodes.filter((n) => n.type === 'quad' && n.parentId === frameId) as Array<Node<any>>
-        if (quadNodes.length === 0) continue
-
-        const { depthByNodeId } = getDepthForFrame(frameId)
-
-        for (const n of quadNodes) {
-          const d = depthByNodeId.get(n.id) ?? 0
-          const color = palette[d % palette.length]
-          n.data = {
-            ...(n.data ?? {}),
-            stroke: color,
-            strokeWidth: 2,
-            // Mind Map：只保留左右 handle，避免出现上/下句柄造成“非思维导图观感”。
-            handleMode: 'leftRight',
-          }
-        }
-
-        const byDepth = new Map<number, Array<Node<any>>>()
-        for (const n of quadNodes) {
-          const d = depthByNodeId.get(n.id) ?? 0
-          const arr = byDepth.get(d) ?? []
-          arr.push(n)
-          byDepth.set(d, arr)
-        }
-        const depths = [...byDepth.keys()].sort((a, b) => a - b)
-
-        for (const d of depths) {
-          const arr = byDepth.get(d) ?? []
-          arr.sort((a, b) => a.id.localeCompare(b.id))
-          for (let i = 0; i < arr.length; i += 1) {
-            const n = arr[i]
-            const { h } = getNodeSize(n)
-            n.position = { x: d * COL_GAP, y: i * (h + ROW_GAP) }
-          }
-        }
-
-        let minX = Number.POSITIVE_INFINITY
-        let minY = Number.POSITIVE_INFINITY
-        let maxX = Number.NEGATIVE_INFINITY
-        let maxY = Number.NEGATIVE_INFINITY
-        for (const n of quadNodes) {
-          const { w, h } = getNodeSize(n)
-          minX = Math.min(minX, n.position?.x ?? 0)
-          minY = Math.min(minY, n.position?.y ?? 0)
-          maxX = Math.max(maxX, (n.position?.x ?? 0) + w)
-          maxY = Math.max(maxY, (n.position?.y ?? 0) + h)
-        }
-
-        const contentW = Math.max(1, maxX - minX)
-        const contentH = Math.max(1, maxY - minY)
-        const shiftX = FRAME_PAD - minX
-        const shiftY = FRAME_PAD - minY
-        for (const n of quadNodes) {
-          n.position = { x: (n.position?.x ?? 0) + shiftX, y: (n.position?.y ?? 0) + shiftY }
-        }
-
-        const nextW = Math.max(frame.width ?? 640, contentW + FRAME_PAD * 2)
-        const nextH = Math.max(frame.height ?? 420, contentH + FRAME_PAD * 2)
-        frame.width = nextW
-        frame.height = nextH
-        frame.style = { ...(frame.style as any), width: nextW, height: nextH }
-
-        const quadIdSet = new Set(quadNodes.map((n) => n.id))
-        for (const e of edges) {
-          if (!quadIdSet.has(e.source) || !quadIdSet.has(e.target)) continue
-          const td = depthByNodeId.get(e.target) ?? 0
-          const color = palette[td % palette.length]
-          ;(e.style as any) = {
-            ...(e.style ?? {}),
-            stroke: color,
-            '--xy-edge-stroke': color,
-          }
-        }
-      }
-    } else {
-      // New mind-map mode: no wrapper subgraph/frame; layout top-level quads directly.
-      const quadNodes = safeNodes.filter((n) => n.type === 'quad' && !n.parentId) as Array<Node<any>>
-      if (quadNodes.length > 0) {
-        const depthByNodeId = getDepthForQuadNodes(quadNodes)
-
-        for (const n of quadNodes) {
-          const d = depthByNodeId.get(n.id) ?? 0
-          const color = palette[d % palette.length]
-          n.data = {
-            ...(n.data ?? {}),
-            stroke: color,
-            strokeWidth: 2,
-            // Mind Map：只保留左右 handle，避免出现上/下句柄造成“非思维导图观感”。
-            handleMode: 'leftRight',
-          }
-        }
-
-        const byDepth = new Map<number, Array<Node<any>>>()
-        for (const n of quadNodes) {
-          const d = depthByNodeId.get(n.id) ?? 0
-          const arr = byDepth.get(d) ?? []
-          arr.push(n)
-          byDepth.set(d, arr)
-        }
-        const depths = [...byDepth.keys()].sort((a, b) => a - b)
-        for (const d of depths) {
-          const arr = byDepth.get(d) ?? []
-          arr.sort((a, b) => a.id.localeCompare(b.id))
-          for (let i = 0; i < arr.length; i += 1) {
-            const n = arr[i]
-            const { h } = getNodeSize(n)
-            n.position = { x: d * COL_GAP, y: i * (h + ROW_GAP) }
-          }
-        }
-
-        let minX = Number.POSITIVE_INFINITY
-        let minY = Number.POSITIVE_INFINITY
-        let maxX = Number.NEGATIVE_INFINITY
-        let maxY = Number.NEGATIVE_INFINITY
-        for (const n of quadNodes) {
-          const { w, h } = getNodeSize(n)
-          minX = Math.min(minX, n.position?.x ?? 0)
-          minY = Math.min(minY, n.position?.y ?? 0)
-          maxX = Math.max(maxX, (n.position?.x ?? 0) + w)
-          maxY = Math.max(maxY, (n.position?.y ?? 0) + h)
-        }
-
-        const shiftX = FRAME_PAD - minX
-        const shiftY = FRAME_PAD - minY
-        for (const n of quadNodes) {
-          n.position = { x: (n.position?.x ?? 0) + shiftX, y: (n.position?.y ?? 0) + shiftY }
-        }
-
-        const quadIdSet = new Set(quadNodes.map((n) => n.id))
-        for (const e of edges) {
-          if (!quadIdSet.has(e.source) || !quadIdSet.has(e.target)) continue
-          const td = depthByNodeId.get(e.target) ?? 0
-          const color = palette[td % palette.length]
-          ;(e.style as any) = {
-            ...(e.style ?? {}),
-            stroke: color,
-            '--xy-edge-stroke': color,
-          }
+        if (!quadIdSet.has(e.source) || !quadIdSet.has(e.target)) continue
+        const td = depthByNodeId.get(e.target) ?? 0
+        const color = palette[td % palette.length]
+        ;(e.style as any) = {
+          ...(e.style ?? {}),
+          stroke: color,
+          '--xy-edge-stroke': color,
         }
       }
     }
@@ -1564,7 +1409,12 @@ export function materializeGraphBatchPayloadToSnapshot(
     }
   }
 
-  const safeEdges = applyInferredEdgeHandles(safeNodes, edges)
+  let safeEdges = applyInferredEdgeHandles(safeNodes, edges)
+
+  // Mind-map：强制左右句柄（标准思维导图），覆盖几何推断可能选出的上/下句柄。
+  if (mindMapMode) {
+    safeEdges = applyMindMapHorizontalHandles(safeNodes, safeEdges)
+  }
 
   // Mind-map: avoid perpendicular autoOffset that makes bezier start/end not align with handle.
   if (mindMapMode) {
