@@ -903,31 +903,55 @@ function applyInferredEdgeHandles(nodes: Array<Node<any>>, edges: Array<Edge<any
     let srcSide: Side = chooseSideForVector(dx, dy, sourcePenalties)
     let tgtSide: Side = oppositeSide(srcSide)
     let bestPairScore = Number.POSITIVE_INFINITY
+    let foundStrictPair = false
+    const sourceIncomingRec = incomingByTargetSide.get(e.source) ?? { top: 0, right: 0, bottom: 0, left: 0 }
+    const targetOutgoingRec = anySourceSide.get(e.target) ?? { top: 0, right: 0, bottom: 0, left: 0 }
+
+    const scorePair = (sSide: Side, tSide: Side) => {
+      // Keep geometric readability first: opposite-side pairs are still preferred,
+      // then occupancy/lane penalties diversify when congestion appears.
+      const preferOpposite = tSide === oppositeSide(sSide) ? -0.55 : 0
+      const pairKey = `${e.source}->${e.target}:${sSide}:${tSide}`
+      const undirectedKey =
+        e.source <= e.target
+          ? `${e.source}<->${e.target}:${sSide}:${tSide}`
+          : `${e.target}<->${e.source}:${tSide}:${sSide}`
+      const lanePenalty = (laneByPair.get(pairKey) ?? 0) * 0.7
+      const undirectedLanePenalty = (laneByUndirectedPair.get(undirectedKey) ?? 0) * 0.45
+      // In dense cross-frame flows, prefer left/right so lines cross frame borders less.
+      const crossFramePenalty = isCrossFrame && (sSide === 'top' || sSide === 'bottom' || tSide === 'top' || tSide === 'bottom') ? 0.38 : 0
+      return sourceScore(sSide) + targetScore(tSide) + preferOpposite + lanePenalty + undirectedLanePenalty + crossFramePenalty
+    }
+
+    // Pass 1 (strict):
+    // - source outgoing side must not already have incoming on same side
+    // - target incoming side must not already have outgoing on same side
     for (const sSide of sides) {
       for (const tSide of sides) {
-        // Keep geometric readability first: opposite-side pairs are still preferred,
-        // then occupancy/lane penalties diversify when congestion appears.
-        const preferOpposite = tSide === oppositeSide(sSide) ? -0.55 : 0
-        const pairKey = `${e.source}->${e.target}:${sSide}:${tSide}`
-        const undirectedKey =
-          e.source <= e.target
-            ? `${e.source}<->${e.target}:${sSide}:${tSide}`
-            : `${e.target}<->${e.source}:${tSide}:${sSide}`
-        const lanePenalty = (laneByPair.get(pairKey) ?? 0) * 0.7
-        const undirectedLanePenalty = (laneByUndirectedPair.get(undirectedKey) ?? 0) * 0.45
-        // In dense cross-frame flows, prefer left/right so lines cross frame borders less.
-        const crossFramePenalty = isCrossFrame && (sSide === 'top' || sSide === 'bottom' || tSide === 'top' || tSide === 'bottom') ? 0.38 : 0
-        const score =
-          sourceScore(sSide) +
-          targetScore(tSide) +
-          preferOpposite +
-          lanePenalty +
-          undirectedLanePenalty +
-          crossFramePenalty
+        if ((sourceIncomingRec[sSide] ?? 0) > 0) continue
+        if ((targetOutgoingRec[tSide] ?? 0) > 0) continue
+        const score = scorePair(sSide, tSide)
         if (score < bestPairScore) {
+          foundStrictPair = true
           bestPairScore = score
           srcSide = sSide
           tgtSide = tSide
+        }
+      }
+    }
+
+    // Pass 2 (fallback): if strict impossible, allow mixed in/out side
+    // but still choose nearest geometric pair.
+    if (!foundStrictPair) {
+      bestPairScore = Number.POSITIVE_INFINITY
+      for (const sSide of sides) {
+        for (const tSide of sides) {
+          const score = scorePair(sSide, tSide)
+          if (score < bestPairScore) {
+            bestPairScore = score
+            srcSide = sSide
+            tgtSide = tSide
+          }
         }
       }
     }
