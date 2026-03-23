@@ -84,7 +84,6 @@ const BUSINESS_CHAPTER_W_70 = LAYOUT_UNIT * 70 // 70 grid units
 const BUSINESS_CHAPTER_W_90 = LAYOUT_UNIT * 90 // 90 grid units
 const BUSINESS_CHAPTER_W_120 = LAYOUT_UNIT * 120 // 120 grid units
 const BUSINESS_CHAPTER_W_140 = LAYOUT_UNIT * 140 // 140 grid units
-const BUSINESS_CHAPTER_W = BUSINESS_CHAPTER_W_70
 // Business Big Map: restrict theme palette (rotating)
 const TOP_FRAME_THEME_COLORS = ['#4d9ef5', '#33d8ea', '#c059ff', '#ff6cc4']
 
@@ -1287,31 +1286,9 @@ export async function materializeGraphBatchPayloadToSnapshot(
     .map((id) => safeById.get(id))
     .filter((n): n is Node<any> => n != null && !n.parentId && n.type === 'group' && (n.data as any)?.role === 'frame')
 
-  const businessChapterW = BUSINESS_CHAPTER_W
-  if (businessMode) {
-    const byParent = new Map<string, Array<Node<any>>>()
-    for (const n of safeNodes) {
-      if (!n.parentId) continue
-      const arr = byParent.get(n.parentId) ?? []
-      arr.push(n)
-      byParent.set(n.parentId, arr)
-    }
-    let unifiedTopW = businessChapterW
-    for (const f of framesInOrder) {
-      const curW =
-        f.measured?.width ??
-        f.width ??
-        (typeof (f.style as any)?.width === 'number' ? (f.style as any).width : undefined) ??
-        businessChapterW
-      unifiedTopW = Math.max(unifiedTopW, curW)
-    }
-    const chapterTiers = [BUSINESS_CHAPTER_W_70, BUSINESS_CHAPTER_W_90, BUSINESS_CHAPTER_W_120, BUSINESS_CHAPTER_W_140]
-    const snappedTopW = chapterTiers.find((w) => w >= unifiedTopW) ?? BUSINESS_CHAPTER_W_140
-    for (const f of framesInOrder) {
-      f.width = snappedTopW
-      f.style = { ...(f.style as any), width: snappedTopW }
-    }
-  }
+  // 业务大图只保留“递归拉伸”这一条宽度链路：
+  // 顶层 frame 宽度在 wrapFramesToContents(layoutBusinessFrame) 内一次性确定，
+  // 这里不再做任何二次统一/放大，避免子元素在后处理后出现偏移感。
 
   if (businessMode) {
     let cursorX = 0
