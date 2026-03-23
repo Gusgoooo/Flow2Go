@@ -397,7 +397,8 @@ export function autoLayoutSwimlane(args: {
         semanticType,
         sourceLaneId: srcLaneId,
         targetLaneId: tgtLaneId,
-        autoOffset,
+        // Swimlane: 端点必须严格贴 handle，不做端点层 autoOffset 位移。
+        autoOffset: 0,
         ...(waypoints ? { waypoints } : {}),
         labelLayout,
       },
