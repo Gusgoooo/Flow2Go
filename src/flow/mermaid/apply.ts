@@ -57,7 +57,7 @@ export async function applyGraphBatchPayload(
 }
 
 function dirToLayoutDirection(dir: FlowDirection) {
-  // dagre supports LR/TB/RL/BT; our autoLayout type was expanded accordingly
+  // ELK layered + elk.direction 映射 LR/TB/RL/BT（见 layout.ts）
   return dir as any
 }
 
@@ -111,7 +111,12 @@ function quadDefaults(title: string, shape: 'rect' | 'circle' | 'diamond' | unde
   }
 }
 
-function layoutWithinFrame(allNodes: Array<Node<any>>, allEdges: Array<Edge<any>>, frameId: string, direction: FlowDirection) {
+async function layoutWithinFrame(
+  allNodes: Array<Node<any>>,
+  allEdges: Array<Edge<any>>,
+  frameId: string,
+  direction: FlowDirection,
+) {
   const children = allNodes.filter((n) => n.parentId === frameId)
   if (children.length === 0) return allNodes
   const childIds = new Set(children.map((n) => n.id))
@@ -150,7 +155,7 @@ function layoutWithinFrame(allNodes: Array<Node<any>>, allEdges: Array<Edge<any>
   const ranksep = 84 + complexity * 34 // 84..193
   const margin = 28 + complexity * 14 // 28..72
 
-  const laid = autoLayout(children, internalEdges as any, dirToLayoutDirection(direction), {
+  const laid = await autoLayout(children, internalEdges as any, dirToLayoutDirection(direction), {
     nodesep,
     ranksep,
     marginx: margin,
@@ -160,7 +165,7 @@ function layoutWithinFrame(allNodes: Array<Node<any>>, allEdges: Array<Edge<any>
   return allNodes.map((n) => (byId.has(n.id) ? { ...n, position: byId.get(n.id)! } : n))
 }
 
-function layoutTopLevel(allNodes: Array<Node<any>>, allEdges: Array<Edge<any>>, direction: FlowDirection) {
+async function layoutTopLevel(allNodes: Array<Node<any>>, allEdges: Array<Edge<any>>, direction: FlowDirection) {
   const top = allNodes.filter((n) => !n.parentId)
   if (top.length === 0) return allNodes
   const topIds = new Set(top.map((n) => n.id))
@@ -169,7 +174,7 @@ function layoutTopLevel(allNodes: Array<Node<any>>, allEdges: Array<Edge<any>>, 
   const e = subEdges.length
   const density = e / Math.max(1, n - 1)
   const complexity = Math.max(0, Math.min(2.6, density))
-  const laid = autoLayout(top, subEdges as any, dirToLayoutDirection(direction), {
+  const laid = await autoLayout(top, subEdges as any, dirToLayoutDirection(direction), {
     nodesep: 72 + complexity * 16,
     ranksep: 116 + complexity * 22,
     marginx: 56 + complexity * 10,
@@ -1060,11 +1065,11 @@ function applyMindMapHorizontalHandles(nodes: Array<Node<any>>, edges: Array<Edg
  * 将 GraphBatchPayload “物化”为一份 Flow2Go 可用的 nodes/edges 快照。
  * v1 策略：默认 replace（从空图生成）；坐标由 autoLayout op 决定。
  */
-export function materializeGraphBatchPayloadToSnapshot(
+export async function materializeGraphBatchPayloadToSnapshot(
   payload: GraphBatchPayload,
   opts?: { replace?: boolean },
   base?: Flow2GoSnapshot,
-): Flow2GoSnapshot {
+): Promise<Flow2GoSnapshot> {
   const replace = opts?.replace ?? true
   const start: Flow2GoSnapshot = replace ? { nodes: [], edges: [] } : (base ?? { nodes: [], edges: [] })
 
@@ -1072,11 +1077,12 @@ export function materializeGraphBatchPayloadToSnapshot(
   const edges: Array<Edge<any>> = [...start.edges]
   const nodeById = new Map(nodes.map((n) => [n.id, n]))
   const edgeById = new Map(edges.map((e) => [e.id, e]))
+  // business-big-map-elk：不走 BBM 专有的章节/画框主题等后处理，依赖 transpiler 的 ELK autoLayout
   const businessMode = ((payload.meta as any)?.layoutProfile ?? '') === 'business-big-map'
   const mindMapMode = ((payload.meta as any)?.layoutProfile ?? '') === 'mind-map'
 
   // When Mermaid creates multiple frames, place them with a safe gap by default
-  // so they never overlap (frames are usually disconnected so dagre won't separate them).
+  // so they never overlap（顶层 frame 往往互不连通，分层布局不会把它们拉开，需后续 tile）。
   const FRAME_GAP = 160
   let frameAutoIndex = 0
   const frameOrder: string[] = []
@@ -1146,14 +1152,26 @@ export function materializeGraphBatchPayloadToSnapshot(
       if (edgeById.has(op.params.id)) continue
       const defaultStyle: Record<string, unknown> = { strokeWidth: 1.5 }
       const mergedStyle = { ...defaultStyle, ...(op.params.style ?? {}) }
+
+      const trimmedLabel = typeof op.params.label === 'string' ? op.params.label.trim() : ''
+
+      // 思维导图：默认无箭头（无“边上语义”）；仅当 Mermaid 写了 -->|文案| 等显式边标签时才显示箭头
+      let arrowStyle: 'none' | 'end' | 'start' | 'both'
+      if (mindMapMode) {
+        arrowStyle = trimmedLabel.length > 0 ? (op.params.arrowStyle ?? 'end') : 'none'
+      } else {
+        arrowStyle = op.params.arrowStyle ?? 'end'
+      }
+
       const edge: Edge<any> = {
         id: op.params.id,
         source: op.params.source,
         target: op.params.target,
         type: mindMapMode ? 'bezier' : op.params.type ?? 'bezier',
-        ...(op.params.label ? { label: op.params.label } : {}),
-        data: { arrowStyle: op.params.arrowStyle ?? 'end' },
+        ...(trimmedLabel ? { label: op.params.label } : {}),
+        data: { arrowStyle },
         style: mergedStyle as any,
+        ...(arrowStyle === 'none' ? { markerEnd: undefined, markerStart: undefined } : {}),
       }
       edges.push(edge)
       edgeById.set(edge.id, edge)
@@ -1163,10 +1181,10 @@ export function materializeGraphBatchPayloadToSnapshot(
     if (op.op === 'graph.autoLayout') {
       const dir = op.params.direction
       if (op.params.scope === 'withinFrame' && op.params.frameId) {
-        const next = layoutWithinFrame(nodes, edges, op.params.frameId, dir)
+        const next = await layoutWithinFrame(nodes, edges, op.params.frameId, dir)
         nodes.splice(0, nodes.length, ...next)
       } else if (op.params.scope === 'all') {
-        const next = layoutTopLevel(nodes, edges, dir)
+        const next = await layoutTopLevel(nodes, edges, dir)
         nodes.splice(0, nodes.length, ...next)
       }
       continue
@@ -1439,7 +1457,7 @@ export async function applyGraphBatchPayloadToFlow2Go(
   opts?: { replace?: boolean },
 ): Promise<Flow2GoSnapshot> {
   const base = ctx.getSnapshot()
-  const next = materializeGraphBatchPayloadToSnapshot(payload, { replace: opts?.replace ?? true }, base)
+  const next = await materializeGraphBatchPayloadToSnapshot(payload, { replace: opts?.replace ?? true }, base)
   ctx.setSnapshot(next)
   ctx.pushHistory(next, 'ai-apply')
   return next

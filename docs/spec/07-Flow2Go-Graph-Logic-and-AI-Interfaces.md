@@ -177,7 +177,7 @@ Flow2Go 的核心语义（Figma 语义）：
 
 #### 3.5 布局类（Layout）
 
-现有自动布局工具（见 `src/flow/layout.ts`）基于 `dagre`：
+现有自动布局工具（见 `src/flow/layout.ts`）基于 **ELK.js** 的 `layered` 算法：
 
 - **`graph.autoLayout`**
   - **params**: `{ direction: 'LR'|'TB', scope?: 'all'|'withinFrame', frameId? }`

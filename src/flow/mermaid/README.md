@@ -91,7 +91,7 @@ type MermaidToGraphResult = {
 - `parseMermaidFlowchart(input)`：Mermaid → `MermaidFlowIR`
 - `transpileMermaidFlowIR(ir, rawMermaid, warnings)`：IR → `GraphBatchPayload`
 - `applyMermaidFlowchart(input, ctx)`：一条龙（走 `graph.batch` 或 `applyOperation`）
-- `materializeGraphBatchPayloadToSnapshot(payload)`：payload → Flow2Go nodes/edges 快照（用于草稿/预览）
+- `materializeGraphBatchPayloadToSnapshot(payload)`：`async`，payload → Flow2Go nodes/edges 快照（用于草稿/预览；流程图布局使用 **ELK.js layered**）
 - `applyGraphBatchPayloadToFlow2Go(payload, ctx)`：payload → 一次性应用到 Flow2Go（一次 pushHistory，reason='ai-apply'）
 
 ## 示例

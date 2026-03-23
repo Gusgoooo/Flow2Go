@@ -24,3 +24,7 @@ dist-ssr
 *.sln
 *.sw?
 .vercel
+
+# Local agent / tool dirs
+.claude/
+.specanchor/

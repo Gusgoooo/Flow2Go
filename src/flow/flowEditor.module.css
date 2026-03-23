@@ -316,21 +316,58 @@
   padding: 10px 12px;
   border: none;
   border-radius: 12px;
-  background: #3b82f6;
-  color: #fff;
+  background: #0a0a0a;
+  color: #ffffff;
   font-size: 13px;
   font-weight: 500;
   cursor: pointer;
-  transition: background 0.15s ease;
+  transition: background 0.15s ease, color 0.15s ease;
 }
 
 .aiGenerateBtn:hover:not(:disabled) {
-  background: #2563eb;
+  background: #262626;
+  color: #ffffff;
 }
 
 .aiGenerateBtn:disabled {
   opacity: 0.5;
   cursor: not-allowed;
+}
+
+.aiGenProgress {
+  margin-top: 10px;
+  padding: 10px 12px;
+  border-radius: 12px;
+  background: #f8fafc;
+  border: 1px solid #e2e8f0;
+  font-size: 12px;
+  line-height: 1.45;
+  color: #334155;
+}
+
+.aiGenProgressPhase {
+  font-weight: 700;
+  color: #0f172a;
+}
+
+.aiGenProgressDetail {
+  margin-top: 4px;
+  color: #475569;
+  font-size: 11px;
+}
+
+.aiGenProgressHint {
+  margin-top: 8px;
+  font-size: 10px;
+  color: #64748b;
+}
+
+.aiGenProgressHint code {
+  font-size: 10px;
+  padding: 1px 4px;
+  border-radius: 4px;
+  background: #e2e8f0;
+  color: #0f172a;
 }
 
 .aiError {
@@ -720,18 +757,100 @@
   color: #94a3b8;
 }
 
-.aiChatToolbar {
-  display: flex;
-  align-items: center;
-  justify-content: flex-end;
-  border-top: 1px solid #e2e8f0;
-  padding-top: 8px;
-}
-
 .aiPresetChips {
   display: flex;
   flex-wrap: wrap;
   gap: 8px;
+}
+
+/* 场景胶囊：预设主题色描边 + 同色 6% 浅底；无投影 */
+.aiSceneCapsules {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px;
+  align-items: center;
+}
+
+.aiSceneCapsule {
+  display: inline-flex;
+  align-items: stretch;
+  border-radius: 999px;
+  border: 1px solid #dbe3ee;
+  background: #ffffff;
+  overflow: hidden;
+  font-size: 12px;
+  line-height: 1.2;
+}
+
+.aiSceneCapsule_active {
+  /* --ai-capsule-accent 与节点配色器 PRESET_COLORS 一致 */
+  border: 1px solid var(--ai-capsule-accent);
+  background: color-mix(in srgb, var(--ai-capsule-accent) 6%, #ffffff);
+  /* 高亮时文案与主题色一致（子按钮 color: inherit） */
+  color: var(--ai-capsule-accent);
+  box-shadow: none;
+}
+
+.aiSceneCapsuleMain {
+  border: none;
+  background: transparent;
+  color: inherit;
+  cursor: pointer;
+  font-size: inherit;
+  font-weight: 400;
+  padding: 7px 12px;
+  display: inline-flex;
+  align-items: center;
+}
+
+.aiSceneCapsule_active .aiSceneCapsuleMain {
+  padding: 7px 4px 7px 12px;
+}
+
+.aiSceneCapsule:not(.aiSceneCapsule_active) .aiSceneCapsuleMain {
+  color: #334155;
+}
+
+.aiSceneCapsule:not(.aiSceneCapsule_active) .aiSceneCapsuleMain:hover:not(:disabled) {
+  background: #f8fafc;
+  color: #0f172a;
+}
+
+.aiSceneCapsuleLabel {
+  white-space: nowrap;
+}
+
+.aiSceneCapsuleClose {
+  border: none;
+  background: transparent;
+  color: #64748b;
+  cursor: pointer;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  padding: 0 10px 0 0;
+  opacity: 0.92;
+}
+
+.aiSceneCapsule_active .aiSceneCapsuleClose {
+  color: var(--ai-capsule-accent);
+}
+
+.aiSceneCapsuleClose:hover:not(:disabled) {
+  opacity: 1;
+  color: #0f172a;
+}
+
+.aiSceneCapsule_active .aiSceneCapsuleClose:hover:not(:disabled) {
+  color: var(--ai-capsule-accent);
+  opacity: 1;
+  filter: brightness(0.88);
+}
+
+.aiSceneCapsuleMain:disabled,
+.aiSceneCapsuleClose:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
 }
 
 .aiPresetChip {

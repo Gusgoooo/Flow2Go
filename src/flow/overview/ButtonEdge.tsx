@@ -7,6 +7,7 @@ import {
   useReactFlow,
 } from '@xyflow/react'
 import styles from './overviewNodes.module.css'
+import { padEdgeEndpoints } from '../edgeEndpointPad'
 
 export function ButtonEdge(props: EdgeProps) {
   const {
@@ -24,13 +25,24 @@ export function ButtonEdge(props: EdgeProps) {
   } = props
   const rf = useReactFlow()
 
-  const [edgePath, labelX, labelY] = getSmoothStepPath({
+  const srcP = sourcePosition ?? Position.Right
+  const tgtP = targetPosition ?? Position.Left
+  const p = padEdgeEndpoints({
     sourceX,
     sourceY,
-    sourcePosition: sourcePosition ?? Position.Right,
     targetX,
     targetY,
-    targetPosition: targetPosition ?? Position.Left,
+    sourcePosition: srcP,
+    targetPosition: tgtP,
+  })
+
+  const [edgePath, labelX, labelY] = getSmoothStepPath({
+    sourceX: p.sourceX,
+    sourceY: p.sourceY,
+    sourcePosition: srcP,
+    targetX: p.targetX,
+    targetY: p.targetY,
+    targetPosition: tgtP,
     borderRadius: 12,
     offset: 24,
   })

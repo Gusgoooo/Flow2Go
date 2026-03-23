@@ -51,6 +51,8 @@ import { autoLayout, type LayoutDirection } from './layout'
 import { QuadNode } from './QuadNode'
 import { EditableSmoothStepEdge } from './EditableSmoothStepEdge'
 import { EditableBezierEdge } from './EditableBezierEdge'
+import { EdgeLabelLayoutProvider } from './edgeLabels/SmartEdgeLabel'
+import type { EdgeLabelLayoutConfig } from './edgeLabels/types'
 import { AssetNode } from './AssetNode'
 import { TextNode } from './TextNode'
 import { InlineInspector } from './InlineInspector'
@@ -63,8 +65,11 @@ import {
   openRouterGenerateDiagram,
   normalizeAiDiagramToSnapshot,
   type AiDiagramDraft,
+  type AiDiagramSceneHint,
+  type AiGenerateProgressInfo,
 } from './aiDiagram'
-import { AI_PROMPT_PRESETS } from './aiPromptPresets'
+import { AI_SCENE_CAPSULE_PRESETS } from './aiPromptPresets'
+import { AiSceneCapsules } from './AiSceneCapsules'
 // overview 示例入口已移除
 
 export type AssetItem = {
@@ -109,6 +114,7 @@ type ArrowStyle = 'none' | 'end' | 'start' | 'both'
 type EdgeLabelStyle = { fontSize?: number; fontWeight?: string; color?: string }
 type FlowEdge = Edge<{
   arrowStyle?: ArrowStyle
+  labelLayout?: EdgeLabelLayoutConfig
 }> & { labelStyle?: EdgeLabelStyle }
 
 const DND_MIME = 'application/flow2go-node'
@@ -619,8 +625,13 @@ function EditorInner({ onBackHome, source, previewSnapshot, readOnly: _readOnly 
   const [assetsPopupOpen, setAssetsPopupOpen] = useState(false)
   const [aiModalOpen, setAiModalOpen] = useState(false)
   const [aiModalPrompt, setAiModalPrompt] = useState('')
+  /** 与胶囊绑定：生成时传入 diagramScene；点 ✕ 取消高亮并清空输入框 */
+  const [aiModalScene, setAiModalScene] = useState<AiDiagramSceneHint | null>(null)
   const [aiConfigOpen, setAiConfigOpen] = useState(false)
   const [aiModalGenerating, setAiModalGenerating] = useState(false)
+  /** 生成阶段文案（与控制台 [Flow2Go AI] 日志对应，用于区分慢 / 卡在某一步 / 失败） */
+  const [aiModalProgress, setAiModalProgress] = useState<{ phase: string; detail?: string } | null>(null)
+  const [aiGenElapsedSec, setAiGenElapsedSec] = useState(0)
   const [aiModalError, setAiModalError] = useState<string | null>(null)
   const [aiModalModel, setAiModalModel] = useState<string>(() => {
     try {
@@ -677,6 +688,20 @@ function EditorInner({ onBackHome, source, previewSnapshot, readOnly: _readOnly 
     window.addEventListener('flow2go:text-editing', handler as any)
     return () => window.removeEventListener('flow2go:text-editing', handler as any)
   }, [])
+
+  /** 生成中每秒刷新，便于判断「仍在跑」还是界面卡死 */
+  useEffect(() => {
+    if (!aiModalGenerating) {
+      setAiGenElapsedSec(0)
+      return
+    }
+    const start = Date.now()
+    setAiGenElapsedSec(0)
+    const id = window.setInterval(() => {
+      setAiGenElapsedSec(Math.floor((Date.now() - start) / 1000))
+    }, 500)
+    return () => window.clearInterval(id)
+  }, [aiModalGenerating])
 
   const initial = useMemo(() => {
     // 预览模式：使用 previewSnapshot
@@ -2233,6 +2258,19 @@ function EditorInner({ onBackHome, source, previewSnapshot, readOnly: _readOnly 
     }
   }, [])
 
+  // AI 弹窗：不按遮罩关闭（避免误触）；生成中也不响应 Esc，防止半途中断
+  useEffect(() => {
+    if (!aiModalOpen) return
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key === 'Escape' && !aiModalGenerating) {
+        e.preventDefault()
+        setAiModalOpen(false)
+      }
+    }
+    window.addEventListener('keydown', onKey)
+    return () => window.removeEventListener('keydown', onKey)
+  }, [aiModalOpen, aiModalGenerating])
+
   // ---------- Helpers: grouping ----------
 
   const groupSelection = useCallback(() => {
@@ -2331,7 +2369,7 @@ function EditorInner({ onBackHome, source, previewSnapshot, readOnly: _readOnly 
         bounds.maxY = Math.max(bounds.maxY, p.y)
       }
     }
-    // 默认正交线会有 24px 外扩（EditableSmoothStepEdge），给一个安全 padding，确保未保存 waypoints 时也能包住边
+    // 正交边在端口外有 EDGE_HANDLE_GAP_PX 间隙 + 路由外扩（EditableSmoothStepEdge 默认 24），留安全 padding 包住边
     if (relatedEdges.length > 0) {
       const pad = hasEdgeGeometry ? 24 : 32
       bounds = {
@@ -2440,57 +2478,60 @@ function EditorInner({ onBackHome, source, previewSnapshot, readOnly: _readOnly 
   const runLayout = useCallback(
     (dir: LayoutDirection) => {
       const picked = selectedNodesNow
+      const edgesNow = edges
       if (picked.length < 2) return
 
-      const pickedIds = new Set(picked.map((n) => n.id))
-      const subEdges = edges.filter((e) => pickedIds.has(e.source) && pickedIds.has(e.target))
+      void (async () => {
+        const pickedIds = new Set(picked.map((n) => n.id))
+        const subEdges = edgesNow.filter((e) => pickedIds.has(e.source) && pickedIds.has(e.target))
 
-      const oldBounds = picked.reduce(
-        (acc, n) => {
-          const w = n.measured?.width ?? n.width ?? 180
-          const h = n.measured?.height ?? n.height ?? 44
-          return {
-            minX: Math.min(acc.minX, n.position.x),
-            minY: Math.min(acc.minY, n.position.y),
-            maxX: Math.max(acc.maxX, n.position.x + w),
-            maxY: Math.max(acc.maxY, n.position.y + h),
-          }
-        },
-        { minX: Infinity, minY: Infinity, maxX: -Infinity, maxY: -Infinity },
-      )
-      const oldCx = (oldBounds.minX + oldBounds.maxX) / 2
-      const oldCy = (oldBounds.minY + oldBounds.maxY) / 2
+        const oldBounds = picked.reduce(
+          (acc, n) => {
+            const w = n.measured?.width ?? n.width ?? 180
+            const h = n.measured?.height ?? n.height ?? 44
+            return {
+              minX: Math.min(acc.minX, n.position.x),
+              minY: Math.min(acc.minY, n.position.y),
+              maxX: Math.max(acc.maxX, n.position.x + w),
+              maxY: Math.max(acc.maxY, n.position.y + h),
+            }
+          },
+          { minX: Infinity, minY: Infinity, maxX: -Infinity, maxY: -Infinity },
+        )
+        const oldCx = (oldBounds.minX + oldBounds.maxX) / 2
+        const oldCy = (oldBounds.minY + oldBounds.maxY) / 2
 
-      const laid = autoLayout(picked, subEdges, dir)
-      const newBounds = laid.reduce(
-        (acc, n) => {
-          const w = n.measured?.width ?? n.width ?? 180
-          const h = n.measured?.height ?? n.height ?? 44
-          return {
-            minX: Math.min(acc.minX, n.position.x),
-            minY: Math.min(acc.minY, n.position.y),
-            maxX: Math.max(acc.maxX, n.position.x + w),
-            maxY: Math.max(acc.maxY, n.position.y + h),
-          }
-        },
-        { minX: Infinity, minY: Infinity, maxX: -Infinity, maxY: -Infinity },
-      )
-      const newCx = (newBounds.minX + newBounds.maxX) / 2
-      const newCy = (newBounds.minY + newBounds.maxY) / 2
-      const dx = oldCx - newCx
-      const dy = oldCy - newCy
+        const laid = await autoLayout(picked, subEdges, dir)
+        const newBounds = laid.reduce(
+          (acc, n) => {
+            const w = n.measured?.width ?? n.width ?? 180
+            const h = n.measured?.height ?? n.height ?? 44
+            return {
+              minX: Math.min(acc.minX, n.position.x),
+              minY: Math.min(acc.minY, n.position.y),
+              maxX: Math.max(acc.maxX, n.position.x + w),
+              maxY: Math.max(acc.maxY, n.position.y + h),
+            }
+          },
+          { minX: Infinity, minY: Infinity, maxX: -Infinity, maxY: -Infinity },
+        )
+        const newCx = (newBounds.minX + newBounds.maxX) / 2
+        const newCy = (newBounds.minY + newBounds.maxY) / 2
+        const dx = oldCx - newCx
+        const dy = oldCy - newCy
 
-      const laidById = new Map(laid.map((n) => [n.id, n]))
+        const laidById = new Map(laid.map((n) => [n.id, n]))
 
-      setNodes((nds) => {
-        const next = nds.map((n) => {
-          const ln = laidById.get(n.id)
-          if (!ln) return n
-          return { ...n, position: snapPos({ x: ln.position.x + dx, y: ln.position.y + dy }) }
+        setNodes((nds) => {
+          const next = nds.map((n) => {
+            const ln = laidById.get(n.id)
+            if (!ln) return n
+            return { ...n, position: snapPos({ x: ln.position.x + dx, y: ln.position.y + dy }) }
+          })
+          pushHistory(next, edgesNow, `layout:${dir}`)
+          return next
         })
-        pushHistory(next, edges, `layout:${dir}`)
-        return next
-      })
+      })()
     },
     [edges, pushHistory, selectedNodesNow, snapPos],
   )
@@ -2755,6 +2796,12 @@ function EditorInner({ onBackHome, source, previewSnapshot, readOnly: _readOnly 
 
   // ---------- Shortcuts（放在所有动作定义之后，避免 TDZ） ----------
   useEffect(() => {
+    const hasTextSelectionToCopy = () => {
+      const sel = window.getSelection()
+      if (!sel || sel.rangeCount === 0) return false
+      return sel.toString().length > 0
+    }
+
     const onKeyDown = (e: KeyboardEvent) => {
       const target = e.target as HTMLElement | null
       const tag = target?.tagName?.toLowerCase()
@@ -2792,6 +2839,8 @@ function EditorInner({ onBackHome, source, previewSnapshot, readOnly: _readOnly 
         return
       }
       if (mod && e.key.toLowerCase() === 'c') {
+        // 画布上划选了节点标题等文本时，应走系统复制，不要被「复制选中节点」劫持
+        if (hasTextSelectionToCopy()) return
         e.preventDefault()
         copySelection()
         return
@@ -2898,11 +2947,12 @@ function EditorInner({ onBackHome, source, previewSnapshot, readOnly: _readOnly 
           }}
           proOptions={{ hideAttribution: true }}
         >
-          <Background variant={BackgroundVariant.Dots} gap={18} size={1} />
-          <MiniMap zoomable pannable />
-          <Controls />
+          <EdgeLabelLayoutProvider>
+            <Background variant={BackgroundVariant.Dots} gap={18} size={1} />
+            <MiniMap zoomable pannable />
+            <Controls />
 
-          {!isPreview && (
+            {!isPreview && (
             <Panel position="top-right" className={styles.topPanel}>
               <button
                 className={styles.assetsBtn}
@@ -2911,6 +2961,7 @@ function EditorInner({ onBackHome, source, previewSnapshot, readOnly: _readOnly 
                   setAiModalError(null)
                   setAiConfigOpen(false)
                   setAiModalPrompt('')
+                  setAiModalScene(null)
                   setAiModalOpen(true)
                 }}
               >
@@ -2939,14 +2990,14 @@ function EditorInner({ onBackHome, source, previewSnapshot, readOnly: _readOnly 
                 保存
               </button>
             </Panel>
-          )}
+            )}
+          </EdgeLabelLayoutProvider>
         </ReactFlow>
 
         {aiModalOpen && (
           <div
             role="dialog"
             aria-modal="true"
-            onClick={() => setAiModalOpen(false)}
             style={{
               position: 'fixed',
               inset: 0,
@@ -3035,26 +3086,24 @@ function EditorInner({ onBackHome, source, previewSnapshot, readOnly: _readOnly 
                       value={aiModalPrompt}
                       onChange={(e) => setAiModalPrompt(e.target.value)}
                       rows={10}
-                      placeholder="像 ChatGPT 一样输入你的需求，支持多段层级描述..."
+                      placeholder="输入你的需求，支持多层级描述…"
                       className={styles.aiChatInput}
                     />
-                    <div className={styles.aiChatToolbar}>
-                      <div className={styles.aiNote}>可点击下方推荐胶囊填充预设 Prompt，也可自行编辑。</div>
-                    </div>
                   </div>
-                  <div className={styles.aiPresetChips}>
-                    {AI_PROMPT_PRESETS.map((preset) => (
-                      <button
-                        key={preset.id}
-                        type="button"
-                        className={styles.aiPresetChip}
-                        onClick={() => setAiModalPrompt(preset.prompt)}
-                        disabled={aiModalGenerating}
-                      >
-                        {preset.label}
-                      </button>
-                    ))}
-                  </div>
+                  <AiSceneCapsules
+                    presets={AI_SCENE_CAPSULE_PRESETS}
+                    selectedScene={aiModalScene}
+                    disabled={aiModalGenerating}
+                    onSelect={(preset) => {
+                      setAiModalScene(preset.scene)
+                      // 已有输入时只锁定生图场景，不覆盖用户文案；空内容时才预填模板
+                      setAiModalPrompt((prev) => (prev.trim() ? prev : preset.prompt))
+                    }}
+                    onClearScene={() => {
+                      setAiModalScene(null)
+                      setAiModalPrompt('')
+                    }}
+                  />
 
                   {aiModalError && <div className={styles.aiError}>{aiModalError}</div>}
 
@@ -3073,6 +3122,7 @@ function EditorInner({ onBackHome, source, previewSnapshot, readOnly: _readOnly 
                         }
                         setAiModalGenerating(true)
                         setAiModalError(null)
+                        setAiModalProgress({ phase: '已提交', detail: '等待 OpenRouter…' })
                         try {
                           const ac = new AbortController()
                           const draft = await openRouterGenerateDiagram({
@@ -3080,6 +3130,10 @@ function EditorInner({ onBackHome, source, previewSnapshot, readOnly: _readOnly 
                             model: aiModalModel.trim() || 'openai/gpt-5.4-nano',
                             prompt: p,
                             signal: ac.signal,
+                            diagramScene: aiModalScene ?? undefined,
+                            onProgress: (info: AiGenerateProgressInfo) => {
+                              setAiModalProgress({ phase: info.phase, detail: info.detail })
+                            },
                           })
                           setAiDiagramDraft(draft)
                           applyAiDraftDirect(draft)
@@ -3088,12 +3142,26 @@ function EditorInner({ onBackHome, source, previewSnapshot, readOnly: _readOnly 
                           setAiModalError(e instanceof Error ? e.message : '生成失败')
                         } finally {
                           setAiModalGenerating(false)
+                          setAiModalProgress(null)
                         }
                       }}
                     >
                       {aiModalGenerating ? '生成中…' : '生成并应用'}
                     </button>
                   </div>
+
+                  {aiModalGenerating && (
+                    <div className={styles.aiGenProgress}>
+                      <div className={styles.aiGenProgressPhase}>{aiModalProgress?.phase ?? '准备中…'}</div>
+                      {aiModalProgress?.detail ? (
+                        <div className={styles.aiGenProgressDetail}>{aiModalProgress.detail}</div>
+                      ) : null}
+                      <div className={styles.aiGenProgressHint}>
+                        已等待 {aiGenElapsedSec}s · 按 F12 打开开发者工具，在 Console 中搜索{' '}
+                        <code>[Flow2Go AI]</code> 可查看每步耗时。若某一步长时间不变，多为 API 慢或排队，不是页面卡死。
+                      </div>
+                    </div>
+                  )}
                 </div>
               </div>
             </div>

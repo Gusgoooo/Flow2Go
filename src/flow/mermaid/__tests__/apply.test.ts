@@ -46,7 +46,7 @@ describe('applyGraphBatchPayload', () => {
 })
 
 describe('materializeGraphBatchPayloadToSnapshot - handle inference', () => {
-  it('avoids using the same side as an incoming edge when reasonable', () => {
+  it('avoids using the same side as an incoming edge when reasonable', async () => {
     const payload: GraphBatchPayload = {
       version: '1.0',
       source: 'mermaid',
@@ -68,7 +68,7 @@ describe('materializeGraphBatchPayloadToSnapshot - handle inference', () => {
       ],
     }
 
-    const snap = materializeGraphBatchPayloadToSnapshot(payload, { replace: true })
+    const snap = await materializeGraphBatchPayloadToSnapshot(payload, { replace: true })
     const inEdge = snap.edges.find((e) => e.id === 'e_in') as any
     const outEdge = snap.edges.find((e) => e.id === 'e_out') as any
     // We didn't set handles in ops; they should be inferred.
@@ -82,7 +82,7 @@ describe('materializeGraphBatchPayloadToSnapshot - handle inference', () => {
     expect(outEdge.targetHandle).toBe('t-left')
   })
 
-  it('avoids making left side both in+out: if left has in and B is left-down, prefer bottom', () => {
+  it('avoids making left side both in+out: if left has in and B is left-down, prefer bottom', async () => {
     const payload: GraphBatchPayload = {
       version: '1.0',
       source: 'mermaid',
@@ -105,7 +105,7 @@ describe('materializeGraphBatchPayloadToSnapshot - handle inference', () => {
       ],
     }
 
-    const snap = materializeGraphBatchPayloadToSnapshot(payload, { replace: true })
+    const snap = await materializeGraphBatchPayloadToSnapshot(payload, { replace: true })
     const e = snap.edges.find((ed) => ed.id === 'e_out_diag') as any
     expect(e.sourceHandle).toBeTruthy()
     expect(e.targetHandle).toBeTruthy()
@@ -115,7 +115,7 @@ describe('materializeGraphBatchPayloadToSnapshot - handle inference', () => {
 })
 
 describe('materializeGraphBatchPayloadToSnapshot - v2 nested frames', () => {
-  it('creates nested frame as group with parentId', () => {
+  it('creates nested frame as group with parentId', async () => {
     const payload: GraphBatchPayload = {
       version: '1.0',
       source: 'mermaid',
@@ -127,7 +127,7 @@ describe('materializeGraphBatchPayloadToSnapshot - v2 nested frames', () => {
         { op: 'graph.createNodeQuad', params: { id: 'fe_a', title: '入口', parentId: 'frame_inner' } },
       ],
     }
-    const snap = materializeGraphBatchPayloadToSnapshot(payload, { replace: true })
+    const snap = await materializeGraphBatchPayloadToSnapshot(payload, { replace: true })
     const outer = snap.nodes.find((n) => n.id === 'frame_fe') as any
     const inner = snap.nodes.find((n) => n.id === 'frame_inner') as any
     expect(outer.type).toBe('group')

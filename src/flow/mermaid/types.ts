@@ -115,6 +115,7 @@ export type GraphBatchPayload = {
   operations: GraphOperation[]
   meta?: {
     rawMermaid?: string
+    /** 如 `business-big-map`（旧版归一化）、`business-big-map-elk`（仅 ELK autoLayout）、`mind-map` 等 */
     layoutProfile?: string
   }
 }

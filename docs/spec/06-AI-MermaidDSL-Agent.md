@@ -3,7 +3,7 @@
 本项目的「AI：生成整张图」采用 **Mermaid DSL 作为中间表示**：
 
 - **模型输出**：Mermaid `flowchart`（必须含 `subgraph Frontend/Backend`）
-- **本地处理**：解析 Mermaid → 映射为 Flow2Go 的 `nodes/edges` → `dagre` 自动布局 → 写入画布
+- **本地处理**：解析 Mermaid → 映射为 Flow2Go 的 `nodes/edges` → **ELK.js（layered）** 自动布局 → 写入画布
 
 这样可以避免模型直接输出 Flow2Go JSON 时出现“纯文字/不合规 JSON”的不稳定问题。
 
