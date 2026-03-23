@@ -975,21 +975,8 @@ const SCENE_ROUTER_SYSTEM_PROMPT = [
 
 const LONG_INPUT_SUMMARY_THRESHOLD = 2200
 const LONG_INPUT_TIMEOUT_MS = 90_000
-const FLOWCHART_COMPRESS_THRESHOLD = 900
 const FLOWCHART_GUARD_NODE_MAX = 20
 const FLOWCHART_GUARD_EDGE_MAX = 26
-
-const DIAGRAM_INPUT_SUMMARIZER_SYSTEM_PROMPT = [
-  '你是 Flow2Go 的输入压缩器（Input Summarizer）。',
-  '目标：把超长用户输入压缩成“可用于流程图生成”的高信噪比摘要。',
-  '',
-  '输出要求（强制）：',
-  '- 只输出纯文本，不要 JSON，不要代码块。',
-  '- 保留：核心目标、主流程阶段（3~6 步）、关键角色/系统、关键约束、必要回流（最多 1 条）。',
-  '- 删除：冗长背景、重复描述、与流程图无关的细枝末节。',
-  '- 摘要尽量控制在 400~900 中文字符，优先短而清楚。',
-  '- 不要凭空捏造信息；缺失项可留空，不要补全不存在的事实。',
-].join('\n')
 
 const DIAGRAM_PLANNER_SYSTEM_PROMPT = [
   '你是 Flow2Go 的 Diagram Planner / Graph Normalizer（规划器）。',
@@ -1195,25 +1182,6 @@ async function openRouterDiagramPlanner(
   return JSON.stringify(obj)
 }
 
-async function openRouterSummarizeDiagramInput(args: OpenRouterChatOptions): Promise<string> {
-  const { apiKey, model, prompt, signal, timeoutMs = DEFAULT_TIMEOUT_MS } = args
-  const key = (apiKey ?? '').trim()
-  if (!key) throw new Error('缺少 OpenRouter API Key')
-  if (!prompt.trim()) throw new Error('请输入生成描述')
-
-  const raw = await openRouterChatComplete({
-    apiKey: key,
-    model,
-    system: DIAGRAM_INPUT_SUMMARIZER_SYSTEM_PROMPT,
-    user: prompt.trim(),
-    signal,
-    timeoutMs,
-    temperature: 0.1,
-  })
-  const s = stripCodeFences(raw).trim()
-  return s || prompt.trim()
-}
-
 export async function openRouterGenerateDiagram(opts: OpenRouterChatOptions): Promise<AiDiagramDraft> {
   const {
     apiKey,
@@ -1242,29 +1210,18 @@ export async function openRouterGenerateDiagram(opts: OpenRouterChatOptions): Pr
 
   const originalPrompt = prompt.trim()
   const longInput = originalPrompt.length >= LONG_INPUT_SUMMARY_THRESHOLD
-  const forceBusinessBigMapScene = sceneHint === 'business-big-map'
   const forceMindMapScene = sceneHint === 'mind-map'
-  const flowchartAggressiveCompress = sceneHint === 'flowchart' || originalPrompt.length >= FLOWCHART_COMPRESS_THRESHOLD
-  // 输入强压缩仅用于流程图；业务大图/思维导图保留原始语义密度，避免子画框/分支被压扁。
-  const needsInputSummary = !forceBusinessBigMapScene && !forceMindMapScene && (longInput || flowchartAggressiveCompress)
   const timeoutMsForPipeline = longInput ? Math.max(timeoutMs, LONG_INPUT_TIMEOUT_MS) : timeoutMs
   let planningPrompt = originalPrompt
-  if (needsInputSummary) {
-    report('输入压缩', `原文约 ${originalPrompt.length} 字，先摘要再生图…`)
-    try {
-      planningPrompt = await openRouterSummarizeDiagramInput({
-        apiKey: key,
-        model,
-        prompt: originalPrompt,
-        signal,
-        timeoutMs: timeoutMsForPipeline,
-      })
-      report('输入压缩完成', `摘要约 ${planningPrompt.length} 字`)
-    } catch {
-      planningPrompt = originalPrompt
-      report('输入压缩失败', '回退使用原文')
-    }
-  }
+  // 全场景统一：不做“先摘要再生图”。
+  // 改为先通过 Diagram Planner 做逻辑简化与顺序梳理，再生成 Mermaid。
+  const commonPlannerLogicalHint = [
+    '【逻辑简化优先（全场景强制）】',
+    '- 不要先做输入摘要；直接基于原文做结构化规划。',
+    '- 先整理逻辑顺序，保证语义通顺，再输出结构。',
+    '- 合并重复/近义表达，删除无关噪音，避免跳步与断层。',
+    '- 若信息过多，优先保留主链与关键约束，次要细节下沉。',
+  ].join('\n')
   report('已开始', sceneHint ? `场景胶囊: ${sceneHint}` : '自动路由')
   let chosen: UserTemplateKey = 'Frontend-Backend Flow Template'
   let plannerText: string | null = null
@@ -1292,6 +1249,7 @@ export async function openRouterGenerateDiagram(opts: OpenRouterChatOptions): Pr
       timeoutMs: timeoutMsForPipeline,
       templateKey: chosen,
       complexityMode: toPlannerComplexity(route.complexityMode),
+      extraUserHint: commonPlannerLogicalHint,
     })
   }
 
@@ -1312,6 +1270,7 @@ export async function openRouterGenerateDiagram(opts: OpenRouterChatOptions): Pr
       timeoutMs: timeoutMsForPipeline,
       templateKey: chosen,
       complexityMode: toPlannerComplexity(route.complexityMode),
+      extraUserHint: commonPlannerLogicalHint,
     })
   }
 
@@ -1342,7 +1301,7 @@ export async function openRouterGenerateDiagram(opts: OpenRouterChatOptions): Pr
       timeoutMs: timeoutMsForPipeline,
       templateKey: chosen,
       complexityMode: toPlannerComplexity(route.complexityMode),
-      extraUserHint: simpleFlowHint,
+      extraUserHint: `${commonPlannerLogicalHint}\n${simpleFlowHint}`,
     })
   }
 
@@ -1383,6 +1342,7 @@ export async function openRouterGenerateDiagram(opts: OpenRouterChatOptions): Pr
         timeoutMs: timeoutMsForPipeline,
         templateKey: chosen,
         complexityMode: toPlannerComplexity(route.complexityMode),
+        extraUserHint: commonPlannerLogicalHint,
       })
     }
   } catch {
