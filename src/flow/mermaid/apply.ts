@@ -1,6 +1,7 @@
 import type { Edge, Node } from '@xyflow/react'
 import { autoLayoutDagre } from '../dagreLayout'
 import { layoutMindMapMindElixirStyle } from '../mindMap/mindElixirLayout'
+import { autoLayoutSwimlane } from '../swimlaneLayout'
 import type { FlowDirection, GraphBatchPayload, GraphOperation } from './types'
 
 export type ApplyMermaidContext = {
@@ -1128,6 +1129,10 @@ export async function materializeGraphBatchPayloadToSnapshot(
   // 流程图：不强制节点方向；仅在“麻花风险”下兜底优先 LR。
   const effectiveDirection: FlowDirection = preferLRDefault || preferLR ? 'LR' : payload.direction
 
+  const swimlaneMode = ((payload.meta as any)?.layoutProfile ?? '') === 'swimlane'
+  const swimlaneDirection: 'horizontal' | 'vertical' = (payload.meta as any)?.swimlaneDirection ?? 'horizontal'
+  let laneIndexCounter = 0
+
   const frameOrder: string[] = []
   const frameExplicitPos = new Set<string>()
 
@@ -1143,11 +1148,29 @@ export async function materializeGraphBatchPayloadToSnapshot(
       const pos =
         op.params.position ??
         (() => {
-          // Nested frames live inside parent; place them at origin and let withinFrame layout handle children.
           if (isNested) return { x: 0, y: 0 }
-          // 顶层画框：先叠在原点，最终位置交给后续顶层布局流程。
           return { x: 0, y: 0 }
         })()
+
+      const isLane = swimlaneMode && !isNested
+      const nodeData: Record<string, any> = {
+        ...d.data,
+        title: op.params.title,
+        ...(op.params.style ?? {}),
+      }
+      if (isLane) {
+        nodeData.role = 'lane'
+        nodeData.laneMeta = {
+          laneId: op.params.id,
+          laneIndex: laneIndexCounter++,
+          laneAxis: swimlaneDirection === 'vertical' ? 'column' : 'row',
+          headerSize: 44,
+          padding: { top: 20, right: 24, bottom: 20, left: 24 },
+          minLaneWidth: 800,
+          minLaneHeight: 160,
+        }
+      }
+
       const node: Node<any> = {
         id: op.params.id,
         type: 'group',
@@ -1155,7 +1178,7 @@ export async function materializeGraphBatchPayloadToSnapshot(
         ...(op.params.parentId ? { parentId: op.params.parentId } : {}),
         width: w,
         height: h,
-        data: { ...d.data, title: op.params.title, ...(op.params.style ?? {}) },
+        data: nodeData,
         draggable: true,
         style: { width: w, height: h },
       }
@@ -1169,6 +1192,22 @@ export async function materializeGraphBatchPayloadToSnapshot(
       if (nodeById.has(op.params.id)) continue
       const d = quadDefaults(op.params.title, op.params.shape)
       const pos = op.params.position ?? { x: 0, y: 0 }
+      const extraData: Record<string, any> = {}
+
+      if (op.params.parentId) {
+        const parentNode = nodeById.get(op.params.parentId)
+        if (parentNode && (parentNode.data as any)?.role === 'lane') {
+          extraData.laneId = op.params.parentId
+        }
+      }
+      const styleObj = (op.params.style ?? {}) as Record<string, any>
+      if (styleObj.semanticType && !op.params.shape) {
+        const st = styleObj.semanticType
+        if (st === 'start' || st === 'end') d.data.shape = 'circle'
+        else if (st === 'decision') d.data.shape = 'diamond'
+        else d.data.shape = 'rect'
+      }
+
       const node: Node<any> = {
         id: op.params.id,
         type: 'quad',
@@ -1179,7 +1218,8 @@ export async function materializeGraphBatchPayloadToSnapshot(
         data: {
           ...d.data,
           ...(op.params.subtitle ? { subtitle: op.params.subtitle } : {}),
-          ...(op.params.style ?? {}),
+          ...styleObj,
+          ...extraData,
         },
       }
       nodes.push(node)
@@ -1202,13 +1242,36 @@ export async function materializeGraphBatchPayloadToSnapshot(
         arrowStyle = op.params.arrowStyle ?? 'end'
       }
 
+      const edgeData: Record<string, any> = { arrowStyle }
+      if (swimlaneMode) {
+        const srcNode = nodeById.get(op.params.source)
+        const tgtNode = nodeById.get(op.params.target)
+        const srcLaneId = (srcNode?.data as any)?.laneId ?? srcNode?.parentId
+        const tgtLaneId = (tgtNode?.data as any)?.laneId ?? tgtNode?.parentId
+        edgeData.sourceLaneId = srcLaneId
+        edgeData.targetLaneId = tgtLaneId
+        const explicitSemantic = (op.params.style as any)?.semanticType
+        if (explicitSemantic) {
+          edgeData.semanticType = explicitSemantic
+        } else if (srcLaneId && tgtLaneId && srcLaneId !== tgtLaneId) {
+          edgeData.semanticType = 'crossLane'
+        } else {
+          edgeData.semanticType = 'normal'
+        }
+      }
+
+      const isCrossLane = edgeData.semanticType === 'crossLane'
+      const edgeType = swimlaneMode
+        ? (isCrossLane ? 'smoothstep' : (op.params.type ?? 'bezier'))
+        : (mindMapMode || flowchartMode ? 'bezier' : op.params.type ?? 'bezier')
+
       const edge: Edge<any> = {
         id: op.params.id,
         source: op.params.source,
         target: op.params.target,
-        type: mindMapMode || flowchartMode ? 'bezier' : op.params.type ?? 'bezier',
+        type: edgeType,
         ...(trimmedLabel ? { label: op.params.label } : {}),
-        data: { arrowStyle },
+        data: edgeData,
         style: mergedStyle as any,
         ...(arrowStyle === 'none' ? { markerEnd: undefined, markerStart: undefined } : {}),
       }
@@ -1220,6 +1283,18 @@ export async function materializeGraphBatchPayloadToSnapshot(
     if (op.op === 'graph.autoLayout') {
       // Legacy compact frame mode: skip auto-layout ops and keep recursive stretch only.
       if (compactLegacyMode) {
+        continue
+      }
+      // Swimlane mode: delegate entirely to autoLayoutSwimlane
+      if (swimlaneMode) {
+        const result = autoLayoutSwimlane({
+          nodes: [...nodes],
+          edges: [...edges],
+          direction: op.params.direction,
+          swimlaneDirection,
+        })
+        nodes.splice(0, nodes.length, ...result.nodes)
+        edges.splice(0, edges.length, ...result.edges)
         continue
       }
       const withinFrameDir: FlowDirection = op.params.direction
@@ -1248,6 +1323,12 @@ export async function materializeGraphBatchPayloadToSnapshot(
       y: Number.isFinite(n.position?.y) ? (n.position.y as number) : 0,
     },
   }))
+
+  // Swimlane mode: layout already done by autoLayoutSwimlane; skip wrap/dagre/frame postprocess.
+  if (swimlaneMode) {
+    let safeEdges = applyInferredEdgeHandles(safeNodes, edges)
+    return { nodes: safeNodes, edges: safeEdges }
+  }
 
   // Make frames compact like manual grouping
   safeNodes = wrapFramesToContents(safeNodes, compactLegacyMode)

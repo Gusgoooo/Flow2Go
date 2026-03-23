@@ -3,6 +3,21 @@ import { Handle, NodeResizer, Position, useReactFlow, type NodeProps } from '@xy
 import styles from './groupNode.module.css'
 import { QuickTextStyleToolbar, QUICK_TOOLBAR_DATA_ATTR } from './QuickTextStyleToolbar'
 
+export type LaneMeta = {
+  laneId: string
+  laneIndex: number
+  laneAxis: 'row' | 'column'
+  headerSize?: number
+  padding?: {
+    top: number
+    right: number
+    bottom: number
+    left: number
+  }
+  minLaneWidth?: number
+  minLaneHeight?: number
+}
+
 export type GroupNodeData = {
   title?: string
   subtitle?: string
@@ -18,6 +33,9 @@ export type GroupNodeData = {
   subtitleFontSize?: number
   subtitleFontWeight?: string
   subtitleColor?: string
+
+  role?: 'frame' | 'lane'
+  laneMeta?: LaneMeta
 }
 
 const DEFAULT_GROUP_TITLE_FS = 13
@@ -128,6 +146,73 @@ export function GroupNode(props: NodeProps) {
     window.dispatchEvent(new CustomEvent('flow2go:close-popups-for-text'))
     setEditing(true)
   }, [])
+
+  const isLane = data.role === 'lane'
+
+  if (isLane) {
+    const laneHeaderH = data.laneMeta?.headerSize ?? 44
+    return (
+      <div
+        className={`${styles.group} ${styles.laneNode}`}
+        style={groupStyle}
+        onDoubleClick={onDoubleClick}
+      >
+        <NodeResizer
+          minWidth={200}
+          minHeight={laneHeaderH + 40}
+          handleStyle={{ width: 12, height: 12, borderRadius: 9999 }}
+          isVisible={Boolean((props as any).selected)}
+        />
+        <div className={styles.laneHeader} style={{ height: laneHeaderH }}>
+          {editing ? (
+            <textarea
+              ref={inputRef}
+              className={`${styles.laneHeaderInput} nodrag`}
+              autoFocus
+              value={draft}
+              placeholder="泳道名称"
+              style={{ ...titleStyle, height: 'auto' }}
+              rows={1}
+              onChange={(e) => {
+                setDraft(e.target.value)
+                e.target.style.height = 'auto'
+                e.target.style.height = e.target.scrollHeight + 'px'
+              }}
+              onBlur={(e) => {
+                if ((e.relatedTarget as HTMLElement)?.closest?.(`[${QUICK_TOOLBAR_DATA_ATTR}]`)) return
+                commit()
+              }}
+              onKeyDown={(e) => {
+                if (e.key === 'Enter' && (e.shiftKey || e.metaKey || e.ctrlKey)) {
+                  e.preventDefault()
+                  commit()
+                }
+                if (e.key === 'Escape') {
+                  e.preventDefault()
+                  setEditing(false)
+                  setDraft(data.title ?? '')
+                }
+              }}
+            />
+          ) : (
+            <div className={styles.laneHeaderTitle} style={titleStyle}>
+              {data.title ?? ''}
+            </div>
+          )}
+        </div>
+        <div className={styles.laneBody} />
+
+        <Handle className={styles.handle} type="target" position={Position.Top} id="t-top" />
+        <Handle className={styles.handle} type="target" position={Position.Right} id="t-right" />
+        <Handle className={styles.handle} type="target" position={Position.Bottom} id="t-bottom" />
+        <Handle className={styles.handle} type="target" position={Position.Left} id="t-left" />
+        <Handle className={styles.handle} type="source" position={Position.Top} id="s-top" />
+        <Handle className={styles.handle} type="source" position={Position.Right} id="s-right" />
+        <Handle className={styles.handle} type="source" position={Position.Bottom} id="s-bottom" />
+        <Handle className={styles.handle} type="source" position={Position.Left} id="s-left" />
+      </div>
+    )
+  }
 
   return (
     <div

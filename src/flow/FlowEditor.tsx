@@ -1734,6 +1734,21 @@ function EditorInner({ onBackHome, source, previewSnapshot, readOnly: _readOnly 
           })
 
           if (changedIn) {
+            // Swimlane: 同步 laneId（拖入 lane 时写入 data.laneId，拖入非 lane frame 时清除）
+            nextIn = nextIn.map((nd) => {
+              if (!nd.parentId) return nd
+              const parent = byId.get(nd.parentId) ?? nextIn.find((n) => n.id === nd.parentId)
+              if (!parent) return nd
+              const isLane = (parent.data as any)?.role === 'lane'
+              if (isLane && (nd.data as any)?.laneId !== nd.parentId) {
+                return { ...nd, data: { ...(nd.data ?? {}), laneId: nd.parentId } }
+              }
+              if (!isLane && (nd.data as any)?.laneId) {
+                const { laneId: _, ...restData } = nd.data as any
+                return { ...nd, data: restData }
+              }
+              return nd
+            })
             nextIn = sortNodesParentFirst(nextIn)
             nextIn = assignZIndex(nextIn)
             pushHistory(nextIn, edges, movedTopSet.size > 1 ? 'drag-in-multi' : 'drag-in')
@@ -3130,6 +3145,24 @@ function EditorInner({ onBackHome, source, previewSnapshot, readOnly: _readOnly 
                         setAiModalError(null)
                         setAiModalProgress({ phase: '已提交', detail: '等待 OpenRouter…' })
                         try {
+                          // Swimlane 独立链路：不走 LLM，直接用 SwimlaneDraft -> GraphBatchPayload
+                          if (aiModalScene === 'swimlane') {
+                            setAiModalProgress({ phase: '生成泳道图', detail: '解析中…' })
+                            const { SWIMLANE_EXAMPLE_DRAFT } = await import('./swimlaneExample')
+                            const { swimlaneDraftToGraphBatchPayload } = await import('./swimlaneDraft')
+                            const { materializeGraphBatchPayloadToSnapshot } = await import('./mermaid/apply')
+                            const payload = swimlaneDraftToGraphBatchPayload(SWIMLANE_EXAMPLE_DRAFT)
+                            const snap = await materializeGraphBatchPayloadToSnapshot(payload)
+                            const nextNodes = (snap.nodes ?? []) as FlowNode[]
+                            const nextEdges = (snap.edges ?? []) as FlowEdge[]
+                            setNodes(nextNodes)
+                            setEdges(nextEdges)
+                            pushHistory(nextNodes, nextEdges, 'ai-swimlane')
+                            setAiModalOpen(false)
+                            setAiModalGenerating(false)
+                            setAiModalProgress(null)
+                            return
+                          }
                           const ac = new AbortController()
                           aiModalAbortRef.current = ac
                           const draft = await openRouterGenerateDiagram({

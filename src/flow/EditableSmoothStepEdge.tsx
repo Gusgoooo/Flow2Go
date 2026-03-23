@@ -6,6 +6,8 @@ import type { EdgeLabelLayoutConfig, EdgeLabelStyle } from './edgeLabels/types'
 import { QuickTextStyleToolbar, QUICK_TOOLBAR_DATA_ATTR } from './QuickTextStyleToolbar'
 import { padEdgeEndpoints } from './edgeEndpointPad'
 
+type SwimlaneEdgeSemanticType = 'normal' | 'crossLane' | 'returnFlow' | 'conditional'
+
 type EdgeData = {
   waypoints?: Point[]
   autoOffset?: number
@@ -13,6 +15,9 @@ type EdgeData = {
   labelStyle?: EdgeLabelStyle
   labelLayout?: EdgeLabelLayoutConfig
   arrowStyle?: 'none' | 'end' | 'start' | 'both'
+  semanticType?: SwimlaneEdgeSemanticType
+  sourceLaneId?: string
+  targetLaneId?: string
 }
 type Point = { x: number; y: number }
 
@@ -271,6 +276,13 @@ export function EditableSmoothStepEdge(props: EdgeProps) {
 
   const srcPos = sourcePosition ?? Position.Right
   const tgtPos = targetPosition ?? Position.Left
+
+  const semanticType = dataTyped.semanticType
+  const semanticStyle: React.CSSProperties = {}
+  if (semanticType === 'returnFlow') {
+    semanticStyle.strokeDasharray = '6 3'
+    semanticStyle.opacity = 0.7
+  }
 
   const padded = useMemo(
     () =>
@@ -558,7 +570,7 @@ export function EditableSmoothStepEdge(props: EdgeProps) {
         path={edgePath}
         markerStart={startMarkerUrl}
         markerEnd={endMarkerUrl}
-        style={style}
+        style={{ ...style, ...semanticStyle } as any}
         interactionWidth={interactionWidth ?? 24}
       />
 

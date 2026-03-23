@@ -14,6 +14,7 @@ export type AiDiagramDraft = {
 export type AiDiagramSceneHint =
   | 'mind-map'
   | 'flowchart'
+  | 'swimlane'
 
 /** 生成进度：用于 UI 与控制台排查「慢 / 卡住 / 失败」 */
 export type AiGenerateProgressInfo = {

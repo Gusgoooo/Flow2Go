@@ -18,6 +18,29 @@ export type AiSceneCapsulePreset = {
  */
 export const AI_SCENE_CAPSULE_PRESETS: AiSceneCapsulePreset[] = [
   {
+    id: 'swimlane',
+    label: '泳道图',
+    scene: 'swimlane' as AiDiagramSceneHint,
+    accentHex: AI_SCENE_CAPSULE_ACCENT_COLORS[2],
+    prompt: [
+      '【示例】请帮我生成一张"审批流程泳道图"。',
+      '',
+      '泳道（参与角色）：',
+      '- 用户',
+      '- 系统',
+      '- 审核员',
+      '',
+      '流程如下：',
+      '1. 用户提交申请',
+      '2. 系统校验资料',
+      '3. 审核员人工审核',
+      '4. 系统返回结果',
+      '5. 用户查看结果',
+      '',
+      '如果审核不通过，审核员驳回后用户需要重新提交申请。',
+    ].join('\n'),
+  },
+  {
     id: 'mind-map',
     label: '思维导图',
     scene: 'mind-map',

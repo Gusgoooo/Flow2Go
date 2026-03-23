@@ -13,6 +13,8 @@ import { QuickTextStyleToolbar, QUICK_TOOLBAR_DATA_ATTR } from './QuickTextStyle
 
 export type QuadShape = 'rect' | 'circle' | 'diamond'
 
+export type QuadSemanticType = 'start' | 'task' | 'decision' | 'end' | 'data'
+
 type QuadNodeData = {
   label?: string
   title?: string
@@ -38,6 +40,11 @@ type QuadNodeData = {
   handleMode?: 'leftRight' | 'all'
   /** 节点形状（点击节点弹出工具栏可切换） */
   shape?: QuadShape
+
+  semanticType?: QuadSemanticType
+  laneId?: string
+  phaseIndex?: number
+  nodeOrder?: number
 }
 
 const DEFAULT_TITLE_FS = 12
@@ -158,7 +165,6 @@ export function QuadNode(props: NodeProps) {
   const title = data.title ?? data.label ?? ''
   const subtitle = data.subtitle ?? ''
   const showSubtitle = !!data.showSubtitle || !!subtitle
-  const showLeftRightHandles = data.handleMode === 'leftRight'
   const titleFs = data.labelFontSize ?? DEFAULT_TITLE_FS
   const subtitleFs = data.subtitleFontSize ?? DEFAULT_SUBTITLE_FS
   const labelStyle: CSSProperties = {
@@ -177,7 +183,15 @@ export function QuadNode(props: NodeProps) {
   const nodeColor = data.color
   const strokeColor = data.stroke
   const strokeWidth = data.strokeWidth
-  const shape = data.shape ?? 'rect'
+  const semanticType = data.semanticType
+  const effectiveHandleMode = data.handleMode ?? (semanticType === 'decision' ? 'all' : undefined)
+  const showLeftRightHandles = effectiveHandleMode === 'leftRight'
+  const inferredShape: QuadShape = semanticType && !data.shape
+    ? (semanticType === 'start' || semanticType === 'end' ? 'circle'
+      : semanticType === 'decision' ? 'diamond'
+      : 'rect')
+    : (data.shape ?? 'rect')
+  const shape = inferredShape
   const nodeStyle: CSSProperties = {}
 
   // 形状：圆形 / 菱形；描边贴合图形

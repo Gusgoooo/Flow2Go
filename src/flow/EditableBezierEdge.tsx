@@ -6,12 +6,17 @@ import type { EdgeLabelLayoutConfig, EdgeLabelStyle } from './edgeLabels/types'
 import { QuickTextStyleToolbar, QUICK_TOOLBAR_DATA_ATTR } from './QuickTextStyleToolbar'
 import { padEdgeEndpoints } from './edgeEndpointPad'
 
+type SwimlaneEdgeSemanticType = 'normal' | 'crossLane' | 'returnFlow' | 'conditional'
+
 type EdgeData = {
   autoOffset?: number
   editingLabel?: boolean
   labelStyle?: EdgeLabelStyle
   labelLayout?: EdgeLabelLayoutConfig
   arrowStyle?: 'none' | 'end' | 'start' | 'both'
+  semanticType?: SwimlaneEdgeSemanticType
+  sourceLaneId?: string
+  targetLaneId?: string
 }
 
 function markerColorFrom(style: EdgeProps['style'], marker: unknown): string {
@@ -52,6 +57,13 @@ export function EditableBezierEdge(props: EdgeProps) {
 
   const srcPos = sourcePosition ?? Position.Right
   const tgtPos = targetPosition ?? Position.Left
+
+  const semanticType = dataTyped.semanticType
+  const semanticStyle: React.CSSProperties = {}
+  if (semanticType === 'returnFlow') {
+    semanticStyle.strokeDasharray = '6 3'
+    semanticStyle.opacity = 0.7
+  }
 
   const isHorizontal =
     srcPos === Position.Left || srcPos === Position.Right || tgtPos === Position.Left || tgtPos === Position.Right
@@ -287,7 +299,7 @@ export function EditableBezierEdge(props: EdgeProps) {
         path={edgePath}
         markerStart={startMarkerUrl}
         markerEnd={endMarkerUrl}
-        style={style}
+        style={{ ...style, ...semanticStyle } as any}
         interactionWidth={interactionWidth ?? 24}
       />
       <SmartEdgeLabel

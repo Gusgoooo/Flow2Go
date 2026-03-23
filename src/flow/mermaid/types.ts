@@ -107,16 +107,19 @@ export type GraphOperation =
   | CreateEdgeOp
   | AutoLayoutOp
 
+export type LayoutProfile = 'default' | 'flow' | 'mindmap' | 'swimlane'
+
 export type GraphBatchPayload = {
   version: '1.0'
-  source: 'mermaid'
-  graphType: 'flowchart'
+  source: 'mermaid' | 'swimlane-draft'
+  graphType: 'flowchart' | 'swimlane'
   direction: FlowDirection
   operations: GraphOperation[]
   meta?: {
     rawMermaid?: string
-    /** 如 `mind-map`、`flowchart` */
+    /** 如 `mind-map`、`flowchart`、`swimlane` */
     layoutProfile?: string
+    swimlaneDirection?: 'horizontal' | 'vertical'
   }
 }
 
