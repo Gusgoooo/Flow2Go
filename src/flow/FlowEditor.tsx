@@ -3136,7 +3136,7 @@ function EditorInner({ onBackHome, source, previewSnapshot, readOnly: _readOnly 
                       onClick={async () => {
                         const p = aiModalPrompt.trim()
                         if (!p) return
-                        if (aiModalScene !== 'swimlane' && !aiModalKey.trim()) {
+                        if (!aiModalKey.trim()) {
                           setAiModalError('请先填写 OpenRouter API Key')
                           setAiConfigOpen(true)
                           return
@@ -3145,12 +3145,20 @@ function EditorInner({ onBackHome, source, previewSnapshot, readOnly: _readOnly 
                         setAiModalError(null)
                         setAiModalProgress({ phase: '已提交', detail: '等待 OpenRouter…' })
                         try {
-                          // Swimlane 独立链路：不走 LLM，直接用 SwimlaneDraft -> GraphBatchPayload
+                          const ac = new AbortController()
+                          aiModalAbortRef.current = ac
+                          // Swimlane 独立链路：先走 LLM 结构化 Draft，再物化为图
                           if (aiModalScene === 'swimlane') {
-                            setAiModalProgress({ phase: '生成泳道图', detail: '解析中…' })
-                            const { buildSwimlaneDraftFromPrompt, swimlaneDraftToGraphBatchPayload } = await import('./swimlaneDraft')
+                            setAiModalProgress({ phase: '生成泳道图', detail: 'LLM 结构化中…' })
+                            const { generateSwimlaneDraftWithLLM, swimlaneDraftToGraphBatchPayload } = await import('./swimlaneDraft')
                             const { materializeGraphBatchPayloadToSnapshot } = await import('./mermaid/apply')
-                            const draftFromPrompt = buildSwimlaneDraftFromPrompt(p)
+                            const draftFromPrompt = await generateSwimlaneDraftWithLLM({
+                              apiKey: aiModalKey.trim(),
+                              model: aiModalModel.trim() || 'openai/gpt-5.4-nano',
+                              prompt: p,
+                              signal: ac.signal,
+                            })
+                            setAiModalProgress({ phase: '生成泳道图', detail: '物化布局中…' })
                             const payload = swimlaneDraftToGraphBatchPayload(draftFromPrompt)
                             const snap = await materializeGraphBatchPayloadToSnapshot(payload)
                             const nextNodes = (snap.nodes ?? []) as FlowNode[]
@@ -3163,8 +3171,6 @@ function EditorInner({ onBackHome, source, previewSnapshot, readOnly: _readOnly 
                             setAiModalProgress(null)
                             return
                           }
-                          const ac = new AbortController()
-                          aiModalAbortRef.current = ac
                           const draft = await openRouterGenerateDiagram({
                             apiKey: aiModalKey.trim(),
                             model: aiModalModel.trim() || 'openai/gpt-5.4-nano',

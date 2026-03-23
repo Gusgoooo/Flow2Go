@@ -231,3 +231,148 @@ export function buildSwimlaneDraftFromPrompt(prompt: string): SwimlaneDraft {
     edges,
   }
 }
+
+type GenerateSwimlaneDraftOptions = {
+  apiKey: string
+  model: string
+  prompt: string
+  signal?: AbortSignal
+  timeoutMs?: number
+}
+
+const SWIMLANE_DRAFT_SYSTEM_PROMPT = [
+  '你是 Flow2Go 的 Swimlane Diagram Planner。',
+  '请把用户输入整理为结构清晰、逻辑正确、可执行的泳道图 JSON。',
+  '',
+  '硬性要求：',
+  '1) 只输出严格 JSON，不要 markdown，不要解释文字。',
+  '2) 必须输出字段：title,direction,lanes,nodes,edges。',
+  '3) 节点标题必须精简（建议 4-12 字），禁止“操作1/步骤1/节点A”这类占位命名。',
+  '4) 节点标题不得是一整句长文本；如果信息多，放到 subtitle 且 subtitle 也要短。',
+  '5) lanes 按角色或职责拆分，禁止把无关角色混在同一个 lane。',
+  '6) edges 逻辑必须可达：source/target 必须引用已存在节点。',
+  '7) 仅在确有回退语义时使用 returnFlow，否则用 normal/crossLane/conditional。',
+  '',
+  'JSON schema（字段名必须一致）：',
+  '{',
+  '  "title": "string",',
+  '  "direction": "horizontal" | "vertical",',
+  '  "lanes": [{ "id": "lane-id", "title": "角色名", "order": 0 }],',
+  '  "nodes": [{',
+  '    "id": "n-1",',
+  '    "title": "短标题",',
+  '    "subtitle": "可选短补充",',
+  '    "shape": "rect|circle|diamond",',
+  '    "laneId": "lane-id",',
+  '    "semanticType": "start|task|decision|end|data",',
+  '    "order": 0',
+  '  }],',
+  '  "edges": [{',
+  '    "id": "e-1",',
+  '    "source": "n-1",',
+  '    "target": "n-2",',
+  '    "label": "可选短词",',
+  '    "semanticType": "normal|crossLane|returnFlow|conditional"',
+  '  }]',
+  '}',
+].join('\n')
+
+function safeJsonParse(text: string): unknown {
+  const trimmed = text.trim()
+  try {
+    return JSON.parse(trimmed)
+  } catch {
+    const start = trimmed.indexOf('{')
+    const end = trimmed.lastIndexOf('}')
+    if (start >= 0 && end > start) return JSON.parse(trimmed.slice(start, end + 1))
+    throw new Error('Swimlane Draft 不是有效 JSON')
+  }
+}
+
+function validateSwimlaneDraft(draft: any): SwimlaneDraft {
+  if (!draft || typeof draft !== 'object') throw new Error('Swimlane Draft 为空')
+  if (!Array.isArray(draft.lanes) || !Array.isArray(draft.nodes) || !Array.isArray(draft.edges)) {
+    throw new Error('Swimlane Draft 缺少 lanes/nodes/edges')
+  }
+  if (draft.direction !== 'horizontal' && draft.direction !== 'vertical') {
+    draft.direction = 'horizontal'
+  }
+  const laneIds = new Set<string>()
+  draft.lanes = draft.lanes.map((l: any, i: number) => {
+    const id = String(l?.id ?? `lane-${i + 1}`).trim()
+    const title = String(l?.title ?? '').trim()
+    if (!title) throw new Error(`lane[${i}] title 不能为空`)
+    laneIds.add(id)
+    return { id, title, order: Number.isFinite(l?.order) ? l.order : i }
+  })
+  const nodeIds = new Set<string>()
+  draft.nodes = draft.nodes.map((n: any, i: number) => {
+    const id = String(n?.id ?? `n-${i + 1}`).trim()
+    const title = String(n?.title ?? '').trim()
+    if (!title) throw new Error(`node[${i}] title 不能为空`)
+    if (/^(操作|步骤|节点)\d+$/i.test(title)) throw new Error(`node[${i}] title 不能为占位命名：${title}`)
+    if (!n?.laneId || !laneIds.has(String(n.laneId))) throw new Error(`node[${i}] laneId 无效`)
+    nodeIds.add(id)
+    return {
+      id,
+      title: title.slice(0, 16),
+      subtitle: typeof n?.subtitle === 'string' ? n.subtitle.slice(0, 24) : undefined,
+      shape: n?.shape,
+      laneId: String(n.laneId),
+      semanticType: n?.semanticType,
+      order: Number.isFinite(n?.order) ? n.order : i,
+    }
+  })
+  draft.edges = draft.edges.map((e: any, i: number) => {
+    const source = String(e?.source ?? '')
+    const target = String(e?.target ?? '')
+    if (!nodeIds.has(source) || !nodeIds.has(target)) throw new Error(`edge[${i}] source/target 无效`)
+    return {
+      id: String(e?.id ?? `e-${i + 1}`),
+      source,
+      target,
+      label: typeof e?.label === 'string' ? e.label.slice(0, 12) : undefined,
+      semanticType: e?.semanticType,
+    }
+  })
+  return draft as SwimlaneDraft
+}
+
+export async function generateSwimlaneDraftWithLLM(
+  opts: GenerateSwimlaneDraftOptions,
+): Promise<SwimlaneDraft> {
+  const { apiKey, model, prompt, signal, timeoutMs = 45_000 } = opts
+  if (!apiKey.trim()) throw new Error('生成泳道图需要 OpenRouter API Key')
+  const controller = new AbortController()
+  const timer = setTimeout(() => controller.abort(new Error('timeout')), timeoutMs)
+  const onAbort = () => controller.abort(signal?.reason)
+  signal?.addEventListener('abort', onAbort, { once: true })
+  try {
+    const res = await fetch('https://openrouter.ai/api/v1/chat/completions', {
+      method: 'POST',
+      headers: {
+        Authorization: `Bearer ${apiKey.trim()}`,
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify({
+        model,
+        temperature: 0.2,
+        messages: [
+          { role: 'system', content: SWIMLANE_DRAFT_SYSTEM_PROMPT },
+          { role: 'user', content: prompt },
+        ],
+      }),
+      signal: controller.signal,
+    })
+    const text = await res.text()
+    if (!res.ok) throw new Error(`OpenRouter 请求失败: ${res.status}`)
+    const json = safeJsonParse(JSON.parse(text).choices?.[0]?.message?.content ?? '')
+    return validateSwimlaneDraft(json)
+  } catch (e) {
+    if (controller.signal.aborted) throw new Error('生成泳道图超时或被取消')
+    throw e
+  } finally {
+    clearTimeout(timer)
+    signal?.removeEventListener('abort', onAbort)
+  }
+}
