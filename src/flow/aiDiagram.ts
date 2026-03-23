@@ -441,6 +441,78 @@ function normalizeBusinessBigMapDraft(draft: AiDiagramDraft): AiDiagramDraft {
   if (removeFrameIds.size > 0) {
     nodes = (nodes as any[]).filter((n) => !removeFrameIds.has(n.id))
   }
+
+  // 结构修正：同一父画框下禁止混用不同嵌套层级。
+  // 策略：统一向更扁平层级收敛（case2），避免同层既有“子画框直接节点”又有“子画框再嵌套子画框”。
+  const isFrameNode2 = (n: any) => n?.type === 'group' && n?.data?.role === 'frame'
+  let changed = true
+  while (changed) {
+    changed = false
+    const byParent2 = new Map<string, any[]>()
+    for (const n of nodes as any[]) {
+      if (!n?.parentId) continue
+      const arr = byParent2.get(n.parentId) ?? []
+      arr.push(n)
+      byParent2.set(n.parentId, arr)
+    }
+    const removeIds = new Set<string>()
+    const frames = (nodes as any[]).filter((n) => isFrameNode2(n))
+
+    // A) 父画框内同时存在 direct quad 与 child frame：扁平化 child frame 到父画框。
+    for (const p of frames) {
+      const kids = byParent2.get(p.id) ?? []
+      const directFrames = kids.filter((k) => isFrameNode2(k))
+      const directQuads = kids.filter((k) => k?.type === 'quad')
+      if (directFrames.length === 0 || directQuads.length === 0) continue
+      for (const cf of directFrames) {
+        const fx = Number(cf?.position?.x ?? 0)
+        const fy = Number(cf?.position?.y ?? 0)
+        const cKids = byParent2.get(cf.id) ?? []
+        for (const ck of cKids) {
+          const kx = Number(ck?.position?.x ?? 0)
+          const ky = Number(ck?.position?.y ?? 0)
+          ck.parentId = p.id
+          ck.position = { x: kx + fx, y: ky + fy }
+        }
+        removeIds.add(cf.id)
+        changed = true
+      }
+    }
+
+    // B) 父画框内 child frame 层级混用：把更深层 flatten 到一致层级（case2）。
+    for (const p of frames) {
+      const kids = byParent2.get(p.id) ?? []
+      const directFrames = kids.filter((k) => isFrameNode2(k))
+      if (directFrames.length <= 1) continue
+      const hasGrand = directFrames.map((cf) => ((byParent2.get(cf.id) ?? []).some((x) => isFrameNode2(x))))
+      const hasDeep = hasGrand.some(Boolean)
+      const hasShallow = hasGrand.some((x) => !x)
+      if (!hasDeep || !hasShallow) continue
+      for (let i = 0; i < directFrames.length; i += 1) {
+        if (!hasGrand[i]) continue
+        const cf = directFrames[i]
+        const gfs = (byParent2.get(cf.id) ?? []).filter((x) => isFrameNode2(x))
+        for (const gf of gfs) {
+          const gfx = Number(gf?.position?.x ?? 0)
+          const gfy = Number(gf?.position?.y ?? 0)
+          const gKids = byParent2.get(gf.id) ?? []
+          for (const gk of gKids) {
+            const kx = Number(gk?.position?.x ?? 0)
+            const ky = Number(gk?.position?.y ?? 0)
+            gk.parentId = cf.id
+            gk.position = { x: kx + gfx, y: ky + gfy }
+          }
+          removeIds.add(gf.id)
+          changed = true
+        }
+      }
+    }
+
+    if (removeIds.size > 0) {
+      nodes = (nodes as any[]).filter((n) => !removeIds.has(n.id))
+    }
+  }
+
   return {
     ...draft,
     nodes,

@@ -499,8 +499,7 @@ function wrapFramesToContents(allNodes: Array<Node<any>>, businessMode: boolean)
 
         const nextW = Math.max(targetW, neededW)
         const nextH = Math.max(MIN_H, contentH + padTop + padBottom)
-        const extraX = Math.max(0, nextW - (contentW + padX * 2))
-        const dx = -minX + padX + extraX / 2
+        const dx = -minX + padX
         const dy = -minY + padTop
         for (const k of kids) {
           k.position = { x: (k.position?.x ?? 0) + dx, y: (k.position?.y ?? 0) + dy }
@@ -1280,11 +1279,6 @@ export async function materializeGraphBatchPayloadToSnapshot(
         640
       const desiredW = unifiedTopW
       if (desiredW > curW) {
-        const extra = desiredW - curW
-        const kids = byParent.get(f.id) ?? []
-        for (const k of kids) {
-          k.position = { x: (k.position?.x ?? 0) + extra / 2, y: k.position?.y ?? 0 }
-        }
         f.width = desiredW
         f.style = { ...(f.style as any), width: desiredW }
       } else {
