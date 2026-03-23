@@ -37,18 +37,43 @@ function markerKindFrom(marker: unknown): 'closed' | 'open' | null {
 }
 
 /**
- * 生成正交折线路径（拐点保持 90 度直角）
+ * 生成圆角正交折线路径（几何上保持 90 度拐弯方向）
  */
 function createRoundedPath(points: Point[], radius: number): string {
-  void radius
   if (points.length < 2) return ''
 
   let path = `M ${points[0].x} ${points[0].y}`
 
-  for (let i = 1; i < points.length; i++) {
-    const p = points[i]
-    path += ` L ${p.x} ${p.y}`
+  for (let i = 1; i < points.length - 1; i++) {
+    const prev = points[i - 1]
+    const curr = points[i]
+    const next = points[i + 1]
+
+    const dx1 = curr.x - prev.x
+    const dy1 = curr.y - prev.y
+    const dx2 = next.x - curr.x
+    const dy2 = next.y - curr.y
+
+    const len1 = Math.sqrt(dx1 * dx1 + dy1 * dy1)
+    const len2 = Math.sqrt(dx2 * dx2 + dy2 * dy2)
+
+    if (len1 === 0 || len2 === 0) {
+      path += ` L ${curr.x} ${curr.y}`
+      continue
+    }
+
+    const r = Math.min(radius, len1 / 2, len2 / 2)
+
+    const startX = curr.x - (dx1 / len1) * r
+    const startY = curr.y - (dy1 / len1) * r
+    const endX = curr.x + (dx2 / len2) * r
+    const endY = curr.y + (dy2 / len2) * r
+
+    path += ` L ${startX} ${startY}`
+    path += ` Q ${curr.x} ${curr.y} ${endX} ${endY}`
   }
+
+  path += ` L ${points[points.length - 1].x} ${points[points.length - 1].y}`
 
   return path
 }
