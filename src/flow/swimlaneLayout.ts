@@ -21,6 +21,7 @@ const DEFAULT_NODE_SIZES: Record<string, { w: number; h: number }> = {
   circle: { w: 64, h: 64 },
   diamond: { w: 96, h: 64 },
 }
+type Side = 'top' | 'right' | 'bottom' | 'left'
 
 function getNodeSize(n: Node<any>): { w: number; h: number } {
   const w = n.measured?.width ?? n.width ?? (typeof (n.style as any)?.width === 'number' ? (n.style as any).width : undefined) ?? 160
@@ -237,6 +238,27 @@ export function autoLayoutSwimlane(args: {
 
   // ── Phase C: edge 路由修正 ──
   const nodeById = new Map(nodes.map((n) => [n.id, n]))
+  const GEOM_DOMINANT_RATIO = 1.15
+  const inferPreferredSidesByGeometry = (dx: number, dy: number): { src: Side; tgt: Side } => {
+    const adx = Math.abs(dx)
+    const ady = Math.abs(dy)
+    if (adx >= ady * GEOM_DOMINANT_RATIO) {
+      return dx >= 0 ? { src: 'right', tgt: 'left' } : { src: 'left', tgt: 'right' }
+    }
+    if (ady >= adx * GEOM_DOMINANT_RATIO) {
+      return dy >= 0 ? { src: 'bottom', tgt: 'top' } : { src: 'top', tgt: 'bottom' }
+    }
+    if (dx >= 0 && dy >= 0) return ady > adx ? { src: 'bottom', tgt: 'top' } : { src: 'right', tgt: 'left' }
+    if (dx >= 0 && dy < 0) return ady > adx ? { src: 'top', tgt: 'bottom' } : { src: 'right', tgt: 'left' }
+    if (dx < 0 && dy >= 0) return ady > adx ? { src: 'bottom', tgt: 'top' } : { src: 'left', tgt: 'right' }
+    return ady > adx ? { src: 'top', tgt: 'bottom' } : { src: 'left', tgt: 'right' }
+  }
+  const sidePriority = (s: Side): Side[] => {
+    if (s === 'top') return ['top', 'left', 'right', 'bottom']
+    if (s === 'bottom') return ['bottom', 'right', 'left', 'top']
+    if (s === 'left') return ['left', 'bottom', 'top', 'right']
+    return ['right', 'top', 'bottom', 'left']
+  }
   const edgeLaneCounter = new Map<string, number>()
   const usedOutByNode = new Map<string, Set<string>>()
   const usedInByNode = new Map<string, Set<string>>()
@@ -304,9 +326,18 @@ export function autoLayoutSwimlane(args: {
       edgeStyle.opacity = 0.95
     }
 
-    // Handle 推断（相邻优先 + 禁止同 handle 同时 in/out）
+    // Handle 推断（几何优先 + 相邻回退 + 禁止同 handle 同时 in/out）
     let sourceHandle: string | undefined
     let targetHandle: string | undefined
+    const srcAbs = getAbsolutePosition(srcNode, nodeById)
+    const tgtAbs = getAbsolutePosition(tgtNode, nodeById)
+    const srcSize = estimateNodeSize(srcNode)
+    const tgtSize = estimateNodeSize(tgtNode)
+    const dx = (tgtAbs.x + tgtSize.w / 2) - (srcAbs.x + srcSize.w / 2)
+    const dy = (tgtAbs.y + tgtSize.h / 2) - (srcAbs.y + srcSize.h / 2)
+    const geomPref = inferPreferredSidesByGeometry(dx, dy)
+    const srcGeomCand = sidePriority(geomPref.src).map((s) => `s-${s}`)
+    const tgtGeomCand = sidePriority(geomPref.tgt).map((s) => `t-${s}`)
     if (isHorizontal) {
       if (isCrossLane) {
         // 跨 lane：上下出入
@@ -315,19 +346,19 @@ export function autoLayoutSwimlane(args: {
         const srcLaneIdx = srcLane ? lanes.indexOf(srcLane) : 0
         const tgtLaneIdx = tgtLane ? lanes.indexOf(tgtLane) : 0
         if (tgtLaneIdx > srcLaneIdx) {
-          sourceHandle = chooseBestHandle(e.source, ['s-bottom', 's-right', 's-left', 's-top'], 'out')
-          targetHandle = chooseBestHandle(e.target, ['t-top', 't-left', 't-right', 't-bottom'], 'in')
+          sourceHandle = chooseBestHandle(e.source, ['s-bottom', ...srcGeomCand], 'out')
+          targetHandle = chooseBestHandle(e.target, ['t-top', ...tgtGeomCand], 'in')
         } else {
-          sourceHandle = chooseBestHandle(e.source, ['s-top', 's-right', 's-left', 's-bottom'], 'out')
-          targetHandle = chooseBestHandle(e.target, ['t-bottom', 't-left', 't-right', 't-top'], 'in')
+          sourceHandle = chooseBestHandle(e.source, ['s-top', ...srcGeomCand], 'out')
+          targetHandle = chooseBestHandle(e.target, ['t-bottom', ...tgtGeomCand], 'in')
         }
       } else if (isReturnFlow) {
-        // 回流边优先相邻 handle（top/bottom），避免与主流 right->left 对冲重叠
-        sourceHandle = chooseBestHandle(e.source, ['s-top', 's-bottom', 's-right', 's-left'], 'out')
-        targetHandle = chooseBestHandle(e.target, ['t-top', 't-bottom', 't-left', 't-right'], 'in')
+        // 回流边优先“邻近侧”+几何侧，避免对向侧对冲
+        sourceHandle = chooseBestHandle(e.source, ['s-bottom', 's-top', ...srcGeomCand], 'out')
+        targetHandle = chooseBestHandle(e.target, ['t-right', 't-left', ...tgtGeomCand], 'in')
       } else {
-        sourceHandle = chooseBestHandle(e.source, ['s-right', 's-top', 's-bottom', 's-left'], 'out')
-        targetHandle = chooseBestHandle(e.target, ['t-left', 't-top', 't-bottom', 't-right'], 'in')
+        sourceHandle = chooseBestHandle(e.source, srcGeomCand, 'out')
+        targetHandle = chooseBestHandle(e.target, tgtGeomCand, 'in')
       }
     } else {
       if (isCrossLane) {
@@ -336,19 +367,18 @@ export function autoLayoutSwimlane(args: {
         const srcLaneIdx = srcLane ? lanes.indexOf(srcLane) : 0
         const tgtLaneIdx = tgtLane ? lanes.indexOf(tgtLane) : 0
         if (tgtLaneIdx > srcLaneIdx) {
-          sourceHandle = chooseBestHandle(e.source, ['s-right', 's-bottom', 's-top', 's-left'], 'out')
-          targetHandle = chooseBestHandle(e.target, ['t-left', 't-top', 't-bottom', 't-right'], 'in')
+          sourceHandle = chooseBestHandle(e.source, ['s-right', ...srcGeomCand], 'out')
+          targetHandle = chooseBestHandle(e.target, ['t-left', ...tgtGeomCand], 'in')
         } else {
-          sourceHandle = chooseBestHandle(e.source, ['s-left', 's-bottom', 's-top', 's-right'], 'out')
-          targetHandle = chooseBestHandle(e.target, ['t-right', 't-top', 't-bottom', 't-left'], 'in')
+          sourceHandle = chooseBestHandle(e.source, ['s-left', ...srcGeomCand], 'out')
+          targetHandle = chooseBestHandle(e.target, ['t-right', ...tgtGeomCand], 'in')
         }
       } else if (isReturnFlow) {
-        // 回流边优先相邻 handle（left/right），避免与主流 bottom->top 对冲重叠
-        sourceHandle = chooseBestHandle(e.source, ['s-left', 's-right', 's-bottom', 's-top'], 'out')
-        targetHandle = chooseBestHandle(e.target, ['t-left', 't-right', 't-top', 't-bottom'], 'in')
+        sourceHandle = chooseBestHandle(e.source, ['s-right', 's-left', ...srcGeomCand], 'out')
+        targetHandle = chooseBestHandle(e.target, ['t-bottom', 't-top', ...tgtGeomCand], 'in')
       } else {
-        sourceHandle = chooseBestHandle(e.source, ['s-bottom', 's-left', 's-right', 's-top'], 'out')
-        targetHandle = chooseBestHandle(e.target, ['t-top', 't-left', 't-right', 't-bottom'], 'in')
+        sourceHandle = chooseBestHandle(e.source, srcGeomCand, 'out')
+        targetHandle = chooseBestHandle(e.target, tgtGeomCand, 'in')
       }
     }
     markHandleUse(e.source, sourceHandle, 'out')

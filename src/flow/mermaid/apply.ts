@@ -1079,6 +1079,28 @@ function applyFlowchartStrictHandles(
   direction: FlowDirection,
 ): Array<Edge<any>> {
   const nodeById = new Map(nodes.map((n) => [n.id, n]))
+  const GEOM_DOMINANT_RATIO = 1.15
+  const inferPreferredSidesByGeometry = (dx: number, dy: number): { src: Side; tgt: Side } => {
+    const adx = Math.abs(dx)
+    const ady = Math.abs(dy)
+    if (adx >= ady * GEOM_DOMINANT_RATIO) {
+      return dx >= 0 ? { src: 'right', tgt: 'left' } : { src: 'left', tgt: 'right' }
+    }
+    if (ady >= adx * GEOM_DOMINANT_RATIO) {
+      return dy >= 0 ? { src: 'bottom', tgt: 'top' } : { src: 'top', tgt: 'bottom' }
+    }
+    // 对角区：按象限 + 主次维度
+    if (dx >= 0 && dy >= 0) {
+      return ady > adx ? { src: 'bottom', tgt: 'top' } : { src: 'right', tgt: 'left' }
+    }
+    if (dx >= 0 && dy < 0) {
+      return ady > adx ? { src: 'top', tgt: 'bottom' } : { src: 'right', tgt: 'left' }
+    }
+    if (dx < 0 && dy >= 0) {
+      return ady > adx ? { src: 'bottom', tgt: 'top' } : { src: 'left', tgt: 'right' }
+    }
+    return ady > adx ? { src: 'top', tgt: 'bottom' } : { src: 'left', tgt: 'right' }
+  }
   const outDegree = new Map<string, number>()
   const inDegree = new Map<string, number>()
   for (const e of edges) {
@@ -1161,18 +1183,19 @@ function applyFlowchartStrictHandles(
 
     let sourceHandle: string
     let targetHandle: string
+    const pref = inferPreferredSidesByGeometry(dx, dy)
     if (direction === 'LR' || direction === 'RL') {
       const congested = (outDegree.get(e.source) ?? 0) > 1 || (inDegree.get(e.target) ?? 0) > 1
-      const srcPref: Side = congested ? (dy >= 0 ? 'bottom' : 'top') : dx >= 0 ? 'right' : 'left'
-      const tgtPref: Side = congested ? (dy >= 0 ? 'top' : 'bottom') : dx >= 0 ? 'left' : 'right'
+      const srcPref: Side = congested ? pref.src : pref.src
+      const tgtPref: Side = congested ? pref.tgt : pref.tgt
       const srcSide = pickSourceSide(e.source, srcPref)
       const tgtSide = pickTargetSide(e.target, tgtPref)
       sourceHandle = `s-${srcSide}`
       targetHandle = `t-${tgtSide}`
     } else if (direction === 'TB' || direction === 'BT') {
       const congested = (outDegree.get(e.source) ?? 0) > 1 || (inDegree.get(e.target) ?? 0) > 1
-      const srcPref: Side = congested ? (dx >= 0 ? 'right' : 'left') : dy >= 0 ? 'bottom' : 'top'
-      const tgtPref: Side = congested ? (dx >= 0 ? 'left' : 'right') : dy >= 0 ? 'top' : 'bottom'
+      const srcPref: Side = congested ? pref.src : pref.src
+      const tgtPref: Side = congested ? pref.tgt : pref.tgt
       const srcSide = pickSourceSide(e.source, srcPref)
       const tgtSide = pickTargetSide(e.target, tgtPref)
       sourceHandle = `s-${srcSide}`
