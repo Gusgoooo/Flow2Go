@@ -255,15 +255,10 @@ function wrapFramesToContents(allNodes: Array<Node<any>>, businessMode: boolean)
       { w: BUSINESS_CHAPTER_W_140, label: 140 },
     ]
 
-    // 递进一档：
-    // - 当“运算结果对应的最大档位”为 50，则统一宽度取 70
-    // - 运算结果对应为 70，则统一宽度取 90
-    // - 以此类推（但仅当基础档位 >= 50 时才上调），避免小图被无谓放大。
-    // 实现方式：先取 floor 档位（<= globalNeed 的最大 tier），再在基础档位为 50/70/90 时上调一档。
+    // 选择“最小可容纳档位”，避免无谓放大到更宽档。
     const firstFitIdx = tiers.findIndex((t) => t.w >= globalNeed)
     if (firstFitIdx === -1) return BUSINESS_CHAPTER_W_140
-    const bumpedIdx = firstFitIdx < tiers.length - 1 ? firstFitIdx + 1 : firstFitIdx
-    return tiers[bumpedIdx].w
+    return tiers[firstFitIdx].w
   }
   const businessUnifiedTopChapterWidth = calcBusinessUnifiedTopChapterWidth()
   const getBusinessChapterWidth = (isTop: boolean): number => (isTop ? businessUnifiedTopChapterWidth : BUSINESS_CHAPTER_W_70)
@@ -1310,20 +1305,11 @@ export async function materializeGraphBatchPayloadToSnapshot(
         businessChapterW
       unifiedTopW = Math.max(unifiedTopW, curW)
     }
+    const chapterTiers = [BUSINESS_CHAPTER_W_70, BUSINESS_CHAPTER_W_90, BUSINESS_CHAPTER_W_120, BUSINESS_CHAPTER_W_140]
+    const snappedTopW = chapterTiers.find((w) => w >= unifiedTopW) ?? BUSINESS_CHAPTER_W_140
     for (const f of framesInOrder) {
-      const curW =
-        f.measured?.width ??
-        f.width ??
-        (typeof (f.style as any)?.width === 'number' ? (f.style as any).width : undefined) ??
-        640
-      const desiredW = unifiedTopW
-      if (desiredW > curW) {
-        f.width = desiredW
-        f.style = { ...(f.style as any), width: desiredW }
-      } else {
-        f.width = desiredW
-        f.style = { ...(f.style as any), width: desiredW }
-      }
+      f.width = snappedTopW
+      f.style = { ...(f.style as any), width: snappedTopW }
     }
   }
 
