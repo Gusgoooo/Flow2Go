@@ -1209,7 +1209,7 @@ export async function openRouterGenerateDiagram(opts: OpenRouterChatOptions): Pr
     layoutDecision = resolveLayoutDecision(route)
     chosen = sel.layoutProfileKey
     const simpleFlowHint =
-      '【流程简化（强制）】请优先可读性：主链 4~8 步，节点总量尽量 8~18，分支 <=2，回流 <=1；跨组连线尽量为 0。若信息过多，请合并同类步骤。'
+      '【流程简化（强制）】请优先可读性：主链 4~7 步，节点总量尽量 7~15，分支 <=2，回流 <=1；跨组连线尽量为 0。若信息过多，请合并同类步骤并省略次要支线。'
     plannerText = await openRouterDiagramPlanner({
       apiKey: key,
       model,

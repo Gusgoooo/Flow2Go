@@ -80,13 +80,11 @@ function frameDefaults(title: string) {
 const LAYOUT_UNIT = 24
 const BUSINESS_INNER_UNIT = 12
 const NODE_MIN_WIDTH_UNITS = 3
-const BUSINESS_CHAPTER_W_30 = LAYOUT_UNIT * 30 // 30 grid units = 720px
-const BUSINESS_CHAPTER_W_50 = LAYOUT_UNIT * 50 // 50 grid units = 1200px
 const BUSINESS_CHAPTER_W_70 = LAYOUT_UNIT * 70 // 70 grid units
 const BUSINESS_CHAPTER_W_90 = LAYOUT_UNIT * 90 // 90 grid units
 const BUSINESS_CHAPTER_W_120 = LAYOUT_UNIT * 120 // 120 grid units
-// Keep the old name for readability at call sites that still assume the "30 units" baseline.
-const BUSINESS_CHAPTER_W = BUSINESS_CHAPTER_W_30
+const BUSINESS_CHAPTER_W_140 = LAYOUT_UNIT * 140 // 140 grid units
+const BUSINESS_CHAPTER_W = BUSINESS_CHAPTER_W_70
 // Business Big Map: restrict theme palette (rotating)
 const TOP_FRAME_THEME_COLORS = ['#4d9ef5', '#33d8ea', '#c059ff', '#ff6cc4']
 
@@ -153,8 +151,9 @@ function wrapFramesToContents(allNodes: Array<Node<any>>, businessMode: boolean)
   const MIN_W_DEFAULT = 220
   const MIN_H = 140
   const UNIT = businessMode ? BUSINESS_INNER_UNIT : LAYOUT_UNIT
+  const HALF_UNIT = Math.max(1, Math.round(UNIT * 0.5))
   const MIN_NODE_W = Math.round(UNIT * NODE_MIN_WIDTH_UNITS)
-  const NODE_GAP = Math.round(UNIT * 0.5)
+  const NODE_GAP = HALF_UNIT
   const MAX_COLS = businessMode ? 6 : 6
 
   const nodeById = new Map(allNodes.map((n) => [n.id, n]))
@@ -205,7 +204,7 @@ function wrapFramesToContents(allNodes: Array<Node<any>>, businessMode: boolean)
     const targetNodeCellW = UNIT * 3
     const leafCols = 2
     const leafAvailableWRequired = (leafCols - 1) * NODE_GAP + leafCols * targetNodeCellW
-    const BASE_LEAF_FRAME_W = leafAvailableWRequired + 2 * UNIT
+    const BASE_LEAF_FRAME_W = leafAvailableWRequired + 2 * HALF_UNIT
 
     const memo = new Map<string, number>()
     const visiting = new Set<string>()
@@ -235,8 +234,8 @@ function wrapFramesToContents(allNodes: Array<Node<any>>, businessMode: boolean)
       // cellW = floor((availableW - (cols - 1) * UNIT) / cols)
       // with availableW = parentW - 2 * padX, padX = UNIT.
       // => parentW >= 2*padX + (cols-1)*UNIT + cols*requiredChildW
-      const padX = UNIT
-      const parentW = 2 * padX + (cols - 1) * UNIT + cols * requiredChildW
+      const padX = HALF_UNIT
+      const parentW = 2 * padX + (cols - 1) * HALF_UNIT + cols * requiredChildW
 
       memo.set(frameId, parentW)
       visiting.delete(frameId)
@@ -249,11 +248,10 @@ function wrapFramesToContents(allNodes: Array<Node<any>>, businessMode: boolean)
     }
 
     const tiers = [
-      { w: BUSINESS_CHAPTER_W_30, label: 30 },
-      { w: BUSINESS_CHAPTER_W_50, label: 50 },
       { w: BUSINESS_CHAPTER_W_70, label: 70 },
       { w: BUSINESS_CHAPTER_W_90, label: 90 },
       { w: BUSINESS_CHAPTER_W_120, label: 120 },
+      { w: BUSINESS_CHAPTER_W_140, label: 140 },
     ]
 
     // 递进一档：
@@ -261,15 +259,13 @@ function wrapFramesToContents(allNodes: Array<Node<any>>, businessMode: boolean)
     // - 运算结果对应为 70，则统一宽度取 90
     // - 以此类推（但仅当基础档位 >= 50 时才上调），避免小图被无谓放大。
     // 实现方式：先取 floor 档位（<= globalNeed 的最大 tier），再在基础档位为 50/70/90 时上调一档。
-    let baseIdx = 0
-    for (let i = 0; i < tiers.length; i += 1) {
-      if (tiers[i].w <= globalNeed) baseIdx = i
-    }
-    const bumpedIdx = baseIdx >= 1 && baseIdx < tiers.length - 1 ? baseIdx + 1 : baseIdx
+    const firstFitIdx = tiers.findIndex((t) => t.w >= globalNeed)
+    if (firstFitIdx === -1) return BUSINESS_CHAPTER_W_140
+    const bumpedIdx = firstFitIdx < tiers.length - 1 ? firstFitIdx + 1 : firstFitIdx
     return tiers[bumpedIdx].w
   }
   const businessUnifiedTopChapterWidth = calcBusinessUnifiedTopChapterWidth()
-  const getBusinessChapterWidth = (isTop: boolean): number => (isTop ? businessUnifiedTopChapterWidth : BUSINESS_CHAPTER_W_30)
+  const getBusinessChapterWidth = (isTop: boolean): number => (isTop ? businessUnifiedTopChapterWidth : BUSINESS_CHAPTER_W_70)
 
   const frames = allNodes.filter(isFrame)
 
@@ -403,8 +399,8 @@ function wrapFramesToContents(allNodes: Array<Node<any>>, businessMode: boolean)
       const childFrames = kids.filter(isFrame).sort((a, b) => a.id.localeCompare(b.id))
       const childNodes = kids.filter((k) => !isFrame(k)).sort((a, b) => a.id.localeCompare(b.id))
 
-      const padX = UNIT
-      const padBottom = UNIT
+      const padX = HALF_UNIT
+      const padBottom = HALF_UNIT
       const padTop = TITLE_H + Math.round(UNIT * 1.35)
       const isTop = !frame.parentId
       // Top chapter width is selected by the generated structure.
@@ -421,7 +417,7 @@ function wrapFramesToContents(allNodes: Array<Node<any>>, businessMode: boolean)
         if (childFrames.length > 0) {
           // 横向优先，超出后换行；每行最多3个子画框
           const cols = Math.max(1, Math.min(3, childFrames.length))
-          const cellW = Math.max(MIN_NODE_W, Math.floor((availableW - (cols - 1) * UNIT) / cols))
+          const cellW = Math.max(MIN_NODE_W, Math.floor((availableW - (cols - 1) * HALF_UNIT) / cols))
 
           // 先把宽度下发给子画框，再递归布局子画框内部节点
           for (const cf of childFrames) {
@@ -438,8 +434,8 @@ function wrapFramesToContents(allNodes: Array<Node<any>>, businessMode: boolean)
             const { h } = getNodeSize(cf)
             const col = i % cols
             const row = Math.floor(i / cols)
-            const x = col * (cellW + UNIT)
-            const y = row * (h + UNIT)
+            const x = col * (cellW + HALF_UNIT)
+            const y = row * (h + HALF_UNIT)
             cf.position = { x, y }
             maxBottom = Math.max(maxBottom, y + h)
           }
@@ -448,7 +444,7 @@ function wrapFramesToContents(allNodes: Array<Node<any>>, businessMode: boolean)
 
         // 2) 再布局当前画框内的直接子节点（最多2列）
         if (childNodes.length > 0) {
-          if (childFrames.length > 0) yCursor += UNIT
+          if (childFrames.length > 0) yCursor += HALF_UNIT
           // 节点统一采用竖向“倒N”排列：先上下，再换列（最多2行）
           const rows = Math.max(1, Math.min(2, childNodes.length))
           const cols = Math.max(1, Math.ceil(childNodes.length / rows))
@@ -783,29 +779,6 @@ function scoreSideForVector(
   }
 }
 
-function applyDirectionalHandles(
-  edges: Array<Edge<any>>,
-  direction: FlowDirection,
-): Array<Edge<any>> {
-  let sourceHandle = 's-right'
-  let targetHandle = 't-left'
-  if (direction === 'RL') {
-    sourceHandle = 's-left'
-    targetHandle = 't-right'
-  } else if (direction === 'TB') {
-    sourceHandle = 's-bottom'
-    targetHandle = 't-top'
-  } else if (direction === 'BT') {
-    sourceHandle = 's-top'
-    targetHandle = 't-bottom'
-  }
-  return edges.map((e) => ({
-    ...e,
-    sourceHandle,
-    targetHandle,
-  }))
-}
-
 function shouldPreferLeftToRightByComplexity(payload: GraphBatchPayload): boolean {
   const nodeCount = payload.operations.filter((op) => op.op === 'graph.createNodeQuad').length
   const edgeCount = payload.operations.filter((op) => op.op === 'graph.createEdge').length
@@ -1102,8 +1075,8 @@ export async function materializeGraphBatchPayloadToSnapshot(
   const flowchartMode = !businessMode && !mindMapMode
   const preferLR = flowchartMode && shouldPreferLeftToRightByComplexity(payload)
   const preferLRDefault = flowchartMode && payload.direction !== 'LR'
-  // 流程图走 Dagre 时默认优先 LR，保证主链阅读方向一致。
-  const effectiveDirection: FlowDirection = dagreFlowMode || preferLRDefault || preferLR ? 'LR' : payload.direction
+  // 流程图：不强制节点方向；仅在“麻花风险”下兜底优先 LR。
+  const effectiveDirection: FlowDirection = preferLRDefault || preferLR ? 'LR' : payload.direction
 
   const frameOrder: string[] = []
   const frameExplicitPos = new Set<string>()
@@ -1195,12 +1168,19 @@ export async function materializeGraphBatchPayloadToSnapshot(
     }
 
     if (op.op === 'graph.autoLayout') {
-      const dir = effectiveDirection
+      const withinFrameDir: FlowDirection = dagreFlowMode ? op.params.direction : effectiveDirection
+      const topLevelDir: FlowDirection = dagreFlowMode ? 'LR' : effectiveDirection
       if (op.params.scope === 'withinFrame' && op.params.frameId) {
-        const next = await layoutWithinFrame(nodes, edges, op.params.frameId, dir, dagreFlowMode && !mindMapMode && !businessMode)
+        const next = await layoutWithinFrame(
+          nodes,
+          edges,
+          op.params.frameId,
+          withinFrameDir,
+          dagreFlowMode && !mindMapMode && !businessMode,
+        )
         nodes.splice(0, nodes.length, ...next)
       } else if (op.params.scope === 'all') {
-        const next = await layoutTopLevel(nodes, edges, dir, dagreFlowMode && !mindMapMode && !businessMode)
+        const next = await layoutTopLevel(nodes, edges, topLevelDir, dagreFlowMode && !mindMapMode && !businessMode)
         nodes.splice(0, nodes.length, ...next)
       }
       continue
@@ -1266,7 +1246,6 @@ export async function materializeGraphBatchPayloadToSnapshot(
     .map((id) => safeById.get(id))
     .filter((n): n is Node<any> => n != null && !n.parentId && n.type === 'group' && (n.data as any)?.role === 'frame')
 
-  const parentGap = businessMode ? BUSINESS_INNER_UNIT : LAYOUT_UNIT * 2
   const businessChapterW = BUSINESS_CHAPTER_W
   if (businessMode) {
     const byParent = new Map<string, Array<Node<any>>>()
@@ -1276,13 +1255,22 @@ export async function materializeGraphBatchPayloadToSnapshot(
       arr.push(n)
       byParent.set(n.parentId, arr)
     }
+    let unifiedTopW = businessChapterW
+    for (const f of framesInOrder) {
+      const curW =
+        f.measured?.width ??
+        f.width ??
+        (typeof (f.style as any)?.width === 'number' ? (f.style as any).width : undefined) ??
+        businessChapterW
+      unifiedTopW = Math.max(unifiedTopW, curW)
+    }
     for (const f of framesInOrder) {
       const curW =
         f.measured?.width ??
         f.width ??
         (typeof (f.style as any)?.width === 'number' ? (f.style as any).width : undefined) ??
         640
-      const desiredW = Math.max(curW, businessChapterW)
+      const desiredW = unifiedTopW
       if (desiredW > curW) {
         const extra = desiredW - curW
         const kids = byParent.get(f.id) ?? []
@@ -1305,7 +1293,7 @@ export async function materializeGraphBatchPayloadToSnapshot(
       if (frameExplicitPos.has(f.id)) continue
       const h = f.measured?.height ?? f.height ?? (typeof (f.style as any)?.height === 'number' ? (f.style as any).height : undefined) ?? 420
       f.position = { x: cursorX, y: cursorY }
-      cursorY += h + parentGap
+      cursorY += h + Math.max(1, Math.round(BUSINESS_INNER_UNIT * 0.5))
     }
   } else if (!mindMapMode && framesInOrder.length > 0) {
     // 仅当有顶层画框时二次 ELK：wrapFramesToContents 会改画框尺寸，需按 ELK 拉开多画框/不连通子图。
@@ -1315,7 +1303,8 @@ export async function materializeGraphBatchPayloadToSnapshot(
       const n = safeNodes.find((x) => x.id === id)
       if (n?.position) explicitBackup.set(id, { x: n.position.x, y: n.position.y })
     }
-    safeNodes = await layoutTopLevel(safeNodes, edges, effectiveDirection, dagreFlowMode)
+    const topLevelDir: FlowDirection = dagreFlowMode ? 'LR' : effectiveDirection
+    safeNodes = await layoutTopLevel(safeNodes, edges, topLevelDir, dagreFlowMode)
     for (const [id, pos] of explicitBackup) {
       const n = safeNodes.find((x) => x.id === id)
       if (n) n.position = { ...pos }
@@ -1409,16 +1398,6 @@ export async function materializeGraphBatchPayloadToSnapshot(
   if (mindMapMode) {
     // 思维导图连线规范：句柄必须与节点左右侧一致，避免脱离 handle 的视觉错位。
     safeEdges = applyMindMapHorizontalHandles(safeNodes, safeEdges)
-    for (const e of safeEdges) {
-      const d = (e.data ?? {}) as any
-      d.autoOffset = 0
-      e.data = d
-    }
-  }
-
-  // 流程图（Dagre）：严格按图方向固定 handle，避免几何推断/避让导致“看起来不从端口出入”。
-  if (dagreFlowMode && !mindMapMode && !businessMode) {
-    safeEdges = applyDirectionalHandles(safeEdges, effectiveDirection)
     for (const e of safeEdges) {
       const d = (e.data ?? {}) as any
       d.autoOffset = 0
