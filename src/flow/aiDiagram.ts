@@ -636,6 +636,7 @@ function validateBusinessPlannerJson(obj: any): { ok: boolean; errors: string[] 
   const isStringArray = (v: any): v is string[] => Array.isArray(v) && v.every((x) => isString(x))
 
   const frameCaseAllowed = new Set(['case1', 'case2', 'case3'])
+  const frameTitles = new Set<string>()
 
   for (let i = 0; i < frames.length; i += 1) {
     const f = frames[i]
@@ -644,7 +645,13 @@ function validateBusinessPlannerJson(obj: any): { ok: boolean; errors: string[] 
       continue
     }
 
-    if (!isString(f.title)) errors.push(`framesOrRoot[${i}].title 必须是非空字符串`)
+    if (!isString(f.title)) {
+      errors.push(`framesOrRoot[${i}].title 必须是非空字符串`)
+    } else {
+      const key = String(f.title).trim()
+      if (frameTitles.has(key)) errors.push(`framesOrRoot[${i}].title 与其他章节重复：${key}`)
+      frameTitles.add(key)
+    }
 
     if (!frameCaseAllowed.has(f.case)) errors.push(`framesOrRoot[${i}].case 必须是 case1|case2|case3`)
     if (frameCaseAllowed.has(f.case)) hasCase.add(f.case)
@@ -669,13 +676,24 @@ function validateBusinessPlannerJson(obj: any): { ok: boolean; errors: string[] 
 
     // children 的基本结构校验（case1 不要求 children 为空以外的 children 字段）
     if (Array.isArray(f.children)) {
+      const childTitles = new Set<string>()
       f.children.forEach((c: any, j: number) => {
         if (!c || typeof c !== 'object') {
           errors.push(`framesOrRoot[${i}].children[${j}] 必须是对象`)
           return
         }
-        if (!isString(c.title)) errors.push(`framesOrRoot[${i}].children[${j}].title 必须是非空字符串`)
+        if (!isString(c.title)) {
+          errors.push(`framesOrRoot[${i}].children[${j}].title 必须是非空字符串`)
+        } else {
+          const ck = String(c.title).trim()
+          if (childTitles.has(ck)) errors.push(`framesOrRoot[${i}].children[${j}].title 在同层重复：${ck}`)
+          childTitles.add(ck)
+        }
         if (!isStringArray(c.points)) errors.push(`framesOrRoot[${i}].children[${j}].points 必须是 string[]`)
+        // 同层纯度：任何一层都不允许“单点套壳”导致的结构混搭。
+        if ((f.case === 'case2' || f.case === 'case3') && Array.isArray(c.points) && c.points.length < 2) {
+          errors.push(`framesOrRoot[${i}].children[${j}].points 至少 2 项，避免同层混搭/单点嵌套`)
+        }
       })
     }
   }
@@ -1016,6 +1034,7 @@ const DIAGRAM_PLANNER_SYSTEM_PROMPT = [
   '}',
   '',
   '当 templateKey 为 Business Big Map Template：',
+  '- 输出必须能被解释为“严格三层树”：L1=frame、L2=group、L3=subgroup/point；禁止同一父节点下混用层级类型。',
   '- framesOrRoot 对应一级画框(frame)，并且每个 frame 必须给出 nesting case：case1/case2/case3。',
   '- 所有节点文案（title/directPoints/children.title/children.points）必须精简：每条不超过 7 个字。',
   '- 禁止出现“子画框内仅 1 个节点”的结构；若某层仅 1 个要点，应直接并入上层，不再额外嵌套。',
@@ -1023,6 +1042,7 @@ const DIAGRAM_PLANNER_SYSTEM_PROMPT = [
   '- case2：frame 下的 children 对应 group（模块），每个 children.points 对应该 group 内的 quad 要点（直接 quad，不创建 subgroup）。',
   '- case3：frame 下的 children 对应 group（模块），每个 children.points 对应 subgroup 标题（每个 subgroup 再承载 1 个 quad，要点 label 使用该标题）。',
   '- case2/case3 时 directPoints 必须为空数组 []（禁止把要点同时放在 frame 与子模块两处）。',
+  '- 同层纯度（强制）：同一个 frame 内只允许一种 case，不允许混搭 case2/case3；同一个 group 下 points 不能为空且不得只含 1 项。',
   '- 明确哪些 frame/group 属于主表达区、哪些属于支撑层（写进 mainChain/supportStrategy 字段）；避免写出任何连线/边。',
   '',
   '当 templateKey 为 Mind Map Template：',
@@ -1411,14 +1431,17 @@ export async function openRouterGenerateDiagram(opts: OpenRouterChatOptions): Pr
     const plannerComplexityForBbm = toPlannerComplexity(route?.complexityMode ?? 'chapters')
     let ok = false
     let lastErrors: string[] = []
+    const maxPlannerAttempts = 3
 
-    report('业务大图 Planner 校验', '检查 JSON 结构…')
-    for (let i = 0; i < 2; i += 1) {
+    report('业务大图 Planner 校验', '检查 JSON 结构（严格树分层）…')
+    for (let i = 0; i < maxPlannerAttempts; i += 1) {
       try {
         const parsed = JSON.parse(plannerText)
         const v = validateBusinessPlannerJson(parsed)
         if (v.ok) {
           ok = true
+          // 固化为紧凑 JSON，作为后续 Mermaid 生成唯一输入。
+          plannerText = JSON.stringify(parsed)
           break
         }
         lastErrors = v.errors
@@ -1426,6 +1449,7 @@ export async function openRouterGenerateDiagram(opts: OpenRouterChatOptions): Pr
         lastErrors = [`Planner JSON parse 失败：${String(e?.message ?? e)}`]
       }
 
+      if (i === maxPlannerAttempts - 1) break
       report('Diagram Planner（业务大图修正）', `第 ${i + 1} 次重试…`)
       plannerText = await openRouterDiagramPlanner({
         apiKey: key,
@@ -1436,7 +1460,7 @@ export async function openRouterGenerateDiagram(opts: OpenRouterChatOptions): Pr
         templateKey: chosen,
         complexityMode: plannerComplexityForBbm,
         extraUserHint: [
-          '你输出的 Planner JSON 不符合 Business Big Map 的 case/directPoints/children 约束。',
+          '你输出的 Planner JSON 不符合 Business Big Map 的严格树分层约束。',
           '请严格按约束重生成：',
           ...lastErrors.map((x) => `- ${x}`),
           '',
@@ -1446,14 +1470,17 @@ export async function openRouterGenerateDiagram(opts: OpenRouterChatOptions): Pr
     }
 
     if (!ok) {
-      report('业务大图 Planner 仍不合格', '将回退为用户原文参与生成')
-      plannerText = null
+      report('业务大图 Planner 仍不合格', '终止：禁止回退原文，避免破坏层级纯度')
+      throw new Error(`业务大图 Planner 校验未通过：${lastErrors.slice(0, 3).join('；') || '结构不合法'}`)
     } else {
       report('业务大图 Planner 校验', '通过')
     }
   }
 
   const effectivePrompt = plannerText ?? planningPrompt
+  if (chosen === 'Business Big Map Template' && !plannerText) {
+    throw new Error('业务大图缺少合法 Planner JSON，已中止生成')
+  }
 
   // 为了最大化保留既有业务大图视觉：frameType/businessStyle 的判断尽量基于原始用户意图，
   // 生成阶段才使用 plannerText 做结构压缩与去噪。
