@@ -13,28 +13,10 @@ export type AiSceneCapsulePreset = {
 }
 
 /**
- * 场景胶囊：业务分层大图 / 思维导图 / 流程图
+ * 场景胶囊：思维导图 / 流程图
  * 文案为自然语言预设，用户可删改；生成时通过 diagramScene 强制路由。
  */
 export const AI_SCENE_CAPSULE_PRESETS: AiSceneCapsulePreset[] = [
-  {
-    id: 'business-big-map',
-    label: '业务分层大图',
-    scene: 'business-big-map',
-    accentHex: AI_SCENE_CAPSULE_ACCENT_COLORS[0],
-    prompt: [
-      '请帮我在 Flow2Go 里生成一张「业务分层大图」：整体自上而下按章节画框排版，用多层 subgraph 表达战略全景 / 能力地图式的层级关系；节点标题尽量短（建议 2～6 个字），用分组与嵌套表达归属，不要依赖大量连线。',
-      '',
-      '【主题 / 领域】',
-      '（请写一句话，例如：某 SaaS 产品的平台能力总览、某公司数字化转型板块、某业务域端到端能力拆解）',
-      '',
-      '【希望覆盖的板块或关键词】（可选，列 3～8 条即可）',
-      '（例如：获客、交易、履约、风控、数据、组织与治理……）',
-      '',
-      '【补充约束】（可选）',
-      '（例如：偏对内管理视角、偏客户旅程、需要体现与外部系统的边界等）',
-    ].join('\n'),
-  },
   {
     id: 'mind-map',
     label: '思维导图',
@@ -80,7 +62,7 @@ export type AiPromptPreset = AiSceneCapsulePreset
 export const AI_PROMPT_PRESETS: AiSceneCapsulePreset[] = AI_SCENE_CAPSULE_PRESETS
 
 /** @deprecated */
-export const DEFAULT_AI_PROMPT_PRESET_ID = 'business-big-map'
+export const DEFAULT_AI_PROMPT_PRESET_ID = 'flowchart'
 
 /** @deprecated */
 export const DEFAULT_AI_PROMPT =

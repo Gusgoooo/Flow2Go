@@ -12,7 +12,6 @@ export type AiDiagramDraft = {
 
 /** 由 UI 胶囊显式指定的生图场景；不传则完全由 Scene Router / 关键词自动判断 */
 export type AiDiagramSceneHint =
-  | 'business-big-map'
   | 'mind-map'
   | 'flowchart'
 
@@ -41,7 +40,6 @@ import { materializeGraphBatchPayloadToSnapshot } from './mermaid/apply'
 
 const DEFAULT_TIMEOUT_MS = 45_000
 
-import BUSINESS_BIG_MAP_TMPL from '../../usertemplate/07_business_big_map_template.md?raw'
 import MERMAID_GENERATOR_SYSTEM_PROMPT from './aiPromptPresets/mermaid-generator-system-prompt.md?raw'
 import {
   type LayoutDecision,
@@ -54,16 +52,10 @@ import {
   toPlannerComplexity,
 } from './aiLayoutTypes'
 
-/** 兼容旧代码：原 8 个「模板」名称（含业务大图 / 思维导图管道标识） */
+/** 兼容旧代码：模板名称（思维导图 + 流程图 profile） */
 export type UserTemplateKey =
   | LayoutProfileKey
-  | 'Business Big Map Template'
   | 'Mind Map Template'
-
-/**
- * 业务大图专属系统约束（原 07_business_big_map_template.md，不再作为通用 usertemplate 内容喂给其它场景）
- */
-export const BUSINESS_BIG_MAP_SYSTEM_PROMPT = BUSINESS_BIG_MAP_TMPL.trimEnd()
 
 /** @deprecated 旧版模板选择器文案；请使用 LAYOUT_SELECTOR_SYSTEM_PROMPT + openRouterSelectLayoutProfile */
 export const TEMPLATE_SELECTOR_SYSTEM_PROMPT = [
@@ -81,7 +73,7 @@ export const LAYOUT_SELECTOR_SYSTEM_PROMPT = [
   '- 应使用的流程类 layoutProfileKey（6 选 1，见下）',
   '- complexityMode：compact（更克制）或 normal（更章节化）',
   '- sceneKind：与后续 Scene Router 同义的粗分类',
-  '- pipeline：只能是 flowchart（本选择器不负责 business-big-map / mind-map，二者由 Scene Router 决定）',
+  '- pipeline：只能是 flowchart（本选择器仅负责流程图布局 profile）',
   '',
   '可选 layoutProfileKey（必须完全一致）：',
   ...LAYOUT_PROFILE_KEYS.map((k, i) => `${i + 1}. ${k}`),
@@ -103,114 +95,6 @@ export const LAYOUT_SELECTOR_SYSTEM_PROMPT = [
   '  "sceneKind": "agent-flow|approval-flow|data-pipeline|business-flow|hierarchy|other"',
   '}',
 ].join('\n')
-
-export type FrameTypeKey = 'Type A' | 'Type B' | 'Type C' | 'Type D' | 'Type E' | 'Type F'
-export type BusinessStyleKey = '样式1' | '样式2' | '样式3' | '样式4'
-
-export const FRAME_SELECTOR_SYSTEM_PROMPT = [
-  '你是 Flow2Go 的画框选择器。',
-  '',
-  '你的任务不是直接生成内容，而是先根据用户输入内容的结构复杂度与层级关系，判断应使用哪一种 frame 类型。',
-  '',
-  '可选 frame 类型：',
-  '- Type A：横向概览条',
-  '- Type B：双栏模块板',
-  '- Type C：多列卡片组',
-  '- Type D：左标题章节块',
-  '- Type E：极简横向承载',
-  '- Type F：双层嵌套复杂区',
-  '',
-  '判断标准：',
-  '1. 平级概览 → A / E',
-  '2. 左右两域 → B',
-  '3. 多模块并列、每个模块下 2~3 个要点 → C',
-  '4. 章节式信息块 → D',
-  '5. 多层嵌套结构 → F',
-  '',
-  '输出要求（强制）：',
-  '- 只能输出 “Type A / Type B / Type C / Type D / Type E / Type F” 其中之一，不要输出任何其他文字。',
-].join('\n')
-
-export async function openRouterSelectFrameType(args: OpenRouterChatOptions): Promise<FrameTypeKey> {
-  const { apiKey, model, prompt, signal, timeoutMs = DEFAULT_TIMEOUT_MS } = args
-  const key = (apiKey ?? '').trim()
-  if (!key) throw new Error('缺少 OpenRouter API Key')
-  if (!prompt.trim()) throw new Error('请输入生成描述')
-
-  const raw = await openRouterChatComplete({
-    apiKey: key,
-    model,
-    system: FRAME_SELECTOR_SYSTEM_PROMPT,
-    user: prompt.trim(),
-    signal,
-    timeoutMs,
-    temperature: 0,
-  })
-  const normalized = raw.replace(/\s+/g, ' ').trim()
-  const candidates: FrameTypeKey[] = ['Type A', 'Type B', 'Type C', 'Type D', 'Type E', 'Type F']
-  const exact = candidates.find((c) => c === normalized)
-  if (exact) return exact
-  const fuzzy = candidates.find((c) => normalized.toLowerCase().includes(c.toLowerCase()))
-  return fuzzy ?? 'Type F'
-}
-
-export const BUSINESS_STYLE_SELECTOR_PROMPT = [
-  '你是 Flow2Go 的业务大图样式选择器。',
-  '',
-  '你的任务不是直接生成内容，而是先在以下 4 种参考样式中选择一个最合适的：',
-  '- 样式1：单层横向摘要条（frame 内直接并列 quad）',
-  '- 样式2：双栏模块板（frame 内 2 个大 group，每个 group 内 2xN 网格）',
-  '- 样式3：多列小组（frame 内多个并列 group，每个 group 内 2 个纵向 quad）',
-  '- 样式4：左标题章节块 + 多个子 group（中高密度、板块感强、适合业务总览）',
-  '',
-  '判断规则：',
-  '1. 低密度概览：样式1',
-  '2. 左右两域：样式2',
-  '3. 多模块并列且每模块少量要点：样式3',
-  '4. 章节式业务大图/能力地图/战略全景：样式4',
-  '5. 若输入存在明显“左右对照”词（对比/双域/AB/左右），优先样式2；若存在“并列模块+少量要点”，优先样式3。',
-  '',
-  '输出要求（强制）：',
-  '- 只能输出：样式1 或 样式2 或 样式3 或 样式4（仅一项）',
-].join('\n')
-
-export async function openRouterSelectBusinessStyle(args: OpenRouterChatOptions): Promise<BusinessStyleKey> {
-  const { apiKey, model, prompt, signal, timeoutMs = DEFAULT_TIMEOUT_MS } = args
-  const key = (apiKey ?? '').trim()
-  if (!key) throw new Error('缺少 OpenRouter API Key')
-  if (!prompt.trim()) throw new Error('请输入生成描述')
-  const raw = await openRouterChatComplete({
-    apiKey: key,
-    model,
-    system: BUSINESS_STYLE_SELECTOR_PROMPT,
-    user: prompt.trim(),
-    signal,
-    timeoutMs,
-    temperature: 0,
-  })
-  const normalized = raw.replace(/\s+/g, '').trim()
-  const candidates: BusinessStyleKey[] = ['样式1', '样式2', '样式3', '样式4']
-  const exact = candidates.find((c) => c === normalized)
-  if (exact) return exact
-  const mapped = normalized
-    .replace('样式一', '样式1')
-    .replace('样式二', '样式2')
-    .replace('样式三', '样式3')
-    .replace('样式四', '样式4')
-    .replace('style1', '样式1')
-    .replace('style2', '样式2')
-    .replace('style3', '样式3')
-    .replace('style4', '样式4')
-  const exactMapped = candidates.find((c) => c === mapped)
-  if (exactMapped) return exactMapped
-  const fuzzy = candidates.find((c) => normalized.includes(c))
-  if (fuzzy) return fuzzy
-  const p = prompt
-  if (/(对照|对比|双域|左右|A\/B|AB)/i.test(p)) return '样式2'
-  if (/(模块|板块|能力|主题).*(要点|子项|条目)/i.test(p)) return '样式3'
-  if (/(摘要|总览|概览|结论|索引)/i.test(p)) return '样式1'
-  return '样式4'
-}
 
 /** 各 layout profile 的 subgraph 提示（软约束：不再强制分区数量/固定英文名，交给 Planner 与用户意图） */
 const FLOWCHART_PROFILE_SUBGRAPH_SOFT_HINT = [
@@ -238,42 +122,6 @@ const MIND_MAP_MERMAID_SUBGRAPH_RULES = [
   '- 布局由系统 mind-elixir-core 管线决定（除配色外不额外施加版式限制）。',
 ].join('\n')
 
-function businessBigMapDynamicRenderRules(frameType: FrameTypeKey | null, businessStyle: BusinessStyleKey | null): string {
-  return [
-    '【业务大图渲染强约束（动态，与 frame/style 选择器对齐）】',
-    '- 必须生成多个一级 subgraph 作为“章节 frame”，从上到下组织（章节之间保持统一节奏）。',
-    '- 一级章节数量不得超过 5 个（硬限制）。',
-    '- 必须使用嵌套 subgraph 表达层级：章节(frame) → 模块(group) → 子模块(subgroup) → 要点(quad)。',
-    '- 至少包含 3 个二级 subgraph（模块级 group），确保可见编组结构。',
-    '- 任意父画框下，直接子画框数量不得超过 3（硬限制）。',
-    `- 参考样式：${businessStyle ?? '样式4'}（来自用户提供 project.json 的样式1~4，优先按该样式的容器结构组织）。`,
-    `- 已选择的主画框类型：${frameType ?? 'Type F'}（仅用于内部排版策略参考，不要写入任何标题或节点文本）。`,
-    '- 不要在标题后附加任何类型后缀文本（例如：`｜Type`、`｜T`、`|T`）。',
-    '- 业务大图禁止任何连线：不要输出任何 `-->` 或带标签连线。',
-    '- 排版要紧凑：同层分组与节点保持统一小间距，优先规则栅格。',
-    '- 控制复杂度：一级章节建议 3~5 个；每章二级模块建议 2~3 个；每个模块下要点建议 2 或 4 个（尽量偶数）。',
-    '- 同一章节内的二级模块尽量保持“要点数量一致”（例如都 2 个或都 4 个），避免参差。',
-    '- 画框横向平铺；节点必须使用竖向倒N（先上下，再换列），节点列数最多 2 列。',
-    '- 结构多样化（硬约束）：整张业务大图必须同时出现三类章节结构：',
-    '  - 章节A（Case 1）：1层嵌套（章节画框直接包含节点，不允许任何子 subgraph）',
-    '  - 章节B（Case 2）：2层嵌套（章节 -> 二级画框 -> 节点；禁止出现子画框）',
-    '  - 章节C（Case 3）：3层嵌套（章节 -> 二级画框 -> 子画框 -> 节点）',
-    '- 每一个章节画框必须只属于上述三类之一：禁止同一章节内混用不同层数。',
-    '- 严格依据 Diagram Planner 输出的 nesting case（frame.case / case1|case2|case3）生成章节嵌套层级：不得在生成阶段自行推断某个章节内部的子画框层级（尤其禁止 Case2/Case3 混搭）。',
-    '- 额外嵌套一致性约束（新增，强制）：任意父画框（包含嵌套的二级/三级画框），其“直接子画框”必须保持相同的相对嵌套层级：',
-    '  - 要么该父画框下所有直接子画框都不再包含子画框（全员 Case 2 相对父级），',
-    '  - 要么该父画框下所有直接子画框都必须包含子画框（全员 Case 3 相对父级），',
-    '  - 禁止同一父画框下同时出现“直接子画框中既有继续嵌套（Case3 相对父级）又有不继续嵌套（Case2 相对父级）”的混搭。',
-    '  - 若父画框存在任何直接子画框，则禁止父画框同时直接包含 quad（禁止 Case 1 形态与 Case 2/3 形态混用）。',
-    '- 1层嵌套章节：直接放 4~6 个 quad 节点即可（最简）。',
-    '- 2层嵌套章节：2~3 个二级画框，每个二级画框 2~4 个节点（最简）。',
-    '- 3层嵌套章节：2~3 个二级画框，每个二级画框 2~3 个子画框，每个子画框 2~4 个节点（最简）。',
-    '- 嵌套样式从外向内决定：最内层（直接承载节点）统一为“主题色 6% 底 + 主题色不透明描边”的样式，不要出现截断式标题。',
-    '- 所有画框标题必须自然、完整、可读，不要截断，不要附加类型尾缀。',
-    '- 文案尽量不超过 5 个字；超过 5 个字必须拆成主副标题（V2）。',
-  ].join('\n')
-}
-
 function layoutDecisionSystemSnippet(ld: LayoutDecision): string {
   const lines = [
     '【布局决策（轻量，仅版式/引擎偏好；具体节点与章节由 Planner JSON 与用户输入决定）】',
@@ -282,7 +130,6 @@ function layoutDecisionSystemSnippet(ld: LayoutDecision): string {
     `- layoutMode: ${ld.layoutMode}`,
     `- complexityMode: ${ld.complexityMode}`,
     `- profileId: ${ld.profileId}`,
-    `- preserveBusinessBigMap: ${ld.preserveBusinessBigMap}`,
   ]
   if (ld.diagramType === 'flowchart') {
     lines.push(
@@ -290,419 +137,6 @@ function layoutDecisionSystemSnippet(ld: LayoutDecision): string {
     )
   }
   return lines.join('\n')
-}
-
-function normalizeBusinessBigMapDraft(draft: AiDiagramDraft): AiDiagramDraft {
-  const shorten = (s: string, max = 7) => {
-    const t = s.trim()
-    return t.length > max ? t.slice(0, max) : t
-  }
-  const rawNodes = Array.isArray(draft.nodes) ? draft.nodes : []
-  const frameById = new Map<string, any>()
-  for (const n of rawNodes as any[]) {
-    if (n && typeof n === 'object' && n.type === 'group' && n.data?.role === 'frame') frameById.set(n.id, n)
-  }
-
-  const parentOf = (id: string): string | null => {
-    const n = frameById.get(id)
-    if (!n?.parentId) return null
-    return frameById.has(n.parentId) ? n.parentId : null
-  }
-
-  const childrenOf = (id: string) => {
-    const out: string[] = []
-    for (const [fid, n] of frameById.entries()) {
-      if (n.parentId === id) out.push(fid)
-    }
-    return out
-  }
-
-  const topFrames: string[] = []
-  for (const [fid, n] of frameById.entries()) {
-    if (!n.parentId || !frameById.has(n.parentId)) topFrames.push(fid)
-  }
-
-  const depthFromRoot = (rootId: string, id: string) => {
-    let d = 0
-    let cur = id
-    const seen = new Set<string>()
-    while (cur !== rootId) {
-      if (seen.has(cur)) break
-      seen.add(cur)
-      const p = parentOf(cur)
-      if (!p) break
-      d += 1
-      cur = p
-    }
-    return cur === rootId ? d : -1
-  }
-
-  const ancestorAtDepth = (rootId: string, id: string, targetDepth: number): string | null => {
-    let cur = id
-    let d = depthFromRoot(rootId, id)
-    if (d < 0) return null
-    const seen = new Set<string>()
-    while (d > targetDepth) {
-      if (seen.has(cur)) break
-      seen.add(cur)
-      const p = parentOf(cur)
-      if (!p) break
-      cur = p
-      d -= 1
-    }
-    return d === targetDepth ? cur : null
-  }
-
-  const collectLeafDepths = (rootId: string) => {
-    const depths: number[] = []
-    const stack = [rootId]
-    const seen = new Set<string>()
-    while (stack.length) {
-      const cur = stack.pop() as string
-      if (seen.has(cur)) continue
-      seen.add(cur)
-      const kids = childrenOf(cur)
-      if (kids.length === 0) {
-        const d = depthFromRoot(rootId, cur)
-        if (d >= 1) depths.push(d)
-        continue
-      }
-      for (const k of kids) stack.push(k)
-    }
-    return depths
-  }
-
-  // 同一父画框（顶层 frame）下只允许一种嵌套深度样式：
-  // 选该子树最浅叶子深度作为目标层级，把更深层扁平到该层级。
-  for (const rootId of topFrames) {
-    const leafDepths = collectLeafDepths(rootId)
-    if (!leafDepths.length) continue
-    const targetLeafDepth = Math.max(1, Math.min(...leafDepths))
-    for (const [fid, n] of frameById.entries()) {
-      if (fid === rootId) continue
-      const d = depthFromRoot(rootId, fid)
-      if (d <= targetLeafDepth || d < 0) continue
-      const anchor = ancestorAtDepth(rootId, fid, targetLeafDepth - 1)
-      if (!anchor) continue
-      n.parentId = anchor
-    }
-  }
-
-  let nodes = rawNodes.map((n: any) => {
-    if (!n || typeof n !== 'object') return n
-    const data = { ...(n.data ?? {}) }
-    if (typeof data.title === 'string') {
-      data.title = shorten(
-        data.title
-        .replace(/\s*[｜|]\s*Type\s*[A-F]\s*$/i, '')
-        .replace(/\s*[｜|]\s*T(?:ype)?\s*[A-F]?\s*$/i, ''),
-      )
-    }
-    if (typeof data.label === 'string') {
-      data.label = shorten(
-        data.label
-        .replace(/\s*[｜|]\s*Type\s*[A-F]\s*$/i, '')
-        .replace(/\s*[｜|]\s*T(?:ype)?\s*[A-F]?\s*$/i, ''),
-      )
-    }
-    if (typeof data.subtitle === 'string') {
-      data.subtitle = shorten(data.subtitle)
-    }
-    return { ...n, data }
-  })
-  // 结构修正：消除“子画框仅 1 个节点”的嵌套。
-  // 若某子画框仅包含 1 个 quad 且不包含子画框，则将该 quad 提升到父画框并删除该子画框。
-  const byParent = new Map<string, any[]>()
-  for (const n of nodes as any[]) {
-    if (!n?.parentId) continue
-    const arr = byParent.get(n.parentId) ?? []
-    arr.push(n)
-    byParent.set(n.parentId, arr)
-  }
-  const isFrameNode = (n: any) => n?.type === 'group' && n?.data?.role === 'frame'
-  const removeFrameIds = new Set<string>()
-  for (const f of nodes as any[]) {
-    if (!isFrameNode(f)) continue
-    if (!f.parentId) continue
-    const kids = byParent.get(f.id) ?? []
-    const childFrames = kids.filter((k) => isFrameNode(k))
-    const childQuads = kids.filter((k) => k?.type === 'quad')
-    if (childFrames.length === 0 && childQuads.length === 1) {
-      const only = childQuads[0]
-      const fx = Number(f?.position?.x ?? 0)
-      const fy = Number(f?.position?.y ?? 0)
-      const qx = Number(only?.position?.x ?? 0)
-      const qy = Number(only?.position?.y ?? 0)
-      only.parentId = f.parentId
-      only.position = { x: qx + fx, y: qy + fy }
-      removeFrameIds.add(f.id)
-    }
-  }
-  if (removeFrameIds.size > 0) {
-    nodes = (nodes as any[]).filter((n) => !removeFrameIds.has(n.id))
-  }
-
-  // 结构修正：同一父画框下禁止混用不同嵌套层级。
-  // 策略：统一向更扁平层级收敛（case2），避免同层既有“子画框直接节点”又有“子画框再嵌套子画框”。
-  const isFrameNode2 = (n: any) => n?.type === 'group' && n?.data?.role === 'frame'
-  let changed = true
-  while (changed) {
-    changed = false
-    const byParent2 = new Map<string, any[]>()
-    for (const n of nodes as any[]) {
-      if (!n?.parentId) continue
-      const arr = byParent2.get(n.parentId) ?? []
-      arr.push(n)
-      byParent2.set(n.parentId, arr)
-    }
-    const removeIds = new Set<string>()
-    const frames = (nodes as any[]).filter((n) => isFrameNode2(n))
-
-    // A) 父画框内同时存在 direct quad 与 child frame：扁平化 child frame 到父画框。
-    for (const p of frames) {
-      const kids = byParent2.get(p.id) ?? []
-      const directFrames = kids.filter((k) => isFrameNode2(k))
-      const directQuads = kids.filter((k) => k?.type === 'quad')
-      if (directFrames.length === 0 || directQuads.length === 0) continue
-      for (const cf of directFrames) {
-        const fx = Number(cf?.position?.x ?? 0)
-        const fy = Number(cf?.position?.y ?? 0)
-        const cKids = byParent2.get(cf.id) ?? []
-        for (const ck of cKids) {
-          const kx = Number(ck?.position?.x ?? 0)
-          const ky = Number(ck?.position?.y ?? 0)
-          ck.parentId = p.id
-          ck.position = { x: kx + fx, y: ky + fy }
-        }
-        removeIds.add(cf.id)
-        changed = true
-      }
-    }
-
-    // B) 父画框内 child frame 层级混用：把更深层 flatten 到一致层级（case2）。
-    for (const p of frames) {
-      const kids = byParent2.get(p.id) ?? []
-      const directFrames = kids.filter((k) => isFrameNode2(k))
-      if (directFrames.length <= 1) continue
-      const hasGrand = directFrames.map((cf) => ((byParent2.get(cf.id) ?? []).some((x) => isFrameNode2(x))))
-      const hasDeep = hasGrand.some(Boolean)
-      const hasShallow = hasGrand.some((x) => !x)
-      if (!hasDeep || !hasShallow) continue
-      for (let i = 0; i < directFrames.length; i += 1) {
-        if (!hasGrand[i]) continue
-        const cf = directFrames[i]
-        const gfs = (byParent2.get(cf.id) ?? []).filter((x) => isFrameNode2(x))
-        for (const gf of gfs) {
-          const gfx = Number(gf?.position?.x ?? 0)
-          const gfy = Number(gf?.position?.y ?? 0)
-          const gKids = byParent2.get(gf.id) ?? []
-          for (const gk of gKids) {
-            const kx = Number(gk?.position?.x ?? 0)
-            const ky = Number(gk?.position?.y ?? 0)
-            gk.parentId = cf.id
-            gk.position = { x: kx + gfx, y: ky + gfy }
-          }
-          removeIds.add(gf.id)
-          changed = true
-        }
-      }
-    }
-
-    if (removeIds.size > 0) {
-      nodes = (nodes as any[]).filter((n) => !removeIds.has(n.id))
-    }
-  }
-
-  return {
-    ...draft,
-    nodes,
-    edges: [],
-  }
-}
-
-type NestingDepthKind = 'nest-1' | 'nest-2' | 'nest-3'
-
-function analyzeBusinessNestingCoverage(draft: AiDiagramDraft) {
-  const nodes = Array.isArray(draft.nodes) ? (draft.nodes as any[]) : []
-  const frameById = new Map<string, any>()
-  for (const n of nodes) {
-    if (n && typeof n === 'object' && n.type === 'group' && n.data?.role === 'frame') frameById.set(n.id, n)
-  }
-  const childCount = new Map<string, number>()
-  for (const n of frameById.values()) {
-    if (!n.parentId || !frameById.has(n.parentId)) continue
-    childCount.set(n.parentId, (childCount.get(n.parentId) ?? 0) + 1)
-  }
-  const topFrames = [...frameById.values()].filter((f) => !f.parentId || !frameById.has(f.parentId))
-  const kinds = new Set<NestingDepthKind>()
-  for (const top of topFrames) {
-    const hasChild = (childCount.get(top.id) ?? 0) > 0
-    if (!hasChild) {
-      kinds.add('nest-1')
-      continue
-    }
-    // If any grand-child frame exists under this chapter, treat as 3-level.
-    let hasGrand = false
-    for (const f of frameById.values()) {
-      const p = f.parentId
-      if (!p || !frameById.has(p)) continue
-      const pp = frameById.get(p)?.parentId
-      if (pp === top.id) {
-        hasGrand = true
-        break
-      }
-    }
-    kinds.add(hasGrand ? 'nest-3' : 'nest-2')
-  }
-  return {
-    kinds,
-    count: kinds.size,
-    onlyKind: kinds.size === 1 ? [...kinds][0] : null,
-  }
-}
-
-function analyzeBusinessFrameUniformity(draft: AiDiagramDraft): {
-  ok: boolean
-  mixedParentFrameIds: string[]
-} {
-  const nodes = Array.isArray(draft.nodes) ? (draft.nodes as any[]) : []
-  const frameById = new Map<string, any>()
-  for (const n of nodes) {
-    if (n && typeof n === 'object' && n.type === 'group' && n.data?.role === 'frame') frameById.set(n.id, n)
-  }
-
-  const frameChildCount = new Map<string, number>()
-  for (const f of frameById.values()) {
-    if (!f.parentId || !frameById.has(f.parentId)) continue
-    frameChildCount.set(f.parentId, (frameChildCount.get(f.parentId) ?? 0) + 1)
-  }
-
-  // Case 1 relative to a parent means: parent has direct quad nodes and no child frames.
-  // We only care if a parent mixes "direct quad" with "child frames", or mixes case-2 vs case-3
-  // among its direct child frames.
-  const directQuadCountByFrame = new Map<string, number>()
-  for (const n of nodes) {
-    if (!n || typeof n !== 'object') continue
-    if (n.type !== 'quad') continue
-    if (!n.parentId) continue
-    if (!frameById.has(n.parentId)) continue
-    directQuadCountByFrame.set(n.parentId, (directQuadCountByFrame.get(n.parentId) ?? 0) + 1)
-  }
-
-  const mixedParentFrameIds: string[] = []
-
-  for (const parent of frameById.values()) {
-    const parentId = parent.id
-    const directChildFrames = [...frameById.values()].filter((f) => f.parentId === parentId)
-    if (directChildFrames.length === 0) continue // Case 1 is fine (only quads inside parent), no further check.
-
-    const hasDirectQuads = (directQuadCountByFrame.get(parentId) ?? 0) > 0
-    if (hasDirectQuads) {
-      mixedParentFrameIds.push(parentId)
-      continue
-    }
-
-    let hasCase2Child = false
-    let hasCase3Child = false
-    for (const childFrame of directChildFrames) {
-      const childHasGrandChildFrames = (frameChildCount.get(childFrame.id) ?? 0) > 0
-      if (childHasGrandChildFrames) hasCase3Child = true
-      else hasCase2Child = true
-      if (hasCase2Child && hasCase3Child) {
-        mixedParentFrameIds.push(parentId)
-        break
-      }
-    }
-  }
-
-  return {
-    ok: mixedParentFrameIds.length === 0,
-    mixedParentFrameIds,
-  }
-}
-
-function validateBusinessPlannerJson(obj: any): { ok: boolean; errors: string[] } {
-  const errors: string[] = []
-  const frames = obj?.structure?.framesOrRoot
-
-  if (!Array.isArray(frames)) {
-    errors.push('structure.framesOrRoot 必须是数组')
-    return { ok: false, errors }
-  }
-
-  const hasCase = new Set<string>()
-
-  const isString = (v: any): v is string => typeof v === 'string' && v.trim().length > 0
-  const isStringArray = (v: any): v is string[] => Array.isArray(v) && v.every((x) => isString(x))
-
-  const frameCaseAllowed = new Set(['case1', 'case2', 'case3'])
-  const frameTitles = new Set<string>()
-
-  for (let i = 0; i < frames.length; i += 1) {
-    const f = frames[i]
-    if (!f || typeof f !== 'object') {
-      errors.push(`framesOrRoot[${i}] 必须是对象`)
-      continue
-    }
-
-    if (!isString(f.title)) {
-      errors.push(`framesOrRoot[${i}].title 必须是非空字符串`)
-    } else {
-      const key = String(f.title).trim()
-      if (frameTitles.has(key)) errors.push(`framesOrRoot[${i}].title 与其他章节重复：${key}`)
-      frameTitles.add(key)
-    }
-
-    if (!frameCaseAllowed.has(f.case)) errors.push(`framesOrRoot[${i}].case 必须是 case1|case2|case3`)
-    if (frameCaseAllowed.has(f.case)) hasCase.add(f.case)
-
-    if (!isStringArray(f.directPoints)) errors.push(`framesOrRoot[${i}].directPoints 必须是 string[]`)
-    if (!Array.isArray(f.children)) errors.push(`framesOrRoot[${i}].children 必须是数组`)
-
-    if (f.case === 'case1') {
-      if (Array.isArray(f.children) && f.children.length > 0) errors.push(`framesOrRoot[${i}] case1 时 children 必须为空数组`)
-      if (Array.isArray(f.directPoints) && f.directPoints.length === 0) errors.push(`framesOrRoot[${i}] case1 时 directPoints 至少 1 个`)
-    }
-
-    if (f.case === 'case2') {
-      if (Array.isArray(f.directPoints) && f.directPoints.length > 0) errors.push(`framesOrRoot[${i}] case2 时 directPoints 必须为空数组 []`)
-      if (Array.isArray(f.children) && f.children.length === 0) errors.push(`framesOrRoot[${i}] case2 时 children 至少 1 个 group`)
-    }
-
-    if (f.case === 'case3') {
-      if (Array.isArray(f.directPoints) && f.directPoints.length > 0) errors.push(`framesOrRoot[${i}] case3 时 directPoints 必须为空数组 []`)
-      if (Array.isArray(f.children) && f.children.length === 0) errors.push(`framesOrRoot[${i}] case3 时 children 至少 1 个 group`)
-    }
-
-    // children 的基本结构校验（case1 不要求 children 为空以外的 children 字段）
-    if (Array.isArray(f.children)) {
-      const childTitles = new Set<string>()
-      f.children.forEach((c: any, j: number) => {
-        if (!c || typeof c !== 'object') {
-          errors.push(`framesOrRoot[${i}].children[${j}] 必须是对象`)
-          return
-        }
-        if (!isString(c.title)) {
-          errors.push(`framesOrRoot[${i}].children[${j}].title 必须是非空字符串`)
-        } else {
-          const ck = String(c.title).trim()
-          if (childTitles.has(ck)) errors.push(`framesOrRoot[${i}].children[${j}].title 在同层重复：${ck}`)
-          childTitles.add(ck)
-        }
-        if (!isStringArray(c.points)) errors.push(`framesOrRoot[${i}].children[${j}].points 必须是 string[]`)
-        // 同层纯度：任何一层都不允许“单点套壳”导致的结构混搭。
-        if ((f.case === 'case2' || f.case === 'case3') && Array.isArray(c.points) && c.points.length < 2) {
-          errors.push(`framesOrRoot[${i}].children[${j}].points 至少 2 项，避免同层混搭/单点嵌套`)
-        }
-      })
-    }
-  }
-
-  if (!hasCase.has('case1')) errors.push('必须至少包含 1 个 case1 的章节 frame')
-  if (!hasCase.has('case2')) errors.push('必须至少包含 1 个 case2 的章节 frame')
-  if (!hasCase.has('case3')) errors.push('必须至少包含 1 个 case3 的章节 frame')
-
-  return { ok: errors.length === 0, errors }
 }
 
 async function openRouterChatComplete(args: {
@@ -933,7 +367,6 @@ export const DEFAULT_MERMAID_USER_TEMPLATE = ['{{prompt}}'].join('\n')
 type ComplexityMode = 'compact' | 'chapters'
 
 const SCENE_ROUTER_SCENE_KINDS: SceneRouteV2['sceneKind'][] = [
-  'business-big-map',
   'agent-flow',
   'approval-flow',
   'data-pipeline',
@@ -952,23 +385,21 @@ const SCENE_ROUTER_SYSTEM_PROMPT = [
   '你的输出必须是“纯 JSON”，不能有任何多余文本或代码块。',
   'JSON 格式（新格式，优先使用）：',
   '{',
-  '  "pipeline": "business-big-map" | "mind-map" | "flowchart",',
-  '  "sceneKind": "business-big-map|agent-flow|approval-flow|data-pipeline|business-flow|hierarchy|mind-map|other",',
+  '  "pipeline": "mind-map" | "flowchart",',
+  '  "sceneKind": "agent-flow|approval-flow|data-pipeline|business-flow|hierarchy|mind-map|other",',
   '  "complexityMode": "compact" | "normal" | "chapters",',
   '  "layoutProfileKey": "<仅当 pipeline=flowchart 时必填，6 个布局 profile 名称之一>" | null',
   '}',
   '',
-  `当 pipeline=business-big-map：layoutProfileKey 必须为 null；sceneKind 建议 business-big-map；complexityMode 建议 normal 或 chapters。`,
   `当 pipeline=mind-map：layoutProfileKey 必须为 null；sceneKind 建议 mind-map。`,
   `当 pipeline=flowchart：layoutProfileKey 必须从下列 6 个名称中精确选一个：`,
   ...LAYOUT_PROFILE_KEYS.map((k) => `  - ${k}`),
   '',
   '路由规则：',
-  '- 战略全景/能力地图/业务总览大图 → pipeline=business-big-map',
   '- 思维导图/脑图/树状发散 → pipeline=mind-map',
   '- 其它流程/架构/旅程等 → pipeline=flowchart，并选对 layoutProfileKey',
   '',
-  '兼容说明：若你更熟悉旧格式，也可输出 {"templateKey":"...","sceneKind":"...","complexityMode":"compact|chapters"}（8 个旧模板名之一），系统会自动转换。',
+  '兼容说明：若你更熟悉旧格式，也可输出 {"templateKey":"...","sceneKind":"...","complexityMode":"compact|chapters"}（7 个旧模板名之一），系统会自动转换。',
   '',
   '默认：不确定时用 flowchart + Frontend-Backend Flow Template + compact。',
 ].join('\n')
@@ -993,7 +424,7 @@ const DIAGRAM_PLANNER_SYSTEM_PROMPT = [
   '{',
   '  "templateKey": string,',
   '  "complexityMode": "compact" | "chapters",',
-  '（templateKey：Business Big Map Template | Mind Map Template | 或 6 个 flowchart layoutProfile 名称之一）',
+  '（templateKey：Mind Map Template | 或 6 个 flowchart layoutProfile 名称之一）',
   '  "theme": string,',
   '  "structure": {',
   '    "framesOrRoot": [',
@@ -1020,18 +451,6 @@ const DIAGRAM_PLANNER_SYSTEM_PROMPT = [
   '  }',
   '}',
   '',
-  '当 templateKey 为 Business Big Map Template：',
-  '- 输出必须能被解释为“严格三层树”：L1=frame、L2=group、L3=subgroup/point；禁止同一父节点下混用层级类型。',
-  '- framesOrRoot 对应一级画框(frame)，并且每个 frame 必须给出 nesting case：case1/case2/case3。',
-  '- 所有节点文案（title/directPoints/children.title/children.points）必须精简：每条不超过 7 个字。',
-  '- 禁止出现“子画框内仅 1 个节点”的结构；若某层仅 1 个要点，应直接并入上层，不再额外嵌套。',
-  '- case1：frame 直接承载要点（directPoints），frame 的 children 必须为空数组（不出现任何子画框）。',
-  '- case2：frame 下的 children 对应 group（模块），每个 children.points 对应该 group 内的 quad 要点（直接 quad，不创建 subgroup）。',
-  '- case3：frame 下的 children 对应 group（模块），每个 children.points 对应 subgroup 标题（每个 subgroup 再承载 1 个 quad，要点 label 使用该标题）。',
-  '- case2/case3 时 directPoints 必须为空数组 []（禁止把要点同时放在 frame 与子模块两处）。',
-  '- 同层纯度（强制）：同一个 frame 内只允许一种 case，不允许混搭 case2/case3；同一个 group 下 points 不能为空且不得只含 1 项。',
-  '- 明确哪些 frame/group 属于主表达区、哪些属于支撑层（写进 mainChain/supportStrategy 字段）；避免写出任何连线/边。',
-  '',
   '当 templateKey 为 Mind Map Template：',
   '- framesOrRoot 的第一个元素作为中心主题（root）；其 children 为一级分支；points 为二级/要点节点。',
   '- 必须确保至少 3 层深度：根(Depth0) -> 一级分支(Depth1) -> 二级要点(Depth2)。',
@@ -1056,15 +475,12 @@ function parseSceneRouteJson(raw: string): SceneRouteV2 | null {
     const obj = JSON.parse(cleaned)
 
     const pipelineRaw = obj?.pipeline as string | undefined
-    if (pipelineRaw === 'business-big-map' || pipelineRaw === 'mind-map' || pipelineRaw === 'flowchart') {
+    if (pipelineRaw === 'mind-map' || pipelineRaw === 'flowchart') {
       const sceneKind = obj?.sceneKind as SceneRouteV2['sceneKind'] | undefined
       if (!sceneKind || !SCENE_ROUTER_SCENE_KINDS.includes(sceneKind)) return null
       const cm = obj?.complexityMode as string | undefined
       if (cm !== 'compact' && cm !== 'normal' && cm !== 'chapters') return null
 
-      if (pipelineRaw === 'business-big-map') {
-        return { sceneKind: 'business-big-map', complexityMode: cm, layoutProfileKey: null, pipeline: 'business-big-map' }
-      }
       if (pipelineRaw === 'mind-map') {
         return { sceneKind: 'mind-map', complexityMode: cm, layoutProfileKey: null, pipeline: 'mind-map' }
       }
@@ -1077,7 +493,6 @@ function parseSceneRouteJson(raw: string): SceneRouteV2 | null {
     if (templateKey) {
       const legacyEight = new Set<string>([
         ...LAYOUT_PROFILE_KEYS,
-        'Business Big Map Template',
         'Mind Map Template',
       ])
       if (!legacyEight.has(templateKey)) return null
@@ -1149,34 +564,6 @@ async function openRouterDiagramPlanner(
     obj = JSON.parse(cleaned)
   } catch {
     throw new Error('Diagram Planner 输出不是合法 JSON')
-  }
-  // 业务大图：文案硬限制（每个节点 <= 7 字），避免标签过长导致布局失控。
-  if (templateKey === 'Business Big Map Template' && obj && typeof obj === 'object') {
-    const shorten = (s: string, max = 7) => {
-      const t = s.trim()
-      return t.length > max ? t.slice(0, max) : t
-    }
-    const planner = obj as any
-    const frames = Array.isArray(planner?.structure?.framesOrRoot) ? planner.structure.framesOrRoot : []
-    for (const f of frames) {
-      if (f && typeof f === 'object') {
-        if (typeof f.title === 'string') f.title = shorten(f.title)
-        if (Array.isArray(f.directPoints)) {
-          f.directPoints = f.directPoints.map((x: any) => (typeof x === 'string' ? shorten(x) : x))
-        }
-        if (Array.isArray(f.children)) {
-          f.children = f.children.map((c: any) => {
-            if (!c || typeof c !== 'object') return c
-            const cc = { ...c }
-            if (typeof cc.title === 'string') cc.title = shorten(cc.title)
-            if (Array.isArray(cc.points)) {
-              cc.points = cc.points.map((x: any) => (typeof x === 'string' ? shorten(x) : x))
-            }
-            return cc
-          })
-        }
-      }
-    }
   }
   // 压缩输出，减少 Mermaid 生成器的 token 消耗。
   return JSON.stringify(obj)
@@ -1253,27 +640,6 @@ export async function openRouterGenerateDiagram(opts: OpenRouterChatOptions): Pr
     })
   }
 
-  const runBusinessBigMapPlanner = async () => {
-    route = {
-      sceneKind: 'business-big-map',
-      complexityMode: 'normal',
-      layoutProfileKey: null,
-      pipeline: 'business-big-map',
-    }
-    chosen = 'Business Big Map Template'
-    layoutDecision = resolveLayoutDecision(route)
-    plannerText = await openRouterDiagramPlanner({
-      apiKey: key,
-      model,
-      prompt: planningPrompt,
-      signal,
-      timeoutMs: timeoutMsForPipeline,
-      templateKey: chosen,
-      complexityMode: toPlannerComplexity(route.complexityMode),
-      extraUserHint: commonPlannerLogicalHint,
-    })
-  }
-
   const runFlowchartByLayoutSelector = async () => {
     const sel = await openRouterSelectLayoutProfile({
       apiKey: key,
@@ -1310,9 +676,6 @@ export async function openRouterGenerateDiagram(opts: OpenRouterChatOptions): Pr
     if (forceMindMap) {
       report('Diagram Planner（思维导图）', '请求中…')
       await runMindMapPlanner()
-    } else if (sceneHint === 'business-big-map') {
-      report('Diagram Planner（业务大图）', '请求中…')
-      await runBusinessBigMapPlanner()
     } else if (sceneHint === 'flowchart') {
       report('布局选择器', '请求中…')
       await runFlowchartByLayoutSelector()
@@ -1327,12 +690,7 @@ export async function openRouterGenerateDiagram(opts: OpenRouterChatOptions): Pr
       })
       report('场景路由完成', `pipeline=${route.pipeline}`)
       layoutDecision = resolveLayoutDecision(route)
-      chosen =
-        route.pipeline === 'business-big-map'
-          ? 'Business Big Map Template'
-          : route.pipeline === 'mind-map'
-            ? 'Mind Map Template'
-            : (route.layoutProfileKey as LayoutProfileKey)
+      chosen = route.pipeline === 'mind-map' ? 'Mind Map Template' : (route.layoutProfileKey as LayoutProfileKey)
       report('Diagram Planner', `${chosen}`)
       plannerText = await openRouterDiagramPlanner({
         apiKey: key,
@@ -1352,12 +710,6 @@ export async function openRouterGenerateDiagram(opts: OpenRouterChatOptions): Pr
     if (mindMapFromHint || mindMapFromText) {
       try {
         await runMindMapPlanner()
-      } catch {
-        plannerText = null
-      }
-    } else if (sceneHint === 'business-big-map') {
-      try {
-        await runBusinessBigMapPlanner()
       } catch {
         plannerText = null
       }
@@ -1386,109 +738,16 @@ export async function openRouterGenerateDiagram(opts: OpenRouterChatOptions): Pr
     plannerText ? `Planner 已就绪（约 ${plannerText.length} 字）` : '无 Planner，将用用户原文',
   )
 
-  // Business Big Map：对 Planner JSON 做强校验，不合格则重生成（失败才回退到原始 prompt）。
-  if (chosen === 'Business Big Map Template' && plannerText) {
-    const plannerComplexityForBbm = toPlannerComplexity(route?.complexityMode ?? 'chapters')
-    let ok = false
-    let lastErrors: string[] = []
-    const maxPlannerAttempts = 3
-
-    report('业务大图 Planner 校验', '检查 JSON 结构（严格树分层）…')
-    for (let i = 0; i < maxPlannerAttempts; i += 1) {
-      try {
-        const parsed = JSON.parse(plannerText)
-        const v = validateBusinessPlannerJson(parsed)
-        if (v.ok) {
-          ok = true
-          // 固化为紧凑 JSON，作为后续 Mermaid 生成唯一输入。
-          plannerText = JSON.stringify(parsed)
-          break
-        }
-        lastErrors = v.errors
-      } catch (e: any) {
-        lastErrors = [`Planner JSON parse 失败：${String(e?.message ?? e)}`]
-      }
-
-      if (i === maxPlannerAttempts - 1) break
-      report('Diagram Planner（业务大图修正）', `第 ${i + 1} 次重试…`)
-      plannerText = await openRouterDiagramPlanner({
-        apiKey: key,
-        model,
-        prompt: planningPrompt,
-        signal,
-        timeoutMs: timeoutMsForPipeline,
-        templateKey: chosen,
-        complexityMode: plannerComplexityForBbm,
-        extraUserHint: [
-          '你输出的 Planner JSON 不符合 Business Big Map 的严格树分层约束。',
-          '请严格按约束重生成：',
-          ...lastErrors.map((x) => `- ${x}`),
-          '',
-          '再次提醒：必须是严格 JSON，不允许多余文本。',
-        ].join('\n'),
-      })
-    }
-
-    if (!ok) {
-      report('业务大图 Planner 仍不合格', '终止：禁止回退原文，避免破坏层级纯度')
-      throw new Error(`业务大图 Planner 校验未通过：${lastErrors.slice(0, 3).join('；') || '结构不合法'}`)
-    } else {
-      report('业务大图 Planner 校验', '通过')
-    }
-  }
-
   const effectivePrompt = plannerText ?? planningPrompt
-  if (chosen === 'Business Big Map Template' && !plannerText) {
-    throw new Error('业务大图缺少合法 Planner JSON，已中止生成')
-  }
-
-  // 为了最大化保留既有业务大图视觉：frameType/businessStyle 的判断尽量基于原始用户意图，
-  // 生成阶段才使用 plannerText 做结构压缩与去噪。
-  const frameType =
-    chosen === 'Business Big Map Template'
-      ? (report('画框类型选择器', '请求中…'),
-        await openRouterSelectFrameType({ apiKey: key, model, prompt: planningPrompt, signal, timeoutMs: timeoutMsForPipeline }))
-      : null
-  if (frameType) report('画框类型', String(frameType))
-
-  const businessStyle =
-    chosen === 'Business Big Map Template'
-      ? (report('业务样式选择器', '请求中…'),
-        await openRouterSelectBusinessStyle({
-          apiKey: key,
-          model,
-          prompt: planningPrompt,
-          signal,
-          timeoutMs: timeoutMsForPipeline,
-        }))
-      : null
-  if (businessStyle) report('业务样式', String(businessStyle))
 
   if (!route || !layoutDecision) {
     throw new Error('内部错误：Scene route 或布局决策缺失')
   }
 
-  const baseMermaidSystem =
-    chosen === 'Business Big Map Template'
-      ? DEFAULT_MERMAID_SYSTEM_PROMPT.replace('第一行必须严格为：flowchart LR', '第一行必须严格为：flowchart TB').replace(
-          '  - flowchart LR',
-          '  - flowchart TB',
-        )
-      : DEFAULT_MERMAID_SYSTEM_PROMPT
+  const baseMermaidSystem = DEFAULT_MERMAID_SYSTEM_PROMPT
 
   let system: string
-  if (chosen === 'Business Big Map Template') {
-    system = [
-      baseMermaidSystem,
-      '',
-      BUSINESS_BIG_MAP_SYSTEM_PROMPT,
-      '',
-      businessBigMapDynamicRenderRules(frameType, businessStyle),
-      '',
-      '【边数量控制（强制）】',
-      '- 业务大图必须为 0 条边（edges = 0）',
-    ].join('\n')
-  } else if (chosen === 'Mind Map Template') {
+  if (chosen === 'Mind Map Template') {
     system = [
       baseMermaidSystem,
       '',
@@ -1533,23 +792,6 @@ export async function openRouterGenerateDiagram(opts: OpenRouterChatOptions): Pr
     '7) Mermaid 第一行必须是 flowchart LR。',
   ].join('\n')
 
-  const businessJsonMermaidHint = [
-    '【必须依据 Planner JSON 生成业务大图 Mermaid】',
-    '你在 user 里收到的是严格 JSON（来自 Diagram Planner）。请严格按 JSON 字段生成，不要根据语义自行推断嵌套层级。',
-    '文案约束：所有节点标题必须不超过 7 个字。',
-    '结构约束：禁止生成“子画框内仅1个节点”的嵌套；若只有1个要点，直接并入上层。',
-    '结构映射：',
-    '1) chapters：structure.framesOrRoot 中每个 frame 对应一个“章节 frame”subgraph。',
-    '2) frame.case 决定该章节内部的“嵌套层级类型”（且仅此一个类型）：',
-    '   - case1：只在章节 frame 内生成 quad 节点（每个 directPoints 生成一个 quad）。禁止生成任何二级/三级 subgraph。',
-    '   - case2：章节 frame 内为每个 children[i] 生成 group 子 subgraph；在每个 group 内只生成 quad（children[i].points）。禁止生成任何 subgroup。',
-    '   - case3：章节 frame 内为每个 children[i] 生成 group 子 subgraph；在每个 group 内为 children[i].points 的每个字符串生成 subgroup 子 subgraph；每个 subgroup 里只生成 1 个 quad（quad 标题使用该字符串）。',
-    '3) 强制一致性：',
-    '   - 同一个章节 frame 内不得混合 case2/case3，也不得混合 quad 与 subgroup 的生成方式。',
-    '   - 若 JSON 某字段为空数组，则忽略对应生成。',
-    '4) 禁止：业务大图不要输出任何连线（不允许 -->）。',
-  ].join('\n')
-
   const generateOnce = async (extraUserHint?: string, mermaidStepLabel?: string) => {
     report('大模型生成 Mermaid', mermaidStepLabel ?? '等待模型返回…')
     const userPrompt = extraUserHint ? `${user}\n\n${extraUserHint}` : user
@@ -1584,12 +826,7 @@ export async function openRouterGenerateDiagram(opts: OpenRouterChatOptions): Pr
     if (!content) throw (lastError instanceof Error ? lastError : new Error('大模型生成 Mermaid 失败'))
     report('Mermaid 文本已返回', `约 ${content.length} 字，解析与物化中…`)
 
-    const mermaidLayoutProfile: string | undefined =
-      chosen === 'Business Big Map Template'
-        ? 'business-big-map'
-        : chosen === 'Mind Map Template'
-          ? 'mind-map'
-          : 'flowchart'
+    const mermaidLayoutProfile: string | undefined = chosen === 'Mind Map Template' ? 'mind-map' : 'flowchart'
 
     const draft = await convertMermaidToAiDraft(content, {
       layoutProfile: mermaidLayoutProfile,
@@ -1599,90 +836,41 @@ export async function openRouterGenerateDiagram(opts: OpenRouterChatOptions): Pr
     return draft
   }
 
-  if (chosen !== 'Business Big Map Template') {
-    if (chosen === 'Mind Map Template') {
-      const dm = await generateOnce(mindMapJsonMermaidHint, '思维导图')
-      report('生成完成', '思维导图')
-      return dm
-    }
-    const d1 = await generateOnce(undefined, '主生成')
-
-    // 复杂度守门（非 business big map）：首次过密则自动二次重生并强制更简。
-    if ((route?.sceneKind ?? '') !== 'business-big-map') {
-      const nodesCount = Array.isArray(d1.nodes) ? d1.nodes.length : 0
-      const edgesCount = Array.isArray(d1.edges) ? d1.edges.length : 0
-      const tooComplex = nodesCount > FLOWCHART_GUARD_NODE_MAX || edgesCount > FLOWCHART_GUARD_EDGE_MAX
-      if (tooComplex) {
-        report('复杂度守门触发', `首次结果过密：nodes=${nodesCount}, edges=${edgesCount}，执行强压缩重生…`)
-        const d2 = await generateOnce(
-          [
-            '【复杂度守门（强制重生）】首次结果过于复杂，必须显著简化：',
-            `- 节点上限：${FLOWCHART_GUARD_NODE_MAX}`,
-            `- 连线上限：${FLOWCHART_GUARD_EDGE_MAX}`,
-            '- 主链仅保留 4~8 步；分支最多 2 个；回流最多 1 条。',
-            '- 合并重复/近义节点；禁止碎节点、禁止跨分支大量连线、禁止全连接。',
-            '- 若信息过多，宁可省略次要细节，不要牺牲可读性。',
-          ].join('\n'),
-          '复杂度守门重生',
-        )
-        const nodes2 = Array.isArray(d2.nodes) ? d2.nodes.length : 0
-        const edges2 = Array.isArray(d2.edges) ? d2.edges.length : 0
-        const stillTooComplex = nodes2 > FLOWCHART_GUARD_NODE_MAX || edges2 > FLOWCHART_GUARD_EDGE_MAX
-        if (stillTooComplex) {
-          report('复杂度守门结果', `重生后仍偏复杂（nodes=${nodes2}, edges=${edges2}），返回更优候选`)
-          const score1 = nodesCount + edgesCount * 0.8
-          const score2 = nodes2 + edges2 * 0.8
-          return score2 <= score1 ? d2 : d1
-        }
-        report('复杂度守门通过', `重生后收敛：nodes=${nodes2}, edges=${edges2}`)
-        return d2
-      }
-    }
-    report('生成完成', '流程图/通用')
-    return d1
+  if (chosen === 'Mind Map Template') {
+    const dm = await generateOnce(mindMapJsonMermaidHint, '思维导图')
+    report('生成完成', '思维导图')
+    return dm
   }
-
-  // 结构配额器：
-  // - 连续两次都只产出同一嵌套深度 -> 自动重试一次
-  // - 目标是最小覆盖 3 种样式（3层/2层/1层）
-  const attempts: AiDiagramDraft[] = []
-  const analyses: ReturnType<typeof analyzeBusinessNestingCoverage>[] = []
-  const uniformities: ReturnType<typeof analyzeBusinessFrameUniformity>[] = []
-  const hints = [
-    '',
-    '【结构配额器重试】请强制混合 3 种嵌套样式并显式覆盖：3层嵌套、2层嵌套、1层嵌套；不要只输出单一深度。',
-    '【结构配额器最终重试】前两次仍不达标。请优先保证 3 种嵌套样式最小覆盖，再优化美观与密度。',
-  ]
-  for (let i = 0; i < 2; i += 1) {
-    const extra = hints[i] ? `${businessJsonMermaidHint}\n\n${hints[i]}` : businessJsonMermaidHint
-    const d = await generateOnce(extra, `业务大图 第 ${i + 1}/2 轮`)
-    attempts.push(d)
-    analyses.push(analyzeBusinessNestingCoverage(d))
-    uniformities.push(analyzeBusinessFrameUniformity(d))
-    if (analyses[i].count >= 3 && uniformities[i].ok) {
-      report('生成完成', '业务大图（结构配额达标）')
-      return normalizeBusinessBigMapDraft(d)
+  const d1 = await generateOnce(undefined, '主生成')
+  const nodesCount = Array.isArray(d1.nodes) ? d1.nodes.length : 0
+  const edgesCount = Array.isArray(d1.edges) ? d1.edges.length : 0
+  const tooComplex = nodesCount > FLOWCHART_GUARD_NODE_MAX || edgesCount > FLOWCHART_GUARD_EDGE_MAX
+  if (tooComplex) {
+    report('复杂度守门触发', `首次结果过密：nodes=${nodesCount}, edges=${edgesCount}，执行强压缩重生…`)
+    const d2 = await generateOnce(
+      [
+        '【复杂度守门（强制重生）】首次结果过于复杂，必须显著简化：',
+        `- 节点上限：${FLOWCHART_GUARD_NODE_MAX}`,
+        `- 连线上限：${FLOWCHART_GUARD_EDGE_MAX}`,
+        '- 主链仅保留 4~8 步；分支最多 2 个；回流最多 1 条。',
+        '- 合并重复/近义节点；禁止碎节点、禁止跨分支大量连线、禁止全连接。',
+        '- 若信息过多，宁可省略次要细节，不要牺牲可读性。',
+      ].join('\n'),
+      '复杂度守门重生',
+    )
+    const nodes2 = Array.isArray(d2.nodes) ? d2.nodes.length : 0
+    const edges2 = Array.isArray(d2.edges) ? d2.edges.length : 0
+    const stillTooComplex = nodes2 > FLOWCHART_GUARD_NODE_MAX || edges2 > FLOWCHART_GUARD_EDGE_MAX
+    if (stillTooComplex) {
+      report('复杂度守门结果', `重生后仍偏复杂（nodes=${nodes2}, edges=${edges2}），返回更优候选`)
+      const score1 = nodesCount + edgesCount * 0.8
+      const score2 = nodes2 + edges2 * 0.8
+      return score2 <= score1 ? d2 : d1
     }
+    report('复杂度守门通过', `重生后收敛：nodes=${nodes2}, edges=${edges2}`)
+    return d2
   }
-  const sameSingleDepthTwice = analyses[0].count === 1 && analyses[1].count === 1 && analyses[0].onlyKind === analyses[1].onlyKind
-  if (sameSingleDepthTwice || analyses[1].count < 3) {
-    const d3 = await generateOnce(`${businessJsonMermaidHint}\n\n${hints[2]}`, '业务大图 第 3 轮')
-    attempts.push(d3)
-    analyses.push(analyzeBusinessNestingCoverage(d3))
-    uniformities.push(analyzeBusinessFrameUniformity(d3))
-    if (analyses[2].count >= 3 && uniformities[2].ok) {
-      report('生成完成', '业务大图（第 3 轮达标）')
-      return normalizeBusinessBigMapDraft(d3)
-    }
-  }
-  // 兜底：选覆盖度最高的一次结果
-  let bestIndex = 0
-  for (let i = 1; i < analyses.length; i += 1) {
-    const scoreI = analyses[i].count + (uniformities[i]?.ok ? 0.5 : 0)
-    const scoreBest = analyses[bestIndex].count + (uniformities[bestIndex]?.ok ? 0.5 : 0)
-    if (scoreI > scoreBest) bestIndex = i
-  }
-  report('生成完成', '业务大图（兜底选用最高分草稿）')
-  return normalizeBusinessBigMapDraft(attempts[bestIndex])
+  report('生成完成', '流程图/通用')
+  return d1
 }
 

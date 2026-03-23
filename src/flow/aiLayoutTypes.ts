@@ -25,21 +25,19 @@ export const LAYOUT_PROFILE_KEYS = [
 
 export type LayoutProfileKey = (typeof LAYOUT_PROFILE_KEYS)[number]
 
-export type GenerationPipeline = 'flowchart' | 'mind-map' | 'business-big-map'
+export type GenerationPipeline = 'flowchart' | 'mind-map'
 
 export type LayoutDecision = {
-  diagramType: 'flowchart' | 'mind-map' | 'business-big-map'
+  diagramType: 'flowchart' | 'mind-map'
   layoutEngine: LayoutEngine
   layoutMode: LayoutMode
   complexityMode: ComplexityModePublic
   /** flowchart 时为 LayoutProfileKey；特殊管道时为占位 */
   profileId: string
-  preserveBusinessBigMap: boolean
 }
 
 export type SceneRouteV2 = {
   sceneKind:
-    | 'business-big-map'
     | 'agent-flow'
     | 'approval-flow'
     | 'data-pipeline'
@@ -70,16 +68,6 @@ export function toPublicComplexity(mode: SceneRouteV2['complexityMode']): Comple
  * 由场景与 profile 解析轻量布局决策（不替代 business_big_map 专属后处理）
  */
 export function resolveLayoutDecision(route: SceneRouteV2): LayoutDecision {
-  if (route.pipeline === 'business-big-map') {
-    return {
-      diagramType: 'business-big-map',
-      layoutEngine: 'elk',
-      layoutMode: 'chaptered',
-      complexityMode: toPublicComplexity(route.complexityMode),
-      profileId: 'business-big-map',
-      preserveBusinessBigMap: true,
-    }
-  }
   if (route.pipeline === 'mind-map') {
     return {
       diagramType: 'mind-map',
@@ -87,7 +75,6 @@ export function resolveLayoutDecision(route: SceneRouteV2): LayoutDecision {
       layoutMode: 'tree',
       complexityMode: toPublicComplexity(route.complexityMode),
       profileId: 'mind-map',
-      preserveBusinessBigMap: false,
     }
   }
 
@@ -100,7 +87,6 @@ export function resolveLayoutDecision(route: SceneRouteV2): LayoutDecision {
     layoutMode,
     complexityMode: toPublicComplexity(route.complexityMode),
     profileId: profile,
-    preserveBusinessBigMap: false,
   }
 }
 
@@ -127,14 +113,6 @@ export function sceneRouteFromLegacyTemplateKey(
   complexityMode: PlannerComplexityMode,
 ): SceneRouteV2 {
   const cm: SceneRouteV2['complexityMode'] = complexityMode
-  if (templateKey === 'Business Big Map Template') {
-    return {
-      sceneKind: 'business-big-map',
-      complexityMode: cm,
-      layoutProfileKey: null,
-      pipeline: 'business-big-map',
-    }
-  }
   if (templateKey === 'Mind Map Template') {
     return {
       sceneKind: 'mind-map',
