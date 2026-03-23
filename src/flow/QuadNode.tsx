@@ -1,7 +1,6 @@
 import {
   useCallback,
   useEffect,
-  useLayoutEffect,
   useRef,
   useState,
   type CSSProperties,
@@ -45,7 +44,6 @@ const DEFAULT_TITLE_FS = 12
 const DEFAULT_SUBTITLE_FS = 11
 const QUAD_MIN_W = 80
 const QUAD_MIN_H = 44
-const QUAD_MAX_W = 200
 
 /** 行高 = 字号 + 8px（与主副标题各自字号同步） */
 function lineHeightForFontSizePx(fs: number) {
@@ -65,7 +63,6 @@ export function QuadNode(props: NodeProps) {
 
   const titleInputRef = useRef<HTMLTextAreaElement>(null)
   const subtitleInputRef = useRef<HTMLTextAreaElement>(null)
-  const measureRef = useRef<HTMLDivElement>(null)
 
   useEffect(() => {
     if (!editingTitle && !editingSubtitle) {
@@ -177,67 +174,6 @@ export function QuadNode(props: NodeProps) {
     lineHeight: lineHeightForFontSizePx(subtitleFs),
   }
 
-  const propsAny = props as any
-  const baseWRaw =
-    (typeof props.width === 'number' ? props.width : undefined) ??
-    (typeof propsAny.measured?.width === 'number' ? propsAny.measured.width : undefined) ??
-    (typeof propsAny.style?.width === 'number' ? propsAny.style.width : undefined) ??
-    160
-  const targetW = Math.min(QUAD_MAX_W, Math.max(QUAD_MIN_W, Math.round(baseWRaw)))
-  const displayTitle = editingTitle ? draftTitle : title
-  const displaySubtitle = editingSubtitle ? draftSubtitle : subtitle
-
-  // 根据文本真实换行测量高度（含主/副标题），并把宽度钳制到 <= 200。
-  useLayoutEffect(() => {
-    const el = measureRef.current
-    if (!el) return
-    const measuredH = Math.ceil(el.getBoundingClientRect().height)
-    const nextH = Math.max(QUAD_MIN_H, measuredH)
-    rf.setNodes((nds) =>
-      nds.map((n) => {
-        if (n.id !== props.id) return n
-        const curW =
-          (typeof n.width === 'number' ? n.width : undefined) ??
-          (typeof n.measured?.width === 'number' ? n.measured?.width : undefined) ??
-          (typeof (n.style as any)?.width === 'number' ? (n.style as any).width : undefined) ??
-          targetW
-        const curH =
-          (typeof n.height === 'number' ? n.height : undefined) ??
-          (typeof n.measured?.height === 'number' ? n.measured?.height : undefined) ??
-          (typeof (n.style as any)?.height === 'number' ? (n.style as any).height : undefined) ??
-          nextH
-        const finalW = Math.min(QUAD_MAX_W, Math.max(QUAD_MIN_W, Math.round(curW)))
-        const widthChanged = Math.abs(finalW - curW) > 0.5
-        const heightChanged = Math.abs(nextH - curH) > 0.5
-        if (!widthChanged && !heightChanged) return n
-        return {
-          ...n,
-          width: finalW,
-          height: nextH,
-          style: {
-            ...(n.style as any),
-            width: finalW,
-            height: nextH,
-            maxWidth: QUAD_MAX_W,
-          },
-        }
-      }),
-    )
-  }, [
-    rf,
-    props.id,
-    targetW,
-    displayTitle,
-    displaySubtitle,
-    showSubtitle,
-    titleFs,
-    subtitleFs,
-    data.labelFontWeight,
-    data.labelColor,
-    data.subtitleFontWeight,
-    data.subtitleColor,
-  ])
-
   const nodeColor = data.color
   const strokeColor = data.stroke
   const strokeWidth = data.strokeWidth
@@ -284,14 +220,13 @@ export function QuadNode(props: NodeProps) {
         // Previously this was hard-coded to 80px, preventing further shrinking.
         minWidth={QUAD_MIN_W}
         minHeight={QUAD_MIN_H}
-        maxWidth={QUAD_MAX_W}
         handleStyle={{ width: 12, height: 12, borderRadius: 9999 }}
         isVisible={Boolean((props as any).selected)}
         keepAspectRatio={shape === 'circle'}
       />
       <div
         className={styles.nodeInner}
-        style={Object.keys(nodeStyle).length ? { ...nodeStyle, maxWidth: QUAD_MAX_W } : { maxWidth: QUAD_MAX_W }}
+        style={Object.keys(nodeStyle).length ? nodeStyle : undefined}
       >
         {editingTitle ? (
           <>
@@ -431,16 +366,6 @@ export function QuadNode(props: NodeProps) {
               </div>
             )}
           </>
-        )}
-      </div>
-      <div ref={measureRef} className={styles.measureBox} style={{ width: targetW }}>
-        <div className={styles.label} style={labelStyle}>
-          {displayTitle || ' '}
-        </div>
-        {showSubtitle && (
-          <div className={styles.subtitle} style={subtitleStyle}>
-            {displaySubtitle || ' '}
-          </div>
         )}
       </div>
 

@@ -815,15 +815,6 @@ function shouldPreferLeftToRightByComplexity(payload: GraphBatchPayload): boolea
   return edgeCount > Math.max(8, Math.floor(nodeCount * 1.2))
 }
 
-function shouldPreferLeftToRightForDagre(payload: GraphBatchPayload): boolean {
-  const nodeCount = payload.operations.filter((op) => op.op === 'graph.createNodeQuad').length
-  const edgeCount = payload.operations.filter((op) => op.op === 'graph.createEdge').length
-  if (nodeCount <= 0) return false
-  // dagre 测试场景采用“更强偏好 LR”：
-  // 只要不是非常稀疏的图，就优先 LR；但仍非绝对强制。
-  return edgeCount >= Math.max(4, Math.floor(nodeCount * 0.8))
-}
-
 function applyInferredEdgeHandles(nodes: Array<Node<any>>, edges: Array<Edge<any>>) {
   const nodeById = new Map(nodes.map((n) => [n.id, n]))
   const rootFrameCache = new Map<string, string | null>()
@@ -1111,10 +1102,9 @@ export async function materializeGraphBatchPayloadToSnapshot(
   const dagreFlowMode = ((payload.meta as any)?.layoutProfile ?? '') === 'flowchart'
   const flowchartMode = !businessMode && !mindMapMode
   const preferLR = flowchartMode && shouldPreferLeftToRightByComplexity(payload)
-  const preferLRDagre = dagreFlowMode && shouldPreferLeftToRightForDagre(payload)
   const preferLRDefault = flowchartMode && payload.direction !== 'LR'
-  // 流程图：优先 LR（非绝对强制）；其它流程图按“麻花风险”兜底改 LR。
-  const effectiveDirection: FlowDirection = preferLRDefault || preferLRDagre || preferLR ? 'LR' : payload.direction
+  // 流程图走 Dagre 时默认优先 LR，保证主链阅读方向一致。
+  const effectiveDirection: FlowDirection = dagreFlowMode || preferLRDefault || preferLR ? 'LR' : payload.direction
 
   const frameOrder: string[] = []
   const frameExplicitPos = new Set<string>()

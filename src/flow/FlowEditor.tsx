@@ -627,7 +627,6 @@ function EditorInner({ onBackHome, source, previewSnapshot, readOnly: _readOnly 
   const [aiModalPrompt, setAiModalPrompt] = useState('')
   /** 与胶囊绑定：生成时传入 diagramScene；点 ✕ 取消高亮并清空输入框 */
   const [aiModalScene, setAiModalScene] = useState<AiDiagramSceneHint | null>(null)
-  const [aiFlowComplexityLevel, setAiFlowComplexityLevel] = useState<1 | 2 | 3 | 4 | 5>(3)
   const [aiConfigOpen, setAiConfigOpen] = useState(false)
   const [aiModalGenerating, setAiModalGenerating] = useState(false)
   /** 生成阶段文案（与控制台 [Flow2Go AI] 日志对应，用于区分慢 / 卡在某一步 / 失败） */
@@ -3112,27 +3111,6 @@ function EditorInner({ onBackHome, source, previewSnapshot, readOnly: _readOnly 
                       setAiModalPrompt('')
                     }}
                   />
-                  {aiModalScene === 'flowchart' && (
-                    <div style={{ marginTop: 10, padding: '10px 12px', borderRadius: 10, border: '1px solid #e2e8f0', background: '#f8fafc' }}>
-                      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 6 }}>
-                        <div style={{ fontSize: 12, fontWeight: 700, color: '#334155' }}>流程复杂度</div>
-                        <div style={{ fontSize: 12, color: '#64748b' }}>{aiFlowComplexityLevel}/5</div>
-                      </div>
-                      <input
-                        type="range"
-                        min={1}
-                        max={5}
-                        step={1}
-                        value={aiFlowComplexityLevel}
-                        onChange={(e) => setAiFlowComplexityLevel(Number(e.target.value) as 1 | 2 | 3 | 4 | 5)}
-                        style={{ width: '100%' }}
-                      />
-                      <div style={{ marginTop: 6, fontSize: 12, color: '#64748b' }}>
-                        复杂度越高，连线和交叉通常越多，可阅读性会下降。
-                      </div>
-                    </div>
-                  )}
-
                   {aiModalError && <div className={styles.aiError}>{aiModalError}</div>}
 
                   <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
@@ -3160,8 +3138,6 @@ function EditorInner({ onBackHome, source, previewSnapshot, readOnly: _readOnly 
                             prompt: p,
                             signal: ac.signal,
                             diagramScene: aiModalScene ?? undefined,
-                            flowchartComplexityLevel:
-                              aiModalScene === 'flowchart' ? aiFlowComplexityLevel : undefined,
                             onProgress: (info: AiGenerateProgressInfo) => {
                               setAiModalProgress({ phase: info.phase, detail: info.detail })
                             },

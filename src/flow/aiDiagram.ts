@@ -32,8 +32,6 @@ export type OpenRouterChatOptions = {
   timeoutMs?: number
   /** 选中场景胶囊时传入，强制走对应管线 */
   diagramScene?: AiDiagramSceneHint
-  /** 仅流程图场景：1=最简，5=最复杂 */
-  flowchartComplexityLevel?: 1 | 2 | 3 | 4 | 5
   /** 每进入一个新阶段调用一次（含耗时），便于界面展示与 DevTools 排查 */
   onProgress?: (info: AiGenerateProgressInfo) => void
 }
@@ -845,6 +843,9 @@ const SCENE_ROUTER_SYSTEM_PROMPT = [
 
 const LONG_INPUT_SUMMARY_THRESHOLD = 2200
 const LONG_INPUT_TIMEOUT_MS = 90_000
+const FLOWCHART_COMPRESS_THRESHOLD = 900
+const FLOWCHART_GUARD_NODE_MAX = 20
+const FLOWCHART_GUARD_EDGE_MAX = 26
 
 const DIAGRAM_INPUT_SUMMARIZER_SYSTEM_PROMPT = [
   '你是 Flow2Go 的输入压缩器（Input Summarizer）。',
@@ -852,9 +853,9 @@ const DIAGRAM_INPUT_SUMMARIZER_SYSTEM_PROMPT = [
   '',
   '输出要求（强制）：',
   '- 只输出纯文本，不要 JSON，不要代码块。',
-  '- 保留：核心目标、主流程阶段、关键角色/系统、关键约束、必要回流。',
+  '- 保留：核心目标、主流程阶段（3~6 步）、关键角色/系统、关键约束、必要回流（最多 1 条）。',
   '- 删除：冗长背景、重复描述、与流程图无关的细枝末节。',
-  '- 摘要尽量控制在 800~1400 中文字符。',
+  '- 摘要尽量控制在 400~900 中文字符，优先短而清楚。',
   '- 不要凭空捏造信息；缺失项可留空，不要补全不存在的事实。',
 ].join('\n')
 
@@ -916,6 +917,7 @@ const DIAGRAM_PLANNER_SYSTEM_PROMPT = [
   '',
   '当 templateKey 为以下任一（6 个 flowchart layout profile：Frontend-Backend / Data Pipeline / Agent / Approval / System Architecture / User Journey）：',
   '- 【需求简洁化（规划阶段）】在仍忠实用户目标的前提下，把输入压缩成最少必要主干：合并重复步骤、去掉与制图无关的说明、不要为“显得完整”而虚构子系统或空阶段。',
+  '- 【可读性优先（强）】默认生成“简单易懂”的流程：节点总量优先控制在 8~18；主链 4~8 步；分支最多 2 个；回流最多 1 条；禁止跨分支大量连接。',
   '- mainChain：用一句白话写清端到端主路径；supportStrategy / feedbackStrategy 若无独立价值可写「无」或极短一句。',
   '- structure.framesOrRoot：层次够用即可，不要为了填满模板而堆空壳阶段；constraints.targetNodeCountHintRange 宜略保守（宁可少节点，细节可留给用户画布上补充）。',
   '- 仍禁止输出 Mermaid、禁止输出具体节点 id 与边表达式。',
@@ -1056,7 +1058,6 @@ export async function openRouterGenerateDiagram(opts: OpenRouterChatOptions): Pr
     signal,
     timeoutMs = DEFAULT_TIMEOUT_MS,
     diagramScene: sceneHint,
-    flowchartComplexityLevel,
     onProgress,
   } = opts
   const key = (apiKey ?? '').trim()
@@ -1077,9 +1078,14 @@ export async function openRouterGenerateDiagram(opts: OpenRouterChatOptions): Pr
 
   const originalPrompt = prompt.trim()
   const longInput = originalPrompt.length >= LONG_INPUT_SUMMARY_THRESHOLD
+  const forceBusinessBigMapScene = sceneHint === 'business-big-map'
+  const forceMindMapScene = sceneHint === 'mind-map'
+  const flowchartAggressiveCompress = sceneHint === 'flowchart' || originalPrompt.length >= FLOWCHART_COMPRESS_THRESHOLD
+  // 输入强压缩仅用于流程图；业务大图/思维导图保留原始语义密度，避免子画框/分支被压扁。
+  const needsInputSummary = !forceBusinessBigMapScene && !forceMindMapScene && (longInput || flowchartAggressiveCompress)
   const timeoutMsForPipeline = longInput ? Math.max(timeoutMs, LONG_INPUT_TIMEOUT_MS) : timeoutMs
   let planningPrompt = originalPrompt
-  if (longInput) {
+  if (needsInputSummary) {
     report('输入压缩', `原文约 ${originalPrompt.length} 字，先摘要再生图…`)
     try {
       planningPrompt = await openRouterSummarizeDiagramInput({
@@ -1101,7 +1107,7 @@ export async function openRouterGenerateDiagram(opts: OpenRouterChatOptions): Pr
   let route: SceneRouteV2 | null = null
   let layoutDecision: LayoutDecision | null = null
 
-  const mindMapFromHint = sceneHint === 'mind-map'
+  const mindMapFromHint = forceMindMapScene
   const mindMapFromText = sceneHint == null && detectMindMapIntent(originalPrompt)
   const forceMindMap = mindMapFromHint || mindMapFromText
 
@@ -1154,27 +1160,16 @@ export async function openRouterGenerateDiagram(opts: OpenRouterChatOptions): Pr
       timeoutMs: timeoutMsForPipeline,
     })
     route = layoutProfileResultToFallbackRoute(sel)
-    // 用户滑块优先：流程图复杂度 1~2 => compact；3~5 => normal（后续 planner 映射为 chapters）
-    if (flowchartComplexityLevel != null) {
-      route = {
-        ...route,
-        complexityMode: flowchartComplexityLevel <= 2 ? 'compact' : 'normal',
-      }
-    }
+    // 流程图默认走紧凑复杂度，优先可读性与简洁度。
+    route = { ...route, complexityMode: 'compact' }
     // 长输入自动降复杂度：优先可读性与稳定性。
     if (longInput && route.complexityMode !== 'compact') {
       route = { ...route, complexityMode: 'compact' }
     }
     layoutDecision = resolveLayoutDecision(route)
     chosen = sel.layoutProfileKey
-    const complexityHint =
-      flowchartComplexityLevel == null
-        ? undefined
-        : flowchartComplexityLevel <= 2
-          ? '【复杂度滑块】用户选择了低复杂度：优先主链路与少量关键节点，减少支撑线与回流。'
-          : flowchartComplexityLevel === 3
-            ? '【复杂度滑块】用户选择了中复杂度：保持主链路清晰，适度展开关键分支。'
-            : '【复杂度滑块】用户选择了高复杂度：可展开更多细节；但请控制跨组连线，避免可读性明显下降。'
+    const simpleFlowHint =
+      '【流程简化（强制）】请优先可读性：主链 4~8 步，节点总量尽量 8~18，分支 <=2，回流 <=1；跨组连线尽量为 0。若信息过多，请合并同类步骤。'
     plannerText = await openRouterDiagramPlanner({
       apiKey: key,
       model,
@@ -1183,7 +1178,7 @@ export async function openRouterGenerateDiagram(opts: OpenRouterChatOptions): Pr
       timeoutMs: timeoutMsForPipeline,
       templateKey: chosen,
       complexityMode: toPlannerComplexity(route.complexityMode),
-      extraUserHint: complexityHint,
+      extraUserHint: simpleFlowHint,
     })
   }
 
@@ -1479,17 +1474,35 @@ export async function openRouterGenerateDiagram(opts: OpenRouterChatOptions): Pr
     }
     const d1 = await generateOnce(undefined, '主生成')
 
-    // 轻量压缩重试（非 business big map）：避免碎节点/碎连线退化过重。
-    // 只做一次重试，避免过度消耗。
+    // 复杂度守门（非 business big map）：首次过密则自动二次重生并强制更简。
     if ((route?.sceneKind ?? '') !== 'business-big-map') {
       const nodesCount = Array.isArray(d1.nodes) ? d1.nodes.length : 0
       const edgesCount = Array.isArray(d1.edges) ? d1.edges.length : 0
-      const tooComplex = nodesCount > 45 || edgesCount > 60
+      const tooComplex = nodesCount > FLOWCHART_GUARD_NODE_MAX || edgesCount > FLOWCHART_GUARD_EDGE_MAX
       if (tooComplex) {
-        return generateOnce(
-          '【压缩重试】节点/连线过多：必须更章节化、更合并同类、更弱化支撑关系，最多输出 3~5 个章节与少量关键要点。禁止碎节点与全连接。',
-          '压缩重试',
+        report('复杂度守门触发', `首次结果过密：nodes=${nodesCount}, edges=${edgesCount}，执行强压缩重生…`)
+        const d2 = await generateOnce(
+          [
+            '【复杂度守门（强制重生）】首次结果过于复杂，必须显著简化：',
+            `- 节点上限：${FLOWCHART_GUARD_NODE_MAX}`,
+            `- 连线上限：${FLOWCHART_GUARD_EDGE_MAX}`,
+            '- 主链仅保留 4~8 步；分支最多 2 个；回流最多 1 条。',
+            '- 合并重复/近义节点；禁止碎节点、禁止跨分支大量连线、禁止全连接。',
+            '- 若信息过多，宁可省略次要细节，不要牺牲可读性。',
+          ].join('\n'),
+          '复杂度守门重生',
         )
+        const nodes2 = Array.isArray(d2.nodes) ? d2.nodes.length : 0
+        const edges2 = Array.isArray(d2.edges) ? d2.edges.length : 0
+        const stillTooComplex = nodes2 > FLOWCHART_GUARD_NODE_MAX || edges2 > FLOWCHART_GUARD_EDGE_MAX
+        if (stillTooComplex) {
+          report('复杂度守门结果', `重生后仍偏复杂（nodes=${nodes2}, edges=${edges2}），返回更优候选`)
+          const score1 = nodesCount + edgesCount * 0.8
+          const score2 = nodes2 + edges2 * 0.8
+          return score2 <= score1 ? d2 : d1
+        }
+        report('复杂度守门通过', `重生后收敛：nodes=${nodes2}, edges=${edges2}`)
+        return d2
       }
     }
     report('生成完成', '流程图/通用')
