@@ -388,7 +388,7 @@ function normalizeBusinessBigMapDraft(draft: AiDiagramDraft): AiDiagramDraft {
     }
   }
 
-  const nodes = rawNodes.map((n: any) => {
+  let nodes = rawNodes.map((n: any) => {
     if (!n || typeof n !== 'object') return n
     const data = { ...(n.data ?? {}) }
     if (typeof data.title === 'string') {
@@ -410,6 +410,37 @@ function normalizeBusinessBigMapDraft(draft: AiDiagramDraft): AiDiagramDraft {
     }
     return { ...n, data }
   })
+  // 结构修正：消除“子画框仅 1 个节点”的嵌套。
+  // 若某子画框仅包含 1 个 quad 且不包含子画框，则将该 quad 提升到父画框并删除该子画框。
+  const byParent = new Map<string, any[]>()
+  for (const n of nodes as any[]) {
+    if (!n?.parentId) continue
+    const arr = byParent.get(n.parentId) ?? []
+    arr.push(n)
+    byParent.set(n.parentId, arr)
+  }
+  const isFrameNode = (n: any) => n?.type === 'group' && n?.data?.role === 'frame'
+  const removeFrameIds = new Set<string>()
+  for (const f of nodes as any[]) {
+    if (!isFrameNode(f)) continue
+    if (!f.parentId) continue
+    const kids = byParent.get(f.id) ?? []
+    const childFrames = kids.filter((k) => isFrameNode(k))
+    const childQuads = kids.filter((k) => k?.type === 'quad')
+    if (childFrames.length === 0 && childQuads.length === 1) {
+      const only = childQuads[0]
+      const fx = Number(f?.position?.x ?? 0)
+      const fy = Number(f?.position?.y ?? 0)
+      const qx = Number(only?.position?.x ?? 0)
+      const qy = Number(only?.position?.y ?? 0)
+      only.parentId = f.parentId
+      only.position = { x: qx + fx, y: qy + fy }
+      removeFrameIds.add(f.id)
+    }
+  }
+  if (removeFrameIds.size > 0) {
+    nodes = (nodes as any[]).filter((n) => !removeFrameIds.has(n.id))
+  }
   return {
     ...draft,
     nodes,
@@ -915,6 +946,7 @@ const DIAGRAM_PLANNER_SYSTEM_PROMPT = [
   '当 templateKey 为 Business Big Map Template：',
   '- framesOrRoot 对应一级画框(frame)，并且每个 frame 必须给出 nesting case：case1/case2/case3。',
   '- 所有节点文案（title/directPoints/children.title/children.points）必须精简：每条不超过 7 个字。',
+  '- 禁止出现“子画框内仅 1 个节点”的结构；若某层仅 1 个要点，应直接并入上层，不再额外嵌套。',
   '- case1：frame 直接承载要点（directPoints），frame 的 children 必须为空数组（不出现任何子画框）。',
   '- case2：frame 下的 children 对应 group（模块），每个 children.points 对应该 group 内的 quad 要点（直接 quad，不创建 subgroup）。',
   '- case3：frame 下的 children 对应 group（模块），每个 children.points 对应 subgroup 标题（每个 subgroup 再承载 1 个 quad，要点 label 使用该标题）。',
@@ -1446,6 +1478,7 @@ export async function openRouterGenerateDiagram(opts: OpenRouterChatOptions): Pr
     '【必须依据 Planner JSON 生成业务大图 Mermaid】',
     '你在 user 里收到的是严格 JSON（来自 Diagram Planner）。请严格按 JSON 字段生成，不要根据语义自行推断嵌套层级。',
     '文案约束：所有节点标题必须不超过 7 个字。',
+    '结构约束：禁止生成“子画框内仅1个节点”的嵌套；若只有1个要点，直接并入上层。',
     '结构映射：',
     '1) chapters：structure.framesOrRoot 中每个 frame 对应一个“章节 frame”subgraph。',
     '2) frame.case 决定该章节内部的“嵌套层级类型”（且仅此一个类型）：',

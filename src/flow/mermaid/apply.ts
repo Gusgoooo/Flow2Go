@@ -152,6 +152,7 @@ function wrapFramesToContents(allNodes: Array<Node<any>>, businessMode: boolean)
   const MIN_H = 140
   const UNIT = businessMode ? BUSINESS_INNER_UNIT : LAYOUT_UNIT
   const HALF_UNIT = Math.max(1, Math.round(UNIT * 0.5))
+  const FRAME_GAP = HALF_UNIT
   const MIN_NODE_W = Math.round(UNIT * NODE_MIN_WIDTH_UNITS)
   const NODE_GAP = HALF_UNIT
   const MAX_COLS = businessMode ? 6 : 6
@@ -298,7 +299,8 @@ function wrapFramesToContents(allNodes: Array<Node<any>>, businessMode: boolean)
     if (ordered.length === 0) return { maxBottom: originY }
     const cols = chooseCols(ordered.length)
     const availableW = Math.max(1, parentW - padX * 2)
-    const cellW = Math.max(MIN_NODE_W, Math.floor((availableW - (cols - 1) * UNIT) / cols))
+    const gap = businessMode ? HALF_UNIT : UNIT
+    const cellW = Math.max(MIN_NODE_W, Math.floor((availableW - (cols - 1) * gap) / cols))
     let maxBottom = originY
     for (let i = 0; i < ordered.length; i += 1) {
       const it = ordered[i]
@@ -313,8 +315,8 @@ function wrapFramesToContents(allNodes: Array<Node<any>>, businessMode: boolean)
         // Ensure later bounds calculations use the updated width.
         ;(it as any).measured = undefined
       }
-      it.position = { x: col * (cellW + UNIT), y: originY + row * (h + UNIT) }
-      maxBottom = Math.max(maxBottom, originY + row * (h + UNIT) + h)
+      it.position = { x: col * (cellW + gap), y: originY + row * (h + gap) }
+      maxBottom = Math.max(maxBottom, originY + row * (h + gap) + h)
     }
     return { maxBottom }
   }
@@ -417,7 +419,7 @@ function wrapFramesToContents(allNodes: Array<Node<any>>, businessMode: boolean)
         if (childFrames.length > 0) {
           // 横向优先，超出后换行；每行最多3个子画框
           const cols = Math.max(1, Math.min(3, childFrames.length))
-          const cellW = Math.max(MIN_NODE_W, Math.floor((availableW - (cols - 1) * HALF_UNIT) / cols))
+          const cellW = Math.max(MIN_NODE_W, Math.floor((availableW - (cols - 1) * FRAME_GAP) / cols))
 
           // 先把宽度下发给子画框，再递归布局子画框内部节点
           for (const cf of childFrames) {
@@ -434,8 +436,8 @@ function wrapFramesToContents(allNodes: Array<Node<any>>, businessMode: boolean)
             const { h } = getNodeSize(cf)
             const col = i % cols
             const row = Math.floor(i / cols)
-            const x = col * (cellW + HALF_UNIT)
-            const y = row * (h + HALF_UNIT)
+            const x = col * (cellW + FRAME_GAP)
+            const y = row * (h + FRAME_GAP)
             cf.position = { x, y }
             maxBottom = Math.max(maxBottom, y + h)
           }
@@ -530,8 +532,8 @@ function wrapFramesToContents(allNodes: Array<Node<any>>, businessMode: boolean)
     const childNodes = kids.filter((k) => !isFrame(k))
     const isTop = !f.parentId
     // Business mode：UNIT=12px；普通流程图：UNIT=24px。均只用 1 个 UNIT 作内边距，不在此人为拉大顶层画框「章节感」；框间距交给 ELK 默认。
-    const padX = UNIT
-    const padBottom = UNIT
+    const padX = businessMode ? HALF_UNIT : UNIT
+    const padBottom = businessMode ? HALF_UNIT : UNIT
     const padTop = businessMode ? TITLE_H + Math.round(UNIT * 1.35) : TITLE_H + UNIT
     // Only top-level "chapter" frames should be clamped to the chapter width.
     // Inner frames must stay compact; otherwise horizontal padding becomes huge.
@@ -600,7 +602,13 @@ function wrapFramesToContents(allNodes: Array<Node<any>>, businessMode: boolean)
         maxBottom = Math.max(maxBottom, res.maxBottom)
       }
       if (childNodes.length > 0) {
-        const res = stretchChildrenToWidth(nextW, padX, childNodes, childFrames.length > 0 ? maxBottom + UNIT : 0, true)
+        const res = stretchChildrenToWidth(
+          nextW,
+          padX,
+          childNodes,
+          childFrames.length > 0 ? maxBottom + (businessMode ? HALF_UNIT : UNIT) : 0,
+          true,
+        )
         maxBottom = Math.max(maxBottom, res.maxBottom)
       }
     }
