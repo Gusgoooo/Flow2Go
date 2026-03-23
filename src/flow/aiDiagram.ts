@@ -452,9 +452,10 @@ const DIAGRAM_PLANNER_SYSTEM_PROMPT = [
   '}',
   '',
   '当 templateKey 为 Mind Map Template：',
-  '- framesOrRoot 的第一个元素作为中心主题（root）；其 children 为一级分支；points 为二级/要点节点。',
-  '- 必须确保至少 3 层深度：根(Depth0) -> 一级分支(Depth1) -> 二级要点(Depth2)。',
-  '- 要求：children 数量建议 3~6；每个一级分支的 points 数量至少 1、最多 4。',
+  '- framesOrRoot 的第一个元素作为中心主题（root）；其 children/points 仅作为基础线索，不限制最终层数固定为 3 层。',
+  '- 层级深度必须根据用户文案语义自动拆解：可 2~6 层，禁止机械固定“根->一级->二级”映射。',
+  '- 若用户文案存在更深子主题（如分域->模块->子模块->要点），应继续递归展开，不要截断到二级要点。',
+  '- 要求：保持树状发散与可读性，避免无意义重复节点或空壳层级。',
   '- 列间距、线型由系统 mind-map 布局器与模板负责；你只负责结构信息。',
   '',
   '当 templateKey 为以下任一（6 个 flowchart layout profile：Frontend-Backend / Data Pipeline / Agent / Approval / System Architecture / User Journey）：',
@@ -779,17 +780,13 @@ export async function openRouterGenerateDiagram(opts: OpenRouterChatOptions): Pr
 
   const mindMapJsonMermaidHint = [
     '【必须依据 Planner JSON 生成思维导图 Mermaid】',
-    '你在 user 里收到的是严格 JSON（来自 Diagram Planner）。请按以下映射生成：',
-    '1) 根节点：从 structure.framesOrRoot[0].title 生成一个节点 rootId[rootTitle]',
-    '2) 一级分支：对 structure.framesOrRoot[0].children 每个元素生成一个节点 childId[childTitle]',
-    '3) 二级要点：对每个 children[i].points 生成节点 pointId[pointTitle]',
-    '4) 连线关系（只表示归属；默认不要边标签、不要流程动作文案）：',
-    '   - rootId --> childId',
-    '   - childId --> pointId',
-    '   - 仅当用户原文明确要求某条边要显示语义时，才对该边使用 rootId -->|短文案| childId（否则一律无 |...|）。',
-    '5) 禁止：任何 subgraph / end / frame / 画框 / 编组。',
-    '6) 禁止：生成步骤式“流程图语序/章节链条”；只能做树状发散（root 并列一级分支）。',
-    '7) Mermaid 第一行必须是 flowchart LR。',
+    '你在 user 里收到的是严格 JSON（来自 Diagram Planner）与用户原始语义。不要固定成 3 层；必须按语义拆解真实层级深度。',
+    '1) 根节点：以核心主题作为 root。',
+    '2) 递归展开：根据主题 -> 分域 -> 模块 -> 子模块 -> 要点等语义递归生成层级，深度由内容决定（通常 2~6 层）。',
+    '3) 连线关系只表示父子归属；默认无边标签，确有必要时才用短中文边标签。',
+    '4) 禁止：任何 subgraph / end / frame / 画框 / 编组。',
+    '5) 禁止：生成步骤式“流程图语序/章节链条”；只能做树状发散。',
+    '6) Mermaid 第一行必须是 flowchart LR。',
   ].join('\n')
 
   const generateOnce = async (extraUserHint?: string, mermaidStepLabel?: string) => {
