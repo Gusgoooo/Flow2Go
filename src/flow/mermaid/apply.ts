@@ -1115,11 +1115,15 @@ function applyFlowchartStrictHandles(
     s.add(side)
     m.set(id, s)
   }
-  const sideCandidates = (preferred: Side): Side[] => {
-    if (preferred === 'top') return ['top', 'left', 'right', 'bottom']
-    if (preferred === 'bottom') return ['bottom', 'left', 'right', 'top']
-    if (preferred === 'left') return ['left', 'top', 'bottom', 'right']
-    return ['right', 'top', 'bottom', 'left']
+  const sideCandidates = (preferred: Side, dx: number, dy: number): Side[] => {
+    if (preferred === 'top' || preferred === 'bottom') {
+      const primaryH: Side = dx >= 0 ? 'right' : 'left'
+      const secondaryH: Side = primaryH === 'right' ? 'left' : 'right'
+      return [preferred, primaryH, secondaryH, opposite(preferred)]
+    }
+    const primaryV: Side = dy >= 0 ? 'bottom' : 'top'
+    const secondaryV: Side = primaryV === 'bottom' ? 'top' : 'bottom'
+    return [preferred, primaryV, secondaryV, opposite(preferred)]
   }
   const opposite = (s: Side): Side =>
     s === 'top' ? 'bottom' : s === 'bottom' ? 'top' : s === 'left' ? 'right' : 'left'
@@ -1148,8 +1152,8 @@ function applyFlowchartStrictHandles(
     if (incoming.has(c)) score += 2
     return score
   }
-  const pickSourceSide = (nodeId: string, preferred: Side): Side => {
-    const cands = sideCandidates(preferred)
+  const pickSourceSide = (nodeId: string, preferred: Side, dx: number, dy: number): Side => {
+    const cands = sideCandidates(preferred, dx, dy)
     let best = preferred
     let bestScore = Number.POSITIVE_INFINITY
     for (const c of cands) {
@@ -1161,8 +1165,8 @@ function applyFlowchartStrictHandles(
     }
     return best
   }
-  const pickTargetSide = (nodeId: string, preferred: Side): Side => {
-    const cands = sideCandidates(preferred)
+  const pickTargetSide = (nodeId: string, preferred: Side, dx: number, dy: number): Side => {
+    const cands = sideCandidates(preferred, dx, dy)
     let best = preferred
     let bestScore = Number.POSITIVE_INFINITY
     for (const c of cands) {
@@ -1187,26 +1191,26 @@ function applyFlowchartStrictHandles(
     if (direction === 'LR' || direction === 'RL') {
       const congested = (outDegree.get(e.source) ?? 0) > 1 || (inDegree.get(e.target) ?? 0) > 1
       const srcPref: Side = congested ? pref.src : pref.src
-      const tgtPref: Side = congested ? pref.tgt : pref.tgt
-      const srcSide = pickSourceSide(e.source, srcPref)
-      const tgtSide = pickTargetSide(e.target, tgtPref)
+      const srcSide = pickSourceSide(e.source, srcPref, dx, dy)
+      const tgtPref: Side = opposite(srcSide)
+      const tgtSide = pickTargetSide(e.target, tgtPref, dx, dy)
       sourceHandle = `s-${srcSide}`
       targetHandle = `t-${tgtSide}`
     } else if (direction === 'TB' || direction === 'BT') {
       const congested = (outDegree.get(e.source) ?? 0) > 1 || (inDegree.get(e.target) ?? 0) > 1
       const srcPref: Side = congested ? pref.src : pref.src
-      const tgtPref: Side = congested ? pref.tgt : pref.tgt
-      const srcSide = pickSourceSide(e.source, srcPref)
-      const tgtSide = pickTargetSide(e.target, tgtPref)
+      const srcSide = pickSourceSide(e.source, srcPref, dx, dy)
+      const tgtPref: Side = opposite(srcSide)
+      const tgtSide = pickTargetSide(e.target, tgtPref, dx, dy)
       sourceHandle = `s-${srcSide}`
       targetHandle = `t-${tgtSide}`
     } else {
       const inferred = inferHandlesForEdge(e.source, e.target, nodeById)
       if (!inferred) return e
       const srcPref = toSide(inferred.sourceHandle)
-      const tgtPref = toSide(inferred.targetHandle)
-      const srcSide = pickSourceSide(e.source, srcPref)
-      const tgtSide = pickTargetSide(e.target, tgtPref)
+      const srcSide = pickSourceSide(e.source, srcPref, dx, dy)
+      const tgtPref: Side = opposite(srcSide)
+      const tgtSide = pickTargetSide(e.target, tgtPref, dx, dy)
       sourceHandle = `s-${srcSide}`
       targetHandle = `t-${tgtSide}`
     }
@@ -1215,7 +1219,7 @@ function applyFlowchartStrictHandles(
     addSide(incomingByNode, e.target, toSide(targetHandle))
     const d = { ...((e.data ?? {}) as any), autoOffset: 0 }
     const congested = (outDegree.get(e.source) ?? 0) > 1 || (inDegree.get(e.target) ?? 0) > 1
-        const nextType = congested ? 'bezier' : e.type
+    const nextType = congested ? 'bezier' : e.type
     return { ...e, sourceHandle, targetHandle, type: nextType, data: d }
   })
 }
