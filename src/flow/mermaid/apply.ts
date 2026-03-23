@@ -1,5 +1,4 @@
 import type { Edge, Node } from '@xyflow/react'
-import { autoLayout } from '../layout'
 import { autoLayoutDagre } from '../dagreLayout'
 import { layoutMindMapMindElixirStyle } from '../mindMap/mindElixirLayout'
 import type { FlowDirection, GraphBatchPayload, GraphOperation } from './types'
@@ -113,16 +112,12 @@ async function layoutWithinFrame(
   allEdges: Array<Edge<any>>,
   frameId: string,
   direction: FlowDirection,
-  useDagre: boolean,
 ) {
   const children = allNodes.filter((n) => n.parentId === frameId)
   if (children.length === 0) return allNodes
   const childIds = new Set(children.map((n) => n.id))
   const internalEdges = allEdges.filter((e) => childIds.has(e.source) && childIds.has(e.target))
-  // 完全交给 ELK layered 默认间距 / padding（与 layout.ts 一致，不再手写网格或密度公式）
-  const laid = useDagre
-    ? await autoLayoutDagre(children, internalEdges as any, dirToLayoutDirection(direction))
-    : await autoLayout(children, internalEdges as any, dirToLayoutDirection(direction))
+  const laid = await autoLayoutDagre(children, internalEdges as any, dirToLayoutDirection(direction))
   const byId = new Map(laid.map((n) => [n.id, n.position]))
   return allNodes.map((n) => (byId.has(n.id) ? { ...n, position: byId.get(n.id)! } : n))
 }
@@ -131,15 +126,12 @@ async function layoutTopLevel(
   allNodes: Array<Node<any>>,
   allEdges: Array<Edge<any>>,
   direction: FlowDirection,
-  useDagre: boolean,
 ) {
   const top = allNodes.filter((n) => !n.parentId)
   if (top.length === 0) return allNodes
   const topIds = new Set(top.map((n) => n.id))
   const subEdges = allEdges.filter((e) => topIds.has(e.source) && topIds.has(e.target))
-  const laid = useDagre
-    ? await autoLayoutDagre(top, subEdges as any, dirToLayoutDirection(direction))
-    : await autoLayout(top, subEdges as any, dirToLayoutDirection(direction))
+  const laid = await autoLayoutDagre(top, subEdges as any, dirToLayoutDirection(direction))
   const byId = new Map(laid.map((n) => [n.id, n.position]))
   return allNodes.map((n) => (byId.has(n.id) ? { ...n, position: byId.get(n.id)! } : n))
 }
@@ -1106,7 +1098,6 @@ export async function materializeGraphBatchPayloadToSnapshot(
   const edgeById = new Map(edges.map((e) => [e.id, e]))
   const compactLegacyMode = false
   const mindMapMode = ((payload.meta as any)?.layoutProfile ?? '') === 'mind-map'
-  const dagreFlowMode = ((payload.meta as any)?.layoutProfile ?? '') === 'flowchart'
   const flowchartMode = !mindMapMode
   const preferLR = flowchartMode && shouldPreferLeftToRightByComplexity(payload)
   const preferLRDefault = flowchartMode && payload.direction !== 'LR'
@@ -1191,7 +1182,7 @@ export async function materializeGraphBatchPayloadToSnapshot(
         id: op.params.id,
         source: op.params.source,
         target: op.params.target,
-        type: mindMapMode || dagreFlowMode ? 'bezier' : op.params.type ?? 'bezier',
+        type: mindMapMode || flowchartMode ? 'bezier' : op.params.type ?? 'bezier',
         ...(trimmedLabel ? { label: op.params.label } : {}),
         data: { arrowStyle },
         style: mergedStyle as any,
@@ -1207,19 +1198,18 @@ export async function materializeGraphBatchPayloadToSnapshot(
       if (compactLegacyMode) {
         continue
       }
-      const withinFrameDir: FlowDirection = dagreFlowMode ? op.params.direction : effectiveDirection
-      const topLevelDir: FlowDirection = dagreFlowMode ? 'LR' : effectiveDirection
+      const withinFrameDir: FlowDirection = op.params.direction
+      const topLevelDir: FlowDirection = 'LR'
       if (op.params.scope === 'withinFrame' && op.params.frameId) {
         const next = await layoutWithinFrame(
           nodes,
           edges,
           op.params.frameId,
           withinFrameDir,
-          dagreFlowMode && !mindMapMode && !compactLegacyMode,
         )
         nodes.splice(0, nodes.length, ...next)
       } else if (op.params.scope === 'all') {
-        const next = await layoutTopLevel(nodes, edges, topLevelDir, dagreFlowMode && !mindMapMode && !compactLegacyMode)
+        const next = await layoutTopLevel(nodes, edges, topLevelDir)
         nodes.splice(0, nodes.length, ...next)
       }
       continue
@@ -1299,15 +1289,15 @@ export async function materializeGraphBatchPayloadToSnapshot(
       cursorY += h + Math.max(1, Math.round(LEGACY_COMPACT_INNER_UNIT * 0.5))
     }
   } else if (!mindMapMode && framesInOrder.length > 0) {
-    // 仅当有顶层画框时二次 ELK：wrapFramesToContents 会改画框尺寸，需按 ELK 拉开多画框/不连通子图。
+    // 仅当有顶层画框时二次 Dagre：wrapFramesToContents 会改画框尺寸，需按 Dagre 拉开多画框/不连通子图。
     // 无画框的纯节点图保持 transpiler 内 autoLayout(scope=all) 结果，避免无谓重排破坏几何推断等。
     const explicitBackup = new Map<string, { x: number; y: number }>()
     for (const id of frameExplicitPos) {
       const n = safeNodes.find((x) => x.id === id)
       if (n?.position) explicitBackup.set(id, { x: n.position.x, y: n.position.y })
     }
-    const topLevelDir: FlowDirection = dagreFlowMode ? 'LR' : effectiveDirection
-    safeNodes = await layoutTopLevel(safeNodes, edges, topLevelDir, dagreFlowMode)
+    const topLevelDir: FlowDirection = 'LR'
+    safeNodes = await layoutTopLevel(safeNodes, edges, topLevelDir)
     for (const [id, pos] of explicitBackup) {
       const n = safeNodes.find((x) => x.id === id)
       if (n) n.position = { ...pos }
