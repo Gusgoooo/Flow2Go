@@ -1251,7 +1251,7 @@ export async function materializeGraphBatchPayloadToSnapshot(
         n.data = {
           ...(n.data ?? {}),
           stroke: color,
-          strokeWidth: 2,
+          strokeWidth: 1,
         }
       }
 
@@ -1263,6 +1263,7 @@ export async function materializeGraphBatchPayloadToSnapshot(
         ;(e.style as any) = {
           ...(e.style ?? {}),
           stroke: color,
+          strokeWidth: 1.5,
           '--xy-edge-stroke': color,
         }
       }
