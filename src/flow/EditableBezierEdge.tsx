@@ -89,7 +89,7 @@ export function EditableBezierEdge(props: EdgeProps) {
 
   const labelStyleObj =
     (dataTyped.labelStyle ?? (props as { labelStyle?: EdgeLabelStyle }).labelStyle) ?? {}
-  const labelFontSize = labelStyleObj.fontSize ?? 12
+  const labelFontSize = labelStyleObj.fontSize ?? 10
   const labelFontWeight = labelStyleObj.fontWeight ?? '400'
   const labelColor = labelStyleObj.color ?? 'rgba(0,0,0,0.8)'
 
