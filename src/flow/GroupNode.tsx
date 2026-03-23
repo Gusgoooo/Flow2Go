@@ -14,8 +14,17 @@ export type GroupNodeData = {
   titleFontSize?: number
   titleFontWeight?: string
   titleColor?: string
-  /** 副标题字号（独立于主标题） */
+  /** 副标题：字号 / 字重 / 颜色与标题完全独立 */
   subtitleFontSize?: number
+  subtitleFontWeight?: string
+  subtitleColor?: string
+}
+
+const DEFAULT_GROUP_TITLE_FS = 13
+const DEFAULT_GROUP_SUBTITLE_FS = 11
+
+function groupLineHeightPx(fs: number) {
+  return `${Math.round(fs) + 8}px`
 }
 
 export function GroupNode(props: NodeProps) {
@@ -43,15 +52,19 @@ export function GroupNode(props: NodeProps) {
   const [draft, setDraft] = useState(data.title ?? '')
   const [draftSubtitle, setDraftSubtitle] = useState(data.subtitle ?? '')
   const subtitleInputRef = useRef<HTMLTextAreaElement>(null)
+  const titleFs = data.titleFontSize ?? DEFAULT_GROUP_TITLE_FS
+  const subtitleFs = data.subtitleFontSize ?? DEFAULT_GROUP_SUBTITLE_FS
   const titleStyle = {
-    fontSize: data.titleFontSize ?? 13,
+    fontSize: titleFs,
     fontWeight: data.titleFontWeight ?? '800',
-    color: data.titleColor ?? undefined,
+    color: data.titleColor ?? '#1e3a8a',
+    lineHeight: groupLineHeightPx(titleFs),
   }
   const subtitleStyle = {
-    fontSize: data.subtitleFontSize ?? Math.max(10, (data.titleFontSize ?? 13) - 2),
-    fontWeight: '400',
-    color: data.titleColor ?? undefined,
+    fontSize: subtitleFs,
+    fontWeight: data.subtitleFontWeight ?? '400',
+    color: data.subtitleColor ?? '#64748b',
+    lineHeight: groupLineHeightPx(subtitleFs),
   }
   const titlePosition = data.titlePosition ?? 'top-center'
   const isLeftCenter = titlePosition === 'left-center'
@@ -139,7 +152,7 @@ export function GroupNode(props: NodeProps) {
                 anchorRef={inputRef}
                 visible={editing}
                 onRequestClose={commit}
-                fontSize={data.titleFontSize ?? 13}
+                fontSize={titleFs}
                 fontWeight={data.titleFontWeight ?? '800'}
                 textColor={data.titleColor ?? '#1e3a8a'}
                 onFontSizeChange={(v) =>
@@ -212,9 +225,9 @@ export function GroupNode(props: NodeProps) {
                   anchorRef={subtitleInputRef}
                   visible={true}
                   onRequestClose={commitSubtitle}
-                fontSize={data.subtitleFontSize ?? Math.max(10, (data.titleFontSize ?? 13) - 2)}
-                  fontWeight="400"
-                  textColor={data.titleColor ?? '#64748b'}
+                  fontSize={subtitleFs}
+                  fontWeight={data.subtitleFontWeight ?? '400'}
+                  textColor={data.subtitleColor ?? '#64748b'}
                   onFontSizeChange={(v) =>
                     rf.setNodes((nds) =>
                       nds.map((n) =>
@@ -224,12 +237,20 @@ export function GroupNode(props: NodeProps) {
                       ),
                     )
                   }
-                  onFontWeightChange={() => {}}
+                  onFontWeightChange={(v) =>
+                    rf.setNodes((nds) =>
+                      nds.map((n) =>
+                        n.id === props.id
+                          ? { ...n, data: { ...(n.data ?? {}), subtitleFontWeight: v } }
+                          : n,
+                      ),
+                    )
+                  }
                   onTextColorChange={(v) =>
                     rf.setNodes((nds) =>
                       nds.map((n) =>
                         n.id === props.id
-                          ? { ...n, data: { ...(n.data ?? {}), titleColor: v } }
+                          ? { ...n, data: { ...(n.data ?? {}), subtitleColor: v } }
                           : n,
                       ),
                     )
@@ -279,14 +300,14 @@ export function GroupNode(props: NodeProps) {
             ))}
         </div>
       ) : (
-        <>
+        <div className={styles.titleStackTop}>
           {editing ? (
             <>
               <QuickTextStyleToolbar
                 anchorRef={inputRef}
                 visible={editing}
                 onRequestClose={commit}
-                fontSize={data.titleFontSize ?? 13}
+                fontSize={titleFs}
                 fontWeight={data.titleFontWeight ?? '800'}
                 textColor={data.titleColor ?? '#1e3a8a'}
                 onFontSizeChange={(v) =>
@@ -359,9 +380,9 @@ export function GroupNode(props: NodeProps) {
                   anchorRef={subtitleInputRef}
                   visible={true}
                   onRequestClose={commitSubtitle}
-                fontSize={data.subtitleFontSize ?? Math.max(10, (data.titleFontSize ?? 13) - 2)}
-                  fontWeight="400"
-                  textColor={data.titleColor ?? '#64748b'}
+                  fontSize={subtitleFs}
+                  fontWeight={data.subtitleFontWeight ?? '400'}
+                  textColor={data.subtitleColor ?? '#64748b'}
                   onFontSizeChange={(v) =>
                     rf.setNodes((nds) =>
                       nds.map((n) =>
@@ -371,12 +392,20 @@ export function GroupNode(props: NodeProps) {
                       ),
                     )
                   }
-                  onFontWeightChange={() => {}}
+                  onFontWeightChange={(v) =>
+                    rf.setNodes((nds) =>
+                      nds.map((n) =>
+                        n.id === props.id
+                          ? { ...n, data: { ...(n.data ?? {}), subtitleFontWeight: v } }
+                          : n,
+                      ),
+                    )
+                  }
                   onTextColorChange={(v) =>
                     rf.setNodes((nds) =>
                       nds.map((n) =>
                         n.id === props.id
-                          ? { ...n, data: { ...(n.data ?? {}), titleColor: v } }
+                          ? { ...n, data: { ...(n.data ?? {}), subtitleColor: v } }
                           : n,
                       ),
                     )
@@ -424,7 +453,7 @@ export function GroupNode(props: NodeProps) {
                 {data.subtitle || '双击编辑副标题'}
               </div>
             ))}
-        </>
+        </div>
       )}
 
       {/* group 四边可拉线 */}

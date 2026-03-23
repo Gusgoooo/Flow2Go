@@ -13,8 +13,6 @@ export type AiDiagramDraft = {
 /** 由 UI 胶囊显式指定的生图场景；不传则完全由 Scene Router / 关键词自动判断 */
 export type AiDiagramSceneHint =
   | 'business-big-map'
-  /** 实验：同 Planner/提示生成业务大图 Mermaid，物化时用 business-big-map-elk，仅走内置 ELK autoLayout，不做旧版 BBM 归一化 */
-  | 'business-big-map-elk'
   | 'mind-map'
   | 'flowchart'
 
@@ -34,6 +32,8 @@ export type OpenRouterChatOptions = {
   timeoutMs?: number
   /** 选中场景胶囊时传入，强制走对应管线 */
   diagramScene?: AiDiagramSceneHint
+  /** 仅流程图场景：1=最简，5=最复杂 */
+  flowchartComplexityLevel?: 1 | 2 | 3 | 4 | 5
   /** 每进入一个新阶段调用一次（含耗时），便于界面展示与 DevTools 排查 */
   onProgress?: (info: AiGenerateProgressInfo) => void
 }
@@ -214,80 +214,30 @@ export async function openRouterSelectBusinessStyle(args: OpenRouterChatOptions)
   return '样式4'
 }
 
-/** 各 layout profile 的 subgraph 习惯（非全文 usertemplate，仅分组约束） */
+/** 各 layout profile 的 subgraph 提示（软约束：不再强制分区数量/固定英文名，交给 Planner 与用户意图） */
+const FLOWCHART_PROFILE_SUBGRAPH_SOFT_HINT = [
+  '【流程图 layout profile（软提示）】',
+  '- profile 名称仅作语义参考（前后端链路 / 数据管道 / Agent / 审批 / 架构 / 用户旅程等），按 Planner JSON 与用户诉求组织 subgraph 与节点即可。',
+  '- 不强制固定分区标题、不强制最少 subgraph 数量；需要分组时用 subgraph，不需要时可少画框或扁平节点。',
+  '- 画布上：子图内部与顶层画框/节点的相对位置由 Flow2Go 内置 ELK `layered` 自动布局；画框间距与层间距遵循 ELK 默认值，无需为留白而删减内容。',
+].join('\n')
+
 const LAYOUT_PROFILE_SUBGRAPH_RULES: Record<LayoutProfileKey, string> = {
-  'Frontend-Backend Flow Template': [
-    '【布局 profile 落地要求（强制）】',
-    '- 必须用 subgraph 表达分层分区；至少 4 个一级 subgraph：',
-    '  - Frontend',
-    '  - Gateway / BFF / API Layer',
-    '  - Backend Services',
-    '  - Database / Cache / External',
-    '- 若后端服务有多个子域（订单/支付/用户等），允许在 Backend Services 下嵌套 subgraph 分组（V2）。',
-  ].join('\n'),
-  'Data Pipeline Flow Template': [
-    '【布局 profile 落地要求（强制）】',
-    '- 必须用 subgraph 表达数据管道分区；至少 5 个一级 subgraph：',
-    '  - Data Sources',
-    '  - Ingestion',
-    '  - Processing / Transformation',
-    '  - Storage / Warehouse / Feature Store',
-    '  - Serving / BI / API / Consumers',
-    '- 治理/监控链路可单独做一个 subgraph：Observability / Data Quality（推荐）。',
-  ].join('\n'),
-  'Agent Workflow Template': [
-    '【布局 profile 落地要求（强制）】',
-    '- 必须用 subgraph 表达模块边界，至少包含：',
-    '  - User / Trigger',
-    '  - Planner / Orchestrator',
-    '  - Specialist Agents（可嵌套多个子 subgraph）',
-    '  - Tools / Knowledge / Memory',
-    '  - Reviewer / Verifier',
-    '  - Output',
-  ].join('\n'),
-  'Approval Workflow Template': [
-    '【布局 profile 落地要求（强制）】',
-    '- 必须按角色或阶段用 subgraph 分组（至少 4 个）：',
-    '  - Applicant',
-    '  - Approvers（至少两级，可嵌套 subgraph）',
-    '  - System / Notification',
-    '  - Archive / Record',
-  ].join('\n'),
-  'System Architecture Template': [
-    '【布局 profile 落地要求（强制）】',
-    '- 必须用 subgraph 表达系统分层（至少 6 个）：',
-    '  - Users / Entry Points',
-    '  - Access Layer',
-    '  - Core Business Services（允许嵌套多个子 subgraph）',
-    '  - Platform Capabilities',
-    '  - Data Layer',
-    '  - Infrastructure / External',
-  ].join('\n'),
-  'User Journey Template': [
-    '【布局 profile 落地要求（强制）】',
-    '- 必须用 subgraph 表达“阶段”；至少 4 个一级 subgraph（阶段名可中文/英文混合）：',
-    '  - Awareness',
-    '  - Onboarding / Consideration',
-    '  - Usage / Interaction',
-    '  - Retention / Completion',
-    '- 每个阶段内部建议用嵌套 subgraph 或节点簇表达：目标/行为/触点/系统响应/痛点/机会点（V2）。',
-  ].join('\n'),
+  'Frontend-Backend Flow Template': FLOWCHART_PROFILE_SUBGRAPH_SOFT_HINT,
+  'Data Pipeline Flow Template': FLOWCHART_PROFILE_SUBGRAPH_SOFT_HINT,
+  'Agent Workflow Template': FLOWCHART_PROFILE_SUBGRAPH_SOFT_HINT,
+  'Approval Workflow Template': FLOWCHART_PROFILE_SUBGRAPH_SOFT_HINT,
+  'System Architecture Template': FLOWCHART_PROFILE_SUBGRAPH_SOFT_HINT,
+  'User Journey Template': FLOWCHART_PROFILE_SUBGRAPH_SOFT_HINT,
 }
 
 const MIND_MAP_MERMAID_SUBGRAPH_RULES = [
-  '【思维导图 Mermaid 约束（强制）】',
-  '- Mermaid 输出中禁止出现任何 subgraph / end：思维导图只能包含普通节点与父->子边。',
-  '- 图中不得出现任何画框/子图层级（不允许创建 frame）。',
+  '【思维导图 Mermaid 约束（轻量）】',
   '- Mermaid 第一行必须严格为：flowchart LR。',
-  '- 禁止回边/环：请让边从左（上层/根）指向右（更深层），形成树状层级。',
+  '- 建议保持树状层级（根 -> 分支 -> 子要点），避免明显回环。',
   '- 节点 id 必须唯一且为小写英文字母/数字/下划线；节点 label 必须为中文且尽量短。',
-  '- 父子关系默认用无标签连线：`父id --> 子id`。不要写 `-->|...|` 边标签，除非用户原文明确要求在某条父子边上展示语义（此时才用 `a -->|短文案| b`）。',
-  '- 布局与样式由系统 mind-map 布局器负责：',
-  '  - 列式排版：根在最左列，深度越深越往右；同列纵向对齐。',
-  '  - 列间距目标至少 8 个 grid units。',
-  '  - 以“深度层级”为主题色顺序，节点描边粗细 strokeWidth=2。',
-  '  - 边使用贝塞尔曲线效果；无标签边在画布上不显示箭头，有标签边才显示箭头。',
-  '- 结构压缩：至少 3 层深度（根->子->孙），并确保至少存在一条“子节点->孙节点”的分支；同层节点建议 1~5 个，避免过密。',
+  '- 父子关系默认用无标签连线：`父id --> 子id`；仅在确有语义时再使用 `-->|...|`。',
+  '- 布局由系统 mind-elixir-core 管线决定（除配色外不额外施加版式限制）。',
 ].join('\n')
 
 function businessBigMapDynamicRenderRules(frameType: FrameTypeKey | null, businessStyle: BusinessStyleKey | null): string {
@@ -327,7 +277,7 @@ function businessBigMapDynamicRenderRules(frameType: FrameTypeKey | null, busine
 }
 
 function layoutDecisionSystemSnippet(ld: LayoutDecision): string {
-  return [
+  const lines = [
     '【布局决策（轻量，仅版式/引擎偏好；具体节点与章节由 Planner JSON 与用户输入决定）】',
     `- diagramType: ${ld.diagramType}`,
     `- layoutEngine: ${ld.layoutEngine}`,
@@ -335,7 +285,13 @@ function layoutDecisionSystemSnippet(ld: LayoutDecision): string {
     `- complexityMode: ${ld.complexityMode}`,
     `- profileId: ${ld.profileId}`,
     `- preserveBusinessBigMap: ${ld.preserveBusinessBigMap}`,
-  ].join('\n')
+  ]
+  if (ld.diagramType === 'flowchart') {
+    lines.push(
+      '- 流程图物化：每个子图内部与顶层元素各跑一次 ELK layered；间距/组件间距为 ELK 默认（未传 LayoutSpacingOptions）。不要求人为压缩节点或边数量。',
+    )
+  }
+  return lines.join('\n')
 }
 
 function normalizeBusinessBigMapDraft(draft: AiDiagramDraft): AiDiagramDraft {
@@ -629,12 +585,25 @@ async function openRouterChatComplete(args: {
   temperature: number
 }): Promise<string> {
   const controller = new AbortController()
-  const timeout = window.setTimeout(() => controller.abort(), args.timeoutMs)
-  const mergedSignal = args.signal
-    ? (AbortSignal as any).any
-      ? (AbortSignal as any).any([args.signal, controller.signal])
-      : controller.signal
-    : controller.signal
+  let timedOut = false
+  const timeout = window.setTimeout(() => {
+    timedOut = true
+    controller.abort()
+  }, args.timeoutMs)
+  const mergedController = new AbortController()
+  const relayAbort = () => mergedController.abort()
+  if (args.signal) {
+    if (args.signal.aborted) {
+      mergedController.abort()
+    } else {
+      args.signal.addEventListener('abort', relayAbort, { once: true })
+    }
+  }
+  if (controller.signal.aborted) {
+    mergedController.abort()
+  } else {
+    controller.signal.addEventListener('abort', relayAbort, { once: true })
+  }
 
   try {
     const res = await fetch('https://openrouter.ai/api/v1/chat/completions', {
@@ -645,7 +614,7 @@ async function openRouterChatComplete(args: {
         'HTTP-Referer': window.location.origin,
         'X-Title': 'Flow2Go',
       },
-      signal: mergedSignal,
+      signal: mergedController.signal,
       body: JSON.stringify({
         model: args.model,
         temperature: args.temperature,
@@ -662,7 +631,20 @@ async function openRouterChatComplete(args: {
     const content = payload?.choices?.[0]?.message?.content
     if (typeof content !== 'string' || !content.trim()) throw new Error('AI 未返回内容')
     return content.trim()
+  } catch (e: unknown) {
+    if (e instanceof Error && e.name === 'AbortError') {
+      if (args.signal?.aborted && !timedOut) {
+        throw new Error('用户已取消本次生成')
+      }
+      if (timedOut) {
+        throw new Error(`请求超时（>${Math.round(args.timeoutMs / 1000)}s），已中止`)
+      }
+      throw new Error('请求被中断，请重试')
+    }
+    throw e
   } finally {
+    if (args.signal) args.signal.removeEventListener('abort', relayAbort)
+    controller.signal.removeEventListener('abort', relayAbort)
     window.clearTimeout(timeout)
   }
 }
@@ -861,6 +843,21 @@ const SCENE_ROUTER_SYSTEM_PROMPT = [
   '默认：不确定时用 flowchart + Frontend-Backend Flow Template + compact。',
 ].join('\n')
 
+const LONG_INPUT_SUMMARY_THRESHOLD = 2200
+const LONG_INPUT_TIMEOUT_MS = 90_000
+
+const DIAGRAM_INPUT_SUMMARIZER_SYSTEM_PROMPT = [
+  '你是 Flow2Go 的输入压缩器（Input Summarizer）。',
+  '目标：把超长用户输入压缩成“可用于流程图生成”的高信噪比摘要。',
+  '',
+  '输出要求（强制）：',
+  '- 只输出纯文本，不要 JSON，不要代码块。',
+  '- 保留：核心目标、主流程阶段、关键角色/系统、关键约束、必要回流。',
+  '- 删除：冗长背景、重复描述、与流程图无关的细枝末节。',
+  '- 摘要尽量控制在 800~1400 中文字符。',
+  '- 不要凭空捏造信息；缺失项可留空，不要补全不存在的事实。',
+].join('\n')
+
 const DIAGRAM_PLANNER_SYSTEM_PROMPT = [
   '你是 Flow2Go 的 Diagram Planner / Graph Normalizer（规划器）。',
   '',
@@ -916,7 +913,12 @@ const DIAGRAM_PLANNER_SYSTEM_PROMPT = [
   '- 必须确保至少 3 层深度：根(Depth0) -> 一级分支(Depth1) -> 二级要点(Depth2)。',
   '- 要求：children 数量建议 3~6；每个一级分支的 points 数量至少 1、最多 4。',
   '- 列间距、线型由系统 mind-map 布局器与模板负责；你只负责结构信息。',
-  '- 列间距、线型由系统 mind-map 布局器与模板负责。',
+  '',
+  '当 templateKey 为以下任一（6 个 flowchart layout profile：Frontend-Backend / Data Pipeline / Agent / Approval / System Architecture / User Journey）：',
+  '- 【需求简洁化（规划阶段）】在仍忠实用户目标的前提下，把输入压缩成最少必要主干：合并重复步骤、去掉与制图无关的说明、不要为“显得完整”而虚构子系统或空阶段。',
+  '- mainChain：用一句白话写清端到端主路径；supportStrategy / feedbackStrategy 若无独立价值可写「无」或极短一句。',
+  '- structure.framesOrRoot：层次够用即可，不要为了填满模板而堆空壳阶段；constraints.targetNodeCountHintRange 宜略保守（宁可少节点，细节可留给用户画布上补充）。',
+  '- 仍禁止输出 Mermaid、禁止输出具体节点 id 与边表达式。',
 ].join('\n')
 
 function detectMindMapIntent(prompt: string): boolean {
@@ -1027,8 +1029,36 @@ async function openRouterDiagramPlanner(
   return JSON.stringify(obj)
 }
 
+async function openRouterSummarizeDiagramInput(args: OpenRouterChatOptions): Promise<string> {
+  const { apiKey, model, prompt, signal, timeoutMs = DEFAULT_TIMEOUT_MS } = args
+  const key = (apiKey ?? '').trim()
+  if (!key) throw new Error('缺少 OpenRouter API Key')
+  if (!prompt.trim()) throw new Error('请输入生成描述')
+
+  const raw = await openRouterChatComplete({
+    apiKey: key,
+    model,
+    system: DIAGRAM_INPUT_SUMMARIZER_SYSTEM_PROMPT,
+    user: prompt.trim(),
+    signal,
+    timeoutMs,
+    temperature: 0.1,
+  })
+  const s = stripCodeFences(raw).trim()
+  return s || prompt.trim()
+}
+
 export async function openRouterGenerateDiagram(opts: OpenRouterChatOptions): Promise<AiDiagramDraft> {
-  const { apiKey, model, prompt, signal, timeoutMs = DEFAULT_TIMEOUT_MS, diagramScene: sceneHint, onProgress } = opts
+  const {
+    apiKey,
+    model,
+    prompt,
+    signal,
+    timeoutMs = DEFAULT_TIMEOUT_MS,
+    diagramScene: sceneHint,
+    flowchartComplexityLevel,
+    onProgress,
+  } = opts
   const key = (apiKey ?? '').trim()
   if (!key) throw new Error('缺少 OpenRouter API Key')
   if (!prompt.trim()) throw new Error('请输入生成描述')
@@ -1046,7 +1076,25 @@ export async function openRouterGenerateDiagram(opts: OpenRouterChatOptions): Pr
   }
 
   const originalPrompt = prompt.trim()
-  const isElkBusinessMapTest = sceneHint === 'business-big-map-elk'
+  const longInput = originalPrompt.length >= LONG_INPUT_SUMMARY_THRESHOLD
+  const timeoutMsForPipeline = longInput ? Math.max(timeoutMs, LONG_INPUT_TIMEOUT_MS) : timeoutMs
+  let planningPrompt = originalPrompt
+  if (longInput) {
+    report('输入压缩', `原文约 ${originalPrompt.length} 字，先摘要再生图…`)
+    try {
+      planningPrompt = await openRouterSummarizeDiagramInput({
+        apiKey: key,
+        model,
+        prompt: originalPrompt,
+        signal,
+        timeoutMs: timeoutMsForPipeline,
+      })
+      report('输入压缩完成', `摘要约 ${planningPrompt.length} 字`)
+    } catch {
+      planningPrompt = originalPrompt
+      report('输入压缩失败', '回退使用原文')
+    }
+  }
   report('已开始', sceneHint ? `场景胶囊: ${sceneHint}` : '自动路由')
   let chosen: UserTemplateKey = 'Frontend-Backend Flow Template'
   let plannerText: string | null = null
@@ -1069,9 +1117,9 @@ export async function openRouterGenerateDiagram(opts: OpenRouterChatOptions): Pr
     plannerText = await openRouterDiagramPlanner({
       apiKey: key,
       model,
-      prompt: originalPrompt,
+      prompt: planningPrompt,
       signal,
-      timeoutMs,
+      timeoutMs: timeoutMsForPipeline,
       templateKey: chosen,
       complexityMode: toPlannerComplexity(route.complexityMode),
     })
@@ -1089,27 +1137,53 @@ export async function openRouterGenerateDiagram(opts: OpenRouterChatOptions): Pr
     plannerText = await openRouterDiagramPlanner({
       apiKey: key,
       model,
-      prompt: originalPrompt,
+      prompt: planningPrompt,
       signal,
-      timeoutMs,
+      timeoutMs: timeoutMsForPipeline,
       templateKey: chosen,
       complexityMode: toPlannerComplexity(route.complexityMode),
     })
   }
 
   const runFlowchartByLayoutSelector = async () => {
-    const sel = await openRouterSelectLayoutProfile({ apiKey: key, model, prompt: originalPrompt, signal, timeoutMs })
+    const sel = await openRouterSelectLayoutProfile({
+      apiKey: key,
+      model,
+      prompt: planningPrompt,
+      signal,
+      timeoutMs: timeoutMsForPipeline,
+    })
     route = layoutProfileResultToFallbackRoute(sel)
+    // 用户滑块优先：流程图复杂度 1~2 => compact；3~5 => normal（后续 planner 映射为 chapters）
+    if (flowchartComplexityLevel != null) {
+      route = {
+        ...route,
+        complexityMode: flowchartComplexityLevel <= 2 ? 'compact' : 'normal',
+      }
+    }
+    // 长输入自动降复杂度：优先可读性与稳定性。
+    if (longInput && route.complexityMode !== 'compact') {
+      route = { ...route, complexityMode: 'compact' }
+    }
     layoutDecision = resolveLayoutDecision(route)
     chosen = sel.layoutProfileKey
+    const complexityHint =
+      flowchartComplexityLevel == null
+        ? undefined
+        : flowchartComplexityLevel <= 2
+          ? '【复杂度滑块】用户选择了低复杂度：优先主链路与少量关键节点，减少支撑线与回流。'
+          : flowchartComplexityLevel === 3
+            ? '【复杂度滑块】用户选择了中复杂度：保持主链路清晰，适度展开关键分支。'
+            : '【复杂度滑块】用户选择了高复杂度：可展开更多细节；但请控制跨组连线，避免可读性明显下降。'
     plannerText = await openRouterDiagramPlanner({
       apiKey: key,
       model,
-      prompt: originalPrompt,
+      prompt: planningPrompt,
       signal,
-      timeoutMs,
+      timeoutMs: timeoutMsForPipeline,
       templateKey: chosen,
       complexityMode: toPlannerComplexity(route.complexityMode),
+      extraUserHint: complexityHint,
     })
   }
 
@@ -1118,7 +1192,7 @@ export async function openRouterGenerateDiagram(opts: OpenRouterChatOptions): Pr
     if (forceMindMap) {
       report('Diagram Planner（思维导图）', '请求中…')
       await runMindMapPlanner()
-    } else if (sceneHint === 'business-big-map' || sceneHint === 'business-big-map-elk') {
+    } else if (sceneHint === 'business-big-map') {
       report('Diagram Planner（业务大图）', '请求中…')
       await runBusinessBigMapPlanner()
     } else if (sceneHint === 'flowchart') {
@@ -1126,7 +1200,13 @@ export async function openRouterGenerateDiagram(opts: OpenRouterChatOptions): Pr
       await runFlowchartByLayoutSelector()
     } else {
       report('场景路由（Scene Router）', '请求中…')
-      route = await openRouterSceneRoute({ apiKey: key, model, prompt: originalPrompt, signal, timeoutMs })
+      route = await openRouterSceneRoute({
+        apiKey: key,
+        model,
+        prompt: planningPrompt,
+        signal,
+        timeoutMs: timeoutMsForPipeline,
+      })
       report('场景路由完成', `pipeline=${route.pipeline}`)
       layoutDecision = resolveLayoutDecision(route)
       chosen =
@@ -1139,9 +1219,9 @@ export async function openRouterGenerateDiagram(opts: OpenRouterChatOptions): Pr
       plannerText = await openRouterDiagramPlanner({
         apiKey: key,
         model,
-        prompt: originalPrompt,
+        prompt: planningPrompt,
         signal,
-        timeoutMs,
+        timeoutMs: timeoutMsForPipeline,
         templateKey: chosen,
         complexityMode: toPlannerComplexity(route.complexityMode),
       })
@@ -1156,7 +1236,7 @@ export async function openRouterGenerateDiagram(opts: OpenRouterChatOptions): Pr
       } catch {
         plannerText = null
       }
-    } else if (sceneHint === 'business-big-map' || sceneHint === 'business-big-map-elk') {
+    } else if (sceneHint === 'business-big-map') {
       try {
         await runBusinessBigMapPlanner()
       } catch {
@@ -1168,7 +1248,7 @@ export async function openRouterGenerateDiagram(opts: OpenRouterChatOptions): Pr
       } catch {
         plannerText = null
       }
-    } else if (detectMindMapIntent(originalPrompt)) {
+    } else if (detectMindMapIntent(planningPrompt)) {
       try {
         await runMindMapPlanner()
       } catch {
@@ -1211,9 +1291,9 @@ export async function openRouterGenerateDiagram(opts: OpenRouterChatOptions): Pr
       plannerText = await openRouterDiagramPlanner({
         apiKey: key,
         model,
-        prompt: originalPrompt,
+        prompt: planningPrompt,
         signal,
-        timeoutMs,
+        timeoutMs: timeoutMsForPipeline,
         templateKey: chosen,
         complexityMode: plannerComplexityForBbm,
         extraUserHint: [
@@ -1234,21 +1314,27 @@ export async function openRouterGenerateDiagram(opts: OpenRouterChatOptions): Pr
     }
   }
 
-  const effectivePrompt = plannerText ?? originalPrompt
+  const effectivePrompt = plannerText ?? planningPrompt
 
   // 为了最大化保留既有业务大图视觉：frameType/businessStyle 的判断尽量基于原始用户意图，
   // 生成阶段才使用 plannerText 做结构压缩与去噪。
   const frameType =
-    chosen === 'Business Big Map Template' && !isElkBusinessMapTest
+    chosen === 'Business Big Map Template'
       ? (report('画框类型选择器', '请求中…'),
-        await openRouterSelectFrameType({ apiKey: key, model, prompt: originalPrompt, signal, timeoutMs }))
+        await openRouterSelectFrameType({ apiKey: key, model, prompt: planningPrompt, signal, timeoutMs: timeoutMsForPipeline }))
       : null
   if (frameType) report('画框类型', String(frameType))
 
   const businessStyle =
-    chosen === 'Business Big Map Template' && !isElkBusinessMapTest
+    chosen === 'Business Big Map Template'
       ? (report('业务样式选择器', '请求中…'),
-        await openRouterSelectBusinessStyle({ apiKey: key, model, prompt: originalPrompt, signal, timeoutMs }))
+        await openRouterSelectBusinessStyle({
+          apiKey: key,
+          model,
+          prompt: planningPrompt,
+          signal,
+          timeoutMs: timeoutMsForPipeline,
+        }))
       : null
   if (businessStyle) report('业务样式', String(businessStyle))
 
@@ -1265,18 +1351,7 @@ export async function openRouterGenerateDiagram(opts: OpenRouterChatOptions): Pr
       : DEFAULT_MERMAID_SYSTEM_PROMPT
 
   let system: string
-  if (chosen === 'Business Big Map Template' && isElkBusinessMapTest) {
-    system = [
-      baseMermaidSystem,
-      '',
-      BUSINESS_BIG_MAP_SYSTEM_PROMPT,
-      '',
-      '【实验：ELK 物化】生成结果将使用 meta.layoutProfile=business-big-map-elk：关闭旧版「业务大图画布归一化 / 章节专色强制」等后处理，子图与顶层位置主要由 Mermaid 物化链路里的 ELK layered（autoLayout）计算。仍须严格遵守 Planner JSON 映射与上文业务大图结构约束（含 0 边）。',
-      '',
-      '【边数量控制（强制）】',
-      '- 业务大图必须为 0 条边（edges = 0）',
-    ].join('\n')
-  } else if (chosen === 'Business Big Map Template') {
+  if (chosen === 'Business Big Map Template') {
     system = [
       baseMermaidSystem,
       '',
@@ -1312,11 +1387,6 @@ export async function openRouterGenerateDiagram(opts: OpenRouterChatOptions): Pr
       `模板名称（兼容，等同 layout profile）：${profileKey}`,
       '',
       LAYOUT_PROFILE_SUBGRAPH_RULES[profileKey],
-      '',
-      '【边数量控制（强制）】',
-      '- 如果关系很多：优先用“汇总节点/分组”替代全连接，避免每对节点都连边',
-      '- 一般情况下，边数量尽量控制在：edges <= nodes + 3',
-      '- 避免同一对节点重复多条边；避免交叉边过多',
     ].join('\n')
   }
 
@@ -1354,30 +1424,44 @@ export async function openRouterGenerateDiagram(opts: OpenRouterChatOptions): Pr
 
   const generateOnce = async (extraUserHint?: string, mermaidStepLabel?: string) => {
     report('大模型生成 Mermaid', mermaidStepLabel ?? '等待模型返回…')
-    const content = await openRouterChatComplete({
-      apiKey: key,
-      model,
-      system,
-      user: extraUserHint ? `${user}\n\n${extraUserHint}` : user,
-      signal,
-      timeoutMs,
-      temperature: 0.2,
-    })
-    report('Mermaid 文本已返回', `约 ${content.length} 字，解析与物化中…`)
-
-    // Mind Map：强制禁止 subgraph，避免模型“顺便画框/编组”导致不是纯节点思维导图。
-    if (chosen === 'Mind Map Template' && /\bsubgraph\b/i.test(content)) {
-      throw new Error('Mind Map Template forbidden subgraph')
+    const userPrompt = extraUserHint ? `${user}\n\n${extraUserHint}` : user
+    let content = ''
+    let lastError: unknown = null
+    const retryTimeout = Math.max(timeoutMsForPipeline + 30_000, 120_000)
+    for (let i = 0; i < 2; i += 1) {
+      const attemptTimeout = i === 0 ? timeoutMsForPipeline : retryTimeout
+      try {
+        if (i === 1) {
+          report('大模型生成 Mermaid', `超时兜底重试（${Math.round(attemptTimeout / 1000)}s）…`)
+        }
+        content = await openRouterChatComplete({
+          apiKey: key,
+          model,
+          system,
+          user: userPrompt,
+          signal,
+          timeoutMs: attemptTimeout,
+          temperature: 0.2,
+        })
+        break
+      } catch (e) {
+        lastError = e
+        const msg = e instanceof Error ? e.message : String(e)
+        const isRetryable =
+          !signal?.aborted &&
+          (msg.includes('请求超时') || msg.includes('aborted') || msg.includes('中断') || msg.includes('timed out'))
+        if (!isRetryable || i === 1) throw e
+      }
     }
+    if (!content) throw (lastError instanceof Error ? lastError : new Error('大模型生成 Mermaid 失败'))
+    report('Mermaid 文本已返回', `约 ${content.length} 字，解析与物化中…`)
 
     const mermaidLayoutProfile: string | undefined =
       chosen === 'Business Big Map Template'
-        ? isElkBusinessMapTest
-          ? 'business-big-map-elk'
-          : 'business-big-map'
+        ? 'business-big-map'
         : chosen === 'Mind Map Template'
           ? 'mind-map'
-          : undefined
+          : 'flowchart'
 
     const draft = await convertMermaidToAiDraft(content, {
       layoutProfile: mermaidLayoutProfile,
@@ -1389,19 +1473,9 @@ export async function openRouterGenerateDiagram(opts: OpenRouterChatOptions): Pr
 
   if (chosen !== 'Business Big Map Template') {
     if (chosen === 'Mind Map Template') {
-      // Mind Map：最多重试一次，专门修复“画框/编组/不按 JSON 映射”问题。
-      try {
-        const dm = await generateOnce(mindMapJsonMermaidHint, '思维导图')
-        report('生成完成', '思维导图')
-        return dm
-      } catch {
-        const dm = await generateOnce(
-          `${mindMapJsonMermaidHint}\n\n【额外强制】必须只输出节点和父子连线，禁止任何 subgraph/end。`,
-          '思维导图（重试）',
-        )
-        report('生成完成', '思维导图（重试）')
-        return dm
-      }
+      const dm = await generateOnce(mindMapJsonMermaidHint, '思维导图')
+      report('生成完成', '思维导图')
+      return dm
     }
     const d1 = await generateOnce(undefined, '主生成')
 
@@ -1420,22 +1494,6 @@ export async function openRouterGenerateDiagram(opts: OpenRouterChatOptions): Pr
     }
     report('生成完成', '流程图/通用')
     return d1
-  }
-
-  // 实验：ELK 业务大图 — 单次生成 + 不做 normalizeBusinessBigMapDraft / 结构配额器
-  if (isElkBusinessMapTest) {
-    try {
-      const out = await generateOnce(businessJsonMermaidHint, 'ELK 业务大图')
-      report('生成完成', 'ELK 业务大图')
-      return out
-    } catch {
-      const out = await generateOnce(
-        `${businessJsonMermaidHint}\n\n【补充】请保证 flowchart TB，subgraph 嵌套与 Planner JSON 一致；不要输出任何 --> 连线。`,
-        'ELK 业务大图（重试）',
-      )
-      report('生成完成', 'ELK 业务大图（重试）')
-      return out
-    }
   }
 
   // 结构配额器：

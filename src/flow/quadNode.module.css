@@ -2,6 +2,7 @@
 .node {
   /* Allow business quad nodes to be shrinkable to ~3 layout units (12px * 3 = 36px). */
   min-width: 80px;
+  max-width: 200px;
   min-height: 44px;
   position: relative;
   height: 100%;
@@ -23,15 +24,26 @@
   box-sizing: border-box;
 }
 
+.measureBox {
+  position: absolute;
+  left: 0;
+  top: 0;
+  visibility: hidden;
+  pointer-events: none;
+  z-index: -1;
+  box-sizing: border-box;
+  padding: 10px 12px;
+}
+
 .label {
   font-size: 12px;
   font-weight: 700;
   text-align: center;
   width: 100%;
-  line-height: 1.4;
   margin: 0;
   white-space: pre-wrap;
   word-break: break-word;
+  /* line-height 由组件按「字号+8px」内联 */
 }
 
 .subtitle {
@@ -40,9 +52,9 @@
   text-align: center;
   width: 100%;
   margin-top: 2px;
-  line-height: 1.4;
   white-space: pre-wrap;
   word-break: break-word;
+  /* 与主标题唯一关联：上间距 2px；行高由内联按副标题字号+8px */
 }
 
 .input {
@@ -53,14 +65,12 @@
   font-size: 12px;
   font-weight: 700;
   text-align: center;
-  line-height: 1.4;
   margin: 0;
   padding: 0;
   resize: none;
   font-family: inherit;
   height: auto;
   overflow: hidden;
-  min-height: 1.4em;
 }
 
 .inputSubtitle {
@@ -72,13 +82,11 @@
   text-align: center;
   color: #64748b;
   margin-top: 2px;
-  line-height: 1.4;
   padding: 0;
   resize: none;
   font-family: inherit;
   height: auto;
   overflow: hidden;
-  min-height: 1.4em;
 }
 
 .handle {

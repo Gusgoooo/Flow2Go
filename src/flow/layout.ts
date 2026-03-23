@@ -4,6 +4,7 @@ import type { ElkExtendedEdge, ElkNode } from 'elkjs/lib/elk-api'
 
 export type LayoutDirection = 'LR' | 'TB' | 'RL' | 'BT'
 
+/** 仅当需要覆盖 ELK 内置默认时才传入；不传则完全使用 layered 算法的默认间距与 padding */
 export type LayoutSpacingOptions = {
   nodesep?: number
   ranksep?: number
@@ -12,6 +13,29 @@ export type LayoutSpacingOptions = {
 }
 
 const elk = new ELK()
+
+function buildElkLayoutOptions(direction: LayoutDirection, spacing?: LayoutSpacingOptions): Record<string, string> {
+  const opts: Record<string, string> = {
+    'elk.algorithm': 'layered',
+    'elk.direction': layoutDirectionToElk(direction),
+    /** 不连通子图分开摆放，间距用 ELK 默认（org.eclipse.elk.spacing.componentComponent 等），避免手写 tile */
+    'org.eclipse.elk.separateConnectedComponents': 'true',
+  }
+  if (spacing?.nodesep != null) opts['elk.spacing.nodeNode'] = String(spacing.nodesep)
+  if (spacing?.ranksep != null) {
+    opts['org.eclipse.elk.layered.spacing.nodeNodeBetweenLayers'] = String(spacing.ranksep)
+  }
+  if (spacing?.marginx != null && spacing?.marginy != null) {
+    opts['org.eclipse.elk.padding'] = `[top=${spacing.marginy},left=${spacing.marginx},bottom=${spacing.marginy},right=${spacing.marginx}]`
+  } else if (spacing?.marginx != null) {
+    const m = spacing.marginx
+    opts['org.eclipse.elk.padding'] = `[top=${m},left=${m},bottom=${m},right=${m}]`
+  } else if (spacing?.marginy != null) {
+    const m = spacing.marginy
+    opts['org.eclipse.elk.padding'] = `[top=${m},left=${m},bottom=${m},right=${m}]`
+  }
+  return opts
+}
 
 function layoutDirectionToElk(direction: LayoutDirection): string {
   switch (direction) {
@@ -29,7 +53,8 @@ function layoutDirectionToElk(direction: LayoutDirection): string {
 }
 
 /**
- * 使用 ELK layered 算法对节点做分层布局（替代原 dagre）。
+ * 使用 ELK `layered` 布局。未传 `spacing` 时不写 `elk.spacing.*` / `padding`，
+ * 间距与画布边距完全遵循 ELK 默认值；需要微调时再传 `LayoutSpacingOptions`。
  * 坐标为左上角，与 React Flow / XYFlow 一致。
  */
 export async function autoLayout<NData extends Record<string, unknown>>(
@@ -38,11 +63,6 @@ export async function autoLayout<NData extends Record<string, unknown>>(
   direction: LayoutDirection,
   spacing?: LayoutSpacingOptions,
 ): Promise<Array<Node<NData>>> {
-  const nodesep = spacing?.nodesep ?? 64
-  const ranksep = spacing?.ranksep ?? 96
-  const marginx = spacing?.marginx ?? 48
-  const marginy = spacing?.marginy ?? 48
-
   const visibleNodes = nodes.filter((n) => !n.hidden)
   if (visibleNodes.length === 0) return nodes
 
@@ -72,14 +92,7 @@ export async function autoLayout<NData extends Record<string, unknown>>(
 
   const graph: ElkNode = {
     id: 'flow2go-elk-root',
-    layoutOptions: {
-      'elk.algorithm': 'layered',
-      'elk.direction': layoutDirectionToElk(direction),
-      'elk.spacing.nodeNode': String(nodesep),
-      'org.eclipse.elk.layered.spacing.nodeNodeBetweenLayers': String(ranksep),
-      // 与 dagre 的 marginx/marginy 类似：根图内边距
-      'org.eclipse.elk.padding': `[top=${marginy},left=${marginx},bottom=${marginy},right=${marginx}]`,
-    },
+    layoutOptions: buildElkLayoutOptions(direction, spacing),
     children: elkChildren,
     edges: elkEdges,
   }

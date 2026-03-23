@@ -23,26 +23,31 @@
   opacity: 1;
 }
 
-.title {
+/* 顶部居中：标题 + 副标题纵向排列，间距 2px（行高由内联「字号+8px」控制） */
+.titleStackTop {
   position: absolute;
   top: 8px;
   left: 8px;
   right: 8px;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 2px;
+}
+
+.title {
+  width: 100%;
   text-align: center;
   font-size: 13px;
   font-weight: 800;
   color: #1e3a8a;
   user-select: none;
-  line-height: 1.4;
   white-space: pre-wrap;
   word-break: break-word;
 }
 
 .titleInput {
-  position: absolute;
-  top: 8px;
-  left: 8px;
-  right: 8px;
+  width: 100%;
   border: none;
   outline: none;
   background: transparent;
@@ -50,35 +55,26 @@
   font-size: 13px;
   font-weight: 800;
   color: #1e3a8a;
-  line-height: 1.4;
   resize: none;
   font-family: inherit;
   height: auto;
   overflow: hidden;
-  min-height: 1.4em;
 }
 
 .subtitle {
-  position: absolute;
-  top: 28px;
-  left: 8px;
-  right: 8px;
+  width: 100%;
   text-align: center;
   font-size: 11px;
   font-weight: 400;
   color: #64748b;
   user-select: none;
-  line-height: 1.4;
   white-space: pre-wrap;
   word-break: break-word;
   cursor: text;
 }
 
 .subtitleInput {
-  position: absolute;
-  top: 28px;
-  left: 8px;
-  right: 8px;
+  width: 100%;
   border: none;
   outline: none;
   background: transparent;
@@ -86,12 +82,10 @@
   font-size: 11px;
   font-weight: 400;
   color: #64748b;
-  line-height: 1.4;
   resize: none;
   font-family: inherit;
   height: auto;
   overflow: hidden;
-  min-height: 1.4em;
 }
 
 /* Left-center: 标题+副标题整体垂直居中，副标题在标题下、左对齐 */
@@ -104,7 +98,7 @@
   display: flex;
   flex-direction: column;
   align-items: flex-start;
-  gap: 4px;
+  gap: 2px;
 }
 
 .titleLeft {
@@ -112,7 +106,6 @@
   font-weight: 800;
   color: #1e3a8a;
   user-select: none;
-  line-height: 1.4;
   white-space: pre-wrap;
   word-break: break-word;
   text-align: left;
@@ -125,12 +118,10 @@
   font-size: 13px;
   font-weight: 800;
   color: #1e3a8a;
-  line-height: 1.4;
   resize: none;
   font-family: inherit;
   height: auto;
   overflow: hidden;
-  min-height: 1.4em;
   text-align: left;
   width: 100%;
   align-self: stretch;
@@ -141,7 +132,6 @@
   font-weight: 400;
   color: #64748b;
   user-select: none;
-  line-height: 1.4;
   white-space: pre-wrap;
   word-break: break-word;
   cursor: text;
@@ -155,12 +145,10 @@
   font-size: 11px;
   font-weight: 400;
   color: #64748b;
-  line-height: 1.4;
   resize: none;
   font-family: inherit;
   height: auto;
   overflow: hidden;
-  min-height: 1.4em;
   text-align: left;
   width: 100%;
   align-self: stretch;

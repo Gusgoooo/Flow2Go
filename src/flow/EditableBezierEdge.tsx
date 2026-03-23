@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useRef, useState } from 'react'
-import { BaseEdge, Position, getBezierPath, type EdgeProps, useReactFlow } from '@xyflow/react'
+import { BaseEdge, MarkerType, Position, getBezierPath, type EdgeProps, useReactFlow } from '@xyflow/react'
 import { getBezierLabelAnchors } from './edgeLabels/edgeLabelPosition'
 import { SmartEdgeLabel } from './edgeLabels/SmartEdgeLabel'
 import type { EdgeLabelLayoutConfig, EdgeLabelStyle } from './edgeLabels/types'
@@ -11,6 +11,21 @@ type EdgeData = {
   editingLabel?: boolean
   labelStyle?: EdgeLabelStyle
   labelLayout?: EdgeLabelLayoutConfig
+  arrowStyle?: 'none' | 'end' | 'start' | 'both'
+}
+
+function markerColorFrom(style: EdgeProps['style'], marker: unknown): string {
+  const mk = (marker ?? {}) as { color?: string }
+  const s = (style ?? {}) as { stroke?: string; ['--xy-edge-stroke']?: string }
+  return s['--xy-edge-stroke'] ?? s.stroke ?? mk.color ?? '#94a3b8'
+}
+
+function markerKindFrom(marker: unknown): 'closed' | 'open' | null {
+  if (!marker || typeof marker !== 'object') return null
+  const t = (marker as { type?: unknown }).type
+  if (t === MarkerType.ArrowClosed || t === 'arrowclosed') return 'closed'
+  if (t === MarkerType.Arrow || t === 'arrow') return 'open'
+  return null
 }
 
 export function EditableBezierEdge(props: EdgeProps) {
@@ -115,6 +130,15 @@ export function EditableBezierEdge(props: EdgeProps) {
   }
 
   const labelText = typeof label === 'string' ? label : ''
+  const arrowStyle = dataTyped.arrowStyle ?? 'end'
+  const hasStartArrow = arrowStyle === 'start' || arrowStyle === 'both' || (arrowStyle == null && Boolean(markerStart))
+  const hasEndArrow = arrowStyle === 'end' || arrowStyle === 'both' || (arrowStyle == null && Boolean(markerEnd))
+  const startKind = hasStartArrow ? markerKindFrom(markerStart) ?? 'closed' : null
+  const endKind = hasEndArrow ? markerKindFrom(markerEnd) ?? 'closed' : null
+  const startMarkerId = `${id}-start-marker`
+  const endMarkerId = `${id}-end-marker`
+  const startMarkerUrl = startKind ? `url(#${startMarkerId})` : undefined
+  const endMarkerUrl = endKind ? `url(#${endMarkerId})` : undefined
 
   const editChildren = (
     <>
@@ -194,7 +218,78 @@ export function EditableBezierEdge(props: EdgeProps) {
 
   return (
     <>
-      <BaseEdge id={id} path={edgePath} markerStart={markerStart} markerEnd={markerEnd} style={style} interactionWidth={interactionWidth ?? 24} />
+      {(startKind || endKind) && (
+        <defs>
+          {startKind && (
+            <marker
+              id={startMarkerId}
+              markerWidth={6}
+              markerHeight={12}
+              viewBox="0 0 10 10"
+              preserveAspectRatio="none"
+              refX={2}
+              refY={5}
+              orient="auto-start-reverse"
+              markerUnits="userSpaceOnUse"
+            >
+              {startKind === 'closed' ? (
+                <path
+                  d="M 0 0 L 10 5 L 0 10 z"
+                  fill={markerColorFrom(style, markerStart)}
+                  stroke={markerColorFrom(style, markerStart)}
+                  strokeWidth={0.35}
+                  strokeLinejoin="round"
+                />
+              ) : (
+                <path
+                  d="M 0 0 L 10 5 L 0 10"
+                  fill="none"
+                  stroke={markerColorFrom(style, markerStart)}
+                  strokeWidth={1.5}
+                />
+              )}
+            </marker>
+          )}
+          {endKind && (
+            <marker
+              id={endMarkerId}
+              markerWidth={6}
+              markerHeight={12}
+              viewBox="0 0 10 10"
+              preserveAspectRatio="none"
+              refX={2}
+              refY={5}
+              orient="auto"
+              markerUnits="userSpaceOnUse"
+            >
+              {endKind === 'closed' ? (
+                <path
+                  d="M 0 0 L 10 5 L 0 10 z"
+                  fill={markerColorFrom(style, markerEnd)}
+                  stroke={markerColorFrom(style, markerEnd)}
+                  strokeWidth={0.35}
+                  strokeLinejoin="round"
+                />
+              ) : (
+                <path
+                  d="M 0 0 L 10 5 L 0 10"
+                  fill="none"
+                  stroke={markerColorFrom(style, markerEnd)}
+                  strokeWidth={1.5}
+                />
+              )}
+            </marker>
+          )}
+        </defs>
+      )}
+      <BaseEdge
+        id={id}
+        path={edgePath}
+        markerStart={startMarkerUrl}
+        markerEnd={endMarkerUrl}
+        style={style}
+        interactionWidth={interactionWidth ?? 24}
+      />
       <SmartEdgeLabel
         edgeId={id}
         anchors={anchors}

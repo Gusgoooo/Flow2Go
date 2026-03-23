@@ -350,6 +350,29 @@
   color: #0f172a;
 }
 
+.aiGenProgressHead {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+}
+
+.aiCancelBtn {
+  border: none;
+  background: transparent;
+  color: #dc2626;
+  font-size: 12px;
+  font-weight: 700;
+  cursor: pointer;
+  padding: 0;
+  line-height: 1;
+}
+
+.aiCancelBtn:hover {
+  color: #b91c1c;
+  text-decoration: underline;
+}
+
 .aiGenProgressDetail {
   margin-top: 4px;
   color: #475569;

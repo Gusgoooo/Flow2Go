@@ -1,5 +1,6 @@
 import type { Edge, Node } from '@xyflow/react'
 import { autoLayout } from '../layout'
+import { autoLayoutDagre } from '../dagreLayout'
 import { layoutMindMapMindElixirStyle } from '../mindMap/mindElixirLayout'
 import type { FlowDirection, GraphBatchPayload, GraphOperation } from './types'
 
@@ -116,70 +117,33 @@ async function layoutWithinFrame(
   allEdges: Array<Edge<any>>,
   frameId: string,
   direction: FlowDirection,
+  useDagre: boolean,
 ) {
   const children = allNodes.filter((n) => n.parentId === frameId)
   if (children.length === 0) return allNodes
   const childIds = new Set(children.map((n) => n.id))
   const internalEdges = allEdges.filter((e) => childIds.has(e.source) && childIds.has(e.target))
-  const incidentEdges = allEdges.filter((e) => childIds.has(e.source) || childIds.has(e.target))
-  // Spacing strategy:
-  // - No edges inside: compact "group-like" alignment (1 unit gap)
-  // - Has edges: slightly larger spacing for stable connections
-  const UNIT = LAYOUT_UNIT
-  // IMPORTANT: if there are cross-frame edges touching children, treat as "has edges"
-  // to avoid over-compact layouts that make the overall flow unreadable.
-  if (incidentEdges.length === 0) {
-    const ordered = [...children].sort((a, b) => a.id.localeCompare(b.id))
-    const cols = Math.max(1, Math.min(6, ordered.length))
-    for (let i = 0; i < ordered.length; i += 1) {
-      const n = ordered[i]
-      const { w, h } = getNodeSize(n)
-      const col = i % cols
-      const row = Math.floor(i / cols)
-      n.position = { x: col * (w + UNIT), y: row * (h + UNIT) }
-    }
-    return allNodes
-  }
-
-  // Edge-heavy flowcharts need more whitespace. Scale spacing by edge density.
-  const n = Math.max(1, children.length)
-  const e = incidentEdges.length
-  const density = e / Math.max(1, n - 1) // tree≈1, dense>1
-  const crossFrameEdges = incidentEdges.filter((edge) => childIds.has(edge.source) !== childIds.has(edge.target)).length
-  const crossRatio = e > 0 ? crossFrameEdges / e : 0
-  const highDensityMode = density >= 1.6 || crossRatio >= 0.34 || e >= Math.max(10, n * 1.7)
-  const complexityBase = Math.max(0, Math.min(2.5, density))
-  const complexityBoost = highDensityMode ? 0.75 + crossRatio * 0.8 : 0
-  const complexity = Math.max(0, Math.min(3.2, complexityBase + complexityBoost))
-  const nodesep = 40 + complexity * 20 // 40..104
-  const ranksep = 84 + complexity * 34 // 84..193
-  const margin = 28 + complexity * 14 // 28..72
-
-  const laid = await autoLayout(children, internalEdges as any, dirToLayoutDirection(direction), {
-    nodesep,
-    ranksep,
-    marginx: margin,
-    marginy: margin,
-  })
+  // 完全交给 ELK layered 默认间距 / padding（与 layout.ts 一致，不再手写网格或密度公式）
+  const laid = useDagre
+    ? await autoLayoutDagre(children, internalEdges as any, dirToLayoutDirection(direction))
+    : await autoLayout(children, internalEdges as any, dirToLayoutDirection(direction))
   const byId = new Map(laid.map((n) => [n.id, n.position]))
   return allNodes.map((n) => (byId.has(n.id) ? { ...n, position: byId.get(n.id)! } : n))
 }
 
-async function layoutTopLevel(allNodes: Array<Node<any>>, allEdges: Array<Edge<any>>, direction: FlowDirection) {
+async function layoutTopLevel(
+  allNodes: Array<Node<any>>,
+  allEdges: Array<Edge<any>>,
+  direction: FlowDirection,
+  useDagre: boolean,
+) {
   const top = allNodes.filter((n) => !n.parentId)
   if (top.length === 0) return allNodes
   const topIds = new Set(top.map((n) => n.id))
   const subEdges = allEdges.filter((e) => topIds.has(e.source) && topIds.has(e.target))
-  const n = Math.max(1, top.length)
-  const e = subEdges.length
-  const density = e / Math.max(1, n - 1)
-  const complexity = Math.max(0, Math.min(2.6, density))
-  const laid = await autoLayout(top, subEdges as any, dirToLayoutDirection(direction), {
-    nodesep: 72 + complexity * 16,
-    ranksep: 116 + complexity * 22,
-    marginx: 56 + complexity * 10,
-    marginy: 56 + complexity * 10,
-  })
+  const laid = useDagre
+    ? await autoLayoutDagre(top, subEdges as any, dirToLayoutDirection(direction))
+    : await autoLayout(top, subEdges as any, dirToLayoutDirection(direction))
   const byId = new Map(laid.map((n) => [n.id, n.position]))
   return allNodes.map((n) => (byId.has(n.id) ? { ...n, position: byId.get(n.id)! } : n))
 }
@@ -292,16 +256,17 @@ function wrapFramesToContents(allNodes: Array<Node<any>>, businessMode: boolean)
       { w: BUSINESS_CHAPTER_W_120, label: 120 },
     ]
 
-    // 递进一档：
-    // - 当“运算结果对应的最大档位”为 50，则统一宽度取 70
-    // - 运算结果对应为 70，则统一宽度取 90
-    // - 以此类推（但仅当基础档位 >= 50 时才上调），避免小图被无谓放大。
-    // 实现方式：先取 floor 档位（<= globalNeed 的最大 tier），再在基础档位为 50/70/90 时上调一档。
-    let baseIdx = 0
-    for (let i = 0; i < tiers.length; i += 1) {
-      if (tiers[i].w <= globalNeed) baseIdx = i
-    }
-    const bumpedIdx = baseIdx >= 1 && baseIdx < tiers.length - 1 ? baseIdx + 1 : baseIdx
+    // 轻量安全裕量：避免“刚好卡边”导致内容溢出。
+    const withSafety = Math.max(BUSINESS_CHAPTER_W_30, Math.ceil(globalNeed * 1.12))
+    const roundTo = Math.max(1, UNIT * 2)
+    const roundedNeed = Math.ceil(withSafety / roundTo) * roundTo
+
+    // 优先贴近既有 tier；若超过最大 tier，直接使用自适应宽度，不再硬截断到 120 档。
+    const tierCeilIdx = tiers.findIndex((t) => t.w >= roundedNeed)
+    if (tierCeilIdx === -1) return roundedNeed
+
+    // 递进一档（仅对 >=50 档位）：降低“边缘值”误判导致的挤压。
+    const bumpedIdx = tierCeilIdx >= 1 && tierCeilIdx < tiers.length - 1 ? tierCeilIdx + 1 : tierCeilIdx
     return tiers[bumpedIdx].w
   }
   const businessUnifiedTopChapterWidth = calcBusinessUnifiedTopChapterWidth()
@@ -432,8 +397,8 @@ function wrapFramesToContents(allNodes: Array<Node<any>>, businessMode: boolean)
     }
 
     const layoutBusinessFrame = (frame: Node<any>, forcedWidth: number | undefined) => {
-      // Ensure this subtree obeys "max 3 direct child frames per parent" before layout.
-      enforceMaxNestedFrames(frame.id, 3)
+      // 高密输入下放宽上限，避免过度重挂载导致宽度估计失真。
+      enforceMaxNestedFrames(frame.id, 6)
 
       const kids = childrenByParent.get(frame.id) ?? []
       const childFrames = kids.filter(isFrame).sort((a, b) => a.id.localeCompare(b.id))
@@ -447,95 +412,107 @@ function wrapFramesToContents(allNodes: Array<Node<any>>, businessMode: boolean)
       // Nested frames follow the width allocated by their parent.
       // Non-top frames must strictly follow recursive parent allocation.
       // Avoid forcing MIN_W_DEFAULT here, otherwise shallow mixed nesting will break the "recursive unit width" contract.
-      const frameW = isTop ? getBusinessChapterWidth(true) : forcedWidth ?? MIN_W_DEFAULT
-      const availableW = Math.max(1, frameW - padX * 2)
+      let targetW = isTop ? getBusinessChapterWidth(true) : forcedWidth ?? MIN_W_DEFAULT
+      const MAX_EXPAND_ROUNDS = 3
+      for (let round = 0; round < MAX_EXPAND_ROUNDS; round += 1) {
+        const availableW = Math.max(1, targetW - padX * 2)
 
-      // 1) 先递归并布局子画框（优先横向平铺）
-      let yCursor = 0
-      if (childFrames.length > 0) {
-        // 横向优先，超出后换行；每行最多3个子画框
-        const cols = Math.max(1, Math.min(3, childFrames.length))
-        const cellW = Math.max(MIN_NODE_W, Math.floor((availableW - (cols - 1) * UNIT) / cols))
+        // 1) 先递归并布局子画框（优先横向平铺）
+        let yCursor = 0
+        if (childFrames.length > 0) {
+          // 横向优先，超出后换行；每行最多3个子画框
+          const cols = Math.max(1, Math.min(3, childFrames.length))
+          const cellW = Math.max(MIN_NODE_W, Math.floor((availableW - (cols - 1) * UNIT) / cols))
 
-        // 先把宽度下发给子画框，再递归布局子画框内部节点
-        for (const cf of childFrames) {
-          cf.width = cellW
-          cf.style = { ...(cf.style as any), width: cellW }
-          ;(cf as any).measured = undefined
-          layoutBusinessFrame(cf, cellW)
+          // 先把宽度下发给子画框，再递归布局子画框内部节点
+          for (const cf of childFrames) {
+            cf.width = cellW
+            cf.style = { ...(cf.style as any), width: cellW }
+            ;(cf as any).measured = undefined
+            layoutBusinessFrame(cf, cellW)
+          }
+
+          // 再按子画框实际高度排版位置
+          let maxBottom = 0
+          for (let i = 0; i < childFrames.length; i += 1) {
+            const cf = childFrames[i]
+            const { h } = getNodeSize(cf)
+            const col = i % cols
+            const row = Math.floor(i / cols)
+            const x = col * (cellW + UNIT)
+            const y = row * (h + UNIT)
+            cf.position = { x, y }
+            maxBottom = Math.max(maxBottom, y + h)
+          }
+          yCursor = maxBottom
         }
 
-        // 再按子画框实际高度排版位置
-        let maxBottom = 0
-        for (let i = 0; i < childFrames.length; i += 1) {
-          const cf = childFrames[i]
-          const { h } = getNodeSize(cf)
-          const col = i % cols
-          const row = Math.floor(i / cols)
-          const x = col * (cellW + UNIT)
-          const y = row * (h + UNIT)
-          cf.position = { x, y }
-          maxBottom = Math.max(maxBottom, y + h)
+        // 2) 再布局当前画框内的直接子节点（最多2列）
+        if (childNodes.length > 0) {
+          if (childFrames.length > 0) yCursor += UNIT
+          // 节点统一采用竖向“倒N”排列：先上下，再换列（最多2行）
+          const rows = Math.max(1, Math.min(2, childNodes.length))
+          const cols = Math.max(1, Math.ceil(childNodes.length / rows))
+          const cellW = Math.max(MIN_NODE_W, Math.floor((availableW - (cols - 1) * NODE_GAP) / cols))
+          for (let i = 0; i < childNodes.length; i += 1) {
+            const n = childNodes[i]
+            const { h } = getNodeSize(n)
+            const col = Math.floor(i / rows)
+            const row = i % rows
+            n.width = cellW
+            n.style = { ...(n.style as any), width: cellW }
+            ;(n as any).measured = undefined
+            // If this direct child is a subgroup container, keep quads inside aligned with its width.
+            // Otherwise quads may keep their default 160px width and ignore our min-unit shrink logic.
+            resizeQuadChildrenToWidth(n, cellW)
+            n.position = { x: col * (cellW + NODE_GAP), y: yCursor + row * (h + NODE_GAP) }
+          }
         }
-        yCursor = maxBottom
-      }
 
-      // 2) 再布局当前画框内的直接子节点（最多2列）
-      if (childNodes.length > 0) {
-        if (childFrames.length > 0) yCursor += UNIT
-        // 节点统一采用竖向“倒N”排列：先上下，再换列（最多2行）
-        const rows = Math.max(1, Math.min(2, childNodes.length))
-        const cols = Math.max(1, Math.ceil(childNodes.length / rows))
-        const cellW = Math.max(MIN_NODE_W, Math.floor((availableW - (cols - 1) * NODE_GAP) / cols))
-        for (let i = 0; i < childNodes.length; i += 1) {
-          const n = childNodes[i]
-          const { h } = getNodeSize(n)
-          const col = Math.floor(i / rows)
-          const row = i % rows
-          n.width = cellW
-          n.style = { ...(n.style as any), width: cellW }
-          ;(n as any).measured = undefined
-          // If this direct child is a subgroup container, keep quads inside aligned with its width.
-          // Otherwise quads may keep their default 160px width and ignore our min-unit shrink logic.
-          resizeQuadChildrenToWidth(n, cellW)
-          n.position = { x: col * (cellW + NODE_GAP), y: yCursor + row * (h + NODE_GAP) }
+        // 3) 包裹当前画框并统一 padding（父级内部坐标系）
+        let minX = Infinity
+        let minY = Infinity
+        let maxX = -Infinity
+        let maxY = -Infinity
+        for (const k of kids) {
+          const { w, h } = getNodeSize(k)
+          const x = k.position?.x ?? 0
+          const y = k.position?.y ?? 0
+          minX = Math.min(minX, x)
+          minY = Math.min(minY, y)
+          maxX = Math.max(maxX, x + w)
+          maxY = Math.max(maxY, y + h)
         }
-      }
+        if (!Number.isFinite(minX) || !Number.isFinite(minY) || !Number.isFinite(maxX) || !Number.isFinite(maxY)) {
+          frame.width = targetW
+          frame.height = Math.max(MIN_H, TITLE_H + UNIT * 3)
+          frame.style = { ...(frame.style as any), width: frame.width, height: frame.height }
+          return
+        }
+        const contentW = maxX - minX
+        const contentH = maxY - minY
+        const neededW = Math.max(MIN_NODE_W + padX * 2, Math.ceil((contentW + padX * 2) * 1.06))
+        const overflowX = neededW > targetW + 1
 
-      // 3) 包裹当前画框并统一 padding（父级内部坐标系）
-      let minX = Infinity
-      let minY = Infinity
-      let maxX = -Infinity
-      let maxY = -Infinity
-      for (const k of kids) {
-        const { w, h } = getNodeSize(k)
-        const x = k.position?.x ?? 0
-        const y = k.position?.y ?? 0
-        minX = Math.min(minX, x)
-        minY = Math.min(minY, y)
-        maxX = Math.max(maxX, x + w)
-        maxY = Math.max(maxY, y + h)
-      }
-      if (!Number.isFinite(minX) || !Number.isFinite(minY) || !Number.isFinite(maxX) || !Number.isFinite(maxY)) {
-        frame.width = frameW
-        frame.height = Math.max(MIN_H, TITLE_H + UNIT * 3)
-        frame.style = { ...(frame.style as any), width: frame.width, height: frame.height }
+        if (overflowX && round < MAX_EXPAND_ROUNDS - 1) {
+          const growStep = Math.max(UNIT * 4, Math.ceil((neededW - targetW) * 1.1))
+          targetW = targetW + growStep
+          continue
+        }
+
+        const nextW = Math.max(targetW, neededW)
+        const nextH = Math.max(MIN_H, contentH + padTop + padBottom)
+        const extraX = Math.max(0, nextW - (contentW + padX * 2))
+        const dx = -minX + padX + extraX / 2
+        const dy = -minY + padTop
+        for (const k of kids) {
+          k.position = { x: (k.position?.x ?? 0) + dx, y: (k.position?.y ?? 0) + dy }
+        }
+        frame.width = nextW
+        frame.height = nextH
+        frame.style = { ...(frame.style as any), width: nextW, height: nextH }
         return
       }
-      const contentW = maxX - minX
-      const contentH = maxY - minY
-      // Keep the width that parent allocated (strict recursive stretching contract).
-      const nextW = frameW
-      const nextH = Math.max(MIN_H, contentH + padTop + padBottom)
-      const extraX = Math.max(0, nextW - (contentW + padX * 2))
-      const dx = -minX + padX + extraX / 2
-      const dy = -minY + padTop
-      for (const k of kids) {
-        k.position = { x: (k.position?.x ?? 0) + dx, y: (k.position?.y ?? 0) + dy }
-      }
-      frame.width = nextW
-      frame.height = nextH
-      frame.style = { ...(frame.style as any), width: nextW, height: nextH }
     }
 
     const topFrames = frames.filter((f) => !f.parentId).sort((a, b) => a.id.localeCompare(b.id))
@@ -557,12 +534,10 @@ function wrapFramesToContents(allNodes: Array<Node<any>>, businessMode: boolean)
     const childFrames = kids.filter(isFrame)
     const childNodes = kids.filter((k) => !isFrame(k))
     const isTop = !f.parentId
-    // Business mode: padding uses half grid unit (12px).
-    // Default mode keeps previous rhythm.
-    const padX = businessMode ? UNIT : isTop ? UNIT * 4 : UNIT
-    const padBottom = businessMode ? UNIT : isTop ? UNIT * 4 : UNIT
-    // business mode: reduce title-to-content gap a bit more
-    const padTop = businessMode ? TITLE_H + Math.round(UNIT * 1.35) : TITLE_H + (isTop ? UNIT * 3 : UNIT)
+    // Business mode：UNIT=12px；普通流程图：UNIT=24px。均只用 1 个 UNIT 作内边距，不在此人为拉大顶层画框「章节感」；框间距交给 ELK 默认。
+    const padX = UNIT
+    const padBottom = UNIT
+    const padTop = businessMode ? TITLE_H + Math.round(UNIT * 1.35) : TITLE_H + UNIT
     // Only top-level "chapter" frames should be clamped to the chapter width.
     // Inner frames must stay compact; otherwise horizontal padding becomes huge.
     // compute bounds AFTER any relayout to keep children in parent's local coordinate system
@@ -809,6 +784,46 @@ function scoreSideForVector(
   }
 }
 
+function applyDirectionalHandles(
+  edges: Array<Edge<any>>,
+  direction: FlowDirection,
+): Array<Edge<any>> {
+  let sourceHandle = 's-right'
+  let targetHandle = 't-left'
+  if (direction === 'RL') {
+    sourceHandle = 's-left'
+    targetHandle = 't-right'
+  } else if (direction === 'TB') {
+    sourceHandle = 's-bottom'
+    targetHandle = 't-top'
+  } else if (direction === 'BT') {
+    sourceHandle = 's-top'
+    targetHandle = 't-bottom'
+  }
+  return edges.map((e) => ({
+    ...e,
+    sourceHandle,
+    targetHandle,
+  }))
+}
+
+function shouldPreferLeftToRightByComplexity(payload: GraphBatchPayload): boolean {
+  const nodeCount = payload.operations.filter((op) => op.op === 'graph.createNodeQuad').length
+  const edgeCount = payload.operations.filter((op) => op.op === 'graph.createEdge').length
+  if (nodeCount <= 0) return false
+  // 麻花风险兜底：边显著多于节点时，优先改为 LR，通常可减少交叉感。
+  return edgeCount > Math.max(8, Math.floor(nodeCount * 1.2))
+}
+
+function shouldPreferLeftToRightForDagre(payload: GraphBatchPayload): boolean {
+  const nodeCount = payload.operations.filter((op) => op.op === 'graph.createNodeQuad').length
+  const edgeCount = payload.operations.filter((op) => op.op === 'graph.createEdge').length
+  if (nodeCount <= 0) return false
+  // dagre 测试场景采用“更强偏好 LR”：
+  // 只要不是非常稀疏的图，就优先 LR；但仍非绝对强制。
+  return edgeCount >= Math.max(4, Math.floor(nodeCount * 0.8))
+}
+
 function applyInferredEdgeHandles(nodes: Array<Node<any>>, edges: Array<Edge<any>>) {
   const nodeById = new Map(nodes.map((n) => [n.id, n]))
   const rootFrameCache = new Map<string, string | null>()
@@ -1048,16 +1063,30 @@ function computeMindMapForestDepth(quadNodes: Array<Node<any>>, edges: Array<Edg
 }
 
 /**
- * 思维导图：连线只能从左右句柄进出（标准思维导图观感），不走上/下。
+ * 思维导图：按节点侧向（L/R）规范句柄，强制使用左右 handle，避免出现上/下或斜向入边。
  */
 function applyMindMapHorizontalHandles(nodes: Array<Node<any>>, edges: Array<Edge<any>>): Array<Edge<any>> {
   const nodeById = new Map(nodes.map((n) => [n.id, n]))
   return edges.map((e) => {
+    const src = nodeById.get(e.source)
     const tgt = nodeById.get(e.target)
-    const side = (tgt?.data as any)?.mindMapSide as 'L' | 'R' | undefined
-    if (side === 'R') return { ...e, sourceHandle: 's-right', targetHandle: 't-left' }
-    if (side === 'L') return { ...e, sourceHandle: 's-left', targetHandle: 't-right' }
-    return e
+    const srcSide = (src?.data as any)?.mindMapSide as 'L' | 'R' | undefined
+    const tgtSide = (tgt?.data as any)?.mindMapSide as 'L' | 'R' | undefined
+
+    // 稳定规则：
+    // - source: 永远从自身侧向外发出（R->s-right, L->s-left）
+    // - target: 永远从自身侧向内接收（R->t-left, L->t-right）
+    if (srcSide && tgtSide) {
+      const sourceHandle = srcSide === 'R' ? 's-right' : 's-left'
+      const targetHandle = tgtSide === 'R' ? 't-left' : 't-right'
+      return { ...e, sourceHandle, targetHandle }
+    }
+
+    // 兜底：若 side 丢失则根据 x 几何关系回退到水平 handle。
+    const sx = src?.position?.x ?? 0
+    const tx = tgt?.position?.x ?? 0
+    if (tx >= sx) return { ...e, sourceHandle: 's-right', targetHandle: 't-left' }
+    return { ...e, sourceHandle: 's-left', targetHandle: 't-right' }
   })
 }
 
@@ -1077,14 +1106,16 @@ export async function materializeGraphBatchPayloadToSnapshot(
   const edges: Array<Edge<any>> = [...start.edges]
   const nodeById = new Map(nodes.map((n) => [n.id, n]))
   const edgeById = new Map(edges.map((e) => [e.id, e]))
-  // business-big-map-elk：不走 BBM 专有的章节/画框主题等后处理，依赖 transpiler 的 ELK autoLayout
   const businessMode = ((payload.meta as any)?.layoutProfile ?? '') === 'business-big-map'
   const mindMapMode = ((payload.meta as any)?.layoutProfile ?? '') === 'mind-map'
+  const dagreFlowMode = ((payload.meta as any)?.layoutProfile ?? '') === 'flowchart'
+  const flowchartMode = !businessMode && !mindMapMode
+  const preferLR = flowchartMode && shouldPreferLeftToRightByComplexity(payload)
+  const preferLRDagre = dagreFlowMode && shouldPreferLeftToRightForDagre(payload)
+  const preferLRDefault = flowchartMode && payload.direction !== 'LR'
+  // 流程图：优先 LR（非绝对强制）；其它流程图按“麻花风险”兜底改 LR。
+  const effectiveDirection: FlowDirection = preferLRDefault || preferLRDagre || preferLR ? 'LR' : payload.direction
 
-  // When Mermaid creates multiple frames, place them with a safe gap by default
-  // so they never overlap（顶层 frame 往往互不连通，分层布局不会把它们拉开，需后续 tile）。
-  const FRAME_GAP = 160
-  let frameAutoIndex = 0
   const frameOrder: string[] = []
   const frameExplicitPos = new Set<string>()
 
@@ -1102,12 +1133,8 @@ export async function materializeGraphBatchPayloadToSnapshot(
         (() => {
           // Nested frames live inside parent; place them at origin and let withinFrame layout handle children.
           if (isNested) return { x: 0, y: 0 }
-          const idx = frameAutoIndex++
-          // Arrange frames along the main flow direction
-          if (payload.direction === 'TB' || payload.direction === 'BT') {
-            return { x: 0, y: idx * (h + FRAME_GAP) }
-          }
-          return { x: idx * (w + FRAME_GAP), y: 0 }
+          // 顶层画框：先叠在原点，最终位置交给 ELK layoutTopLevel（非业务大图）或业务大图纵向 tile
+          return { x: 0, y: 0 }
         })()
       const node: Node<any> = {
         id: op.params.id,
@@ -1167,7 +1194,7 @@ export async function materializeGraphBatchPayloadToSnapshot(
         id: op.params.id,
         source: op.params.source,
         target: op.params.target,
-        type: mindMapMode ? 'bezier' : op.params.type ?? 'bezier',
+        type: mindMapMode || dagreFlowMode ? 'bezier' : op.params.type ?? 'bezier',
         ...(trimmedLabel ? { label: op.params.label } : {}),
         data: { arrowStyle },
         style: mergedStyle as any,
@@ -1179,12 +1206,12 @@ export async function materializeGraphBatchPayloadToSnapshot(
     }
 
     if (op.op === 'graph.autoLayout') {
-      const dir = op.params.direction
+      const dir = effectiveDirection
       if (op.params.scope === 'withinFrame' && op.params.frameId) {
-        const next = await layoutWithinFrame(nodes, edges, op.params.frameId, dir)
+        const next = await layoutWithinFrame(nodes, edges, op.params.frameId, dir, dagreFlowMode && !mindMapMode && !businessMode)
         nodes.splice(0, nodes.length, ...next)
       } else if (op.params.scope === 'all') {
-        const next = await layoutTopLevel(nodes, edges, dir)
+        const next = await layoutTopLevel(nodes, edges, dir, dagreFlowMode && !mindMapMode && !businessMode)
         nodes.splice(0, nodes.length, ...next)
       }
       continue
@@ -1207,18 +1234,6 @@ export async function materializeGraphBatchPayloadToSnapshot(
   if (mindMapMode) {
     const palette = TOP_FRAME_THEME_COLORS
 
-    // 思维导图：不允许任何画框/编组容器（group role=frame）。
-    const frameRoleNodes = safeNodes.filter((n) => n.type === 'group' && (n.data as any)?.role === 'frame')
-    if (frameRoleNodes.length > 0) {
-      const frameIdSet = new Set(frameRoleNodes.map((f) => f.id))
-      for (const n of safeNodes) {
-        if (n.type === 'quad' && n.parentId && frameIdSet.has(n.parentId)) {
-          n.parentId = undefined
-        }
-      }
-      safeNodes = safeNodes.filter((n) => !(n.type === 'group' && (n.data as any)?.role === 'frame'))
-    }
-
     const quadNodes = safeNodes.filter((n) => n.type === 'quad') as Array<Node<any>>
     if (quadNodes.length > 0) {
       const { positions, sides } = layoutMindMapMindElixirStyle(quadNodes, edges)
@@ -1239,7 +1254,6 @@ export async function materializeGraphBatchPayloadToSnapshot(
           ...(n.data ?? {}),
           stroke: color,
           strokeWidth: 2,
-          handleMode: 'leftRight',
         }
       }
 
@@ -1257,24 +1271,13 @@ export async function materializeGraphBatchPayloadToSnapshot(
     }
   }
 
-  // Final pass: tile frames so they never overlap and are aligned.
-  // Only affects frames without explicit position.
+  // 业务大图：章节宽 + 纵向 tile；普通流程图 / ELK 业务大图：wrap 后由 ELK 再排顶层（含多画框、不连通子图）。
   const safeById = new Map(safeNodes.map((n) => [n.id, n]))
   const framesInOrder = (frameOrder.length ? frameOrder : safeNodes.map((n) => n.id))
     .map((id) => safeById.get(id))
-    // only tile TOP-LEVEL frames; nested frames should stay within their parent
     .filter((n): n is Node<any> => n != null && !n.parentId && n.type === 'group' && (n.data as any)?.role === 'frame')
 
-  let cursorX = 0
-  let cursorY = 0
   const parentGap = businessMode ? BUSINESS_INNER_UNIT : LAYOUT_UNIT * 2
-  const count = framesInOrder.filter((f) => !frameExplicitPos.has(f.id)).length
-  const gridSpan = Math.max(1, Math.ceil(Math.sqrt(Math.max(1, count))))
-  let row = 0
-  let col = 0
-  let rowMaxH = 0
-  let colMaxW = 0
-  // Business Big Map: enforce equal chapter widths around 600px.
   const businessChapterW = BUSINESS_CHAPTER_W
   if (businessMode) {
     const byParent = new Map<string, Array<Node<any>>>()
@@ -1306,42 +1309,27 @@ export async function materializeGraphBatchPayloadToSnapshot(
     }
   }
 
-  for (const f of framesInOrder) {
-    if (frameExplicitPos.has(f.id)) continue
-    const w = f.measured?.width ?? f.width ?? (typeof (f.style as any)?.width === 'number' ? (f.style as any).width : undefined) ?? 640
-    const h = f.measured?.height ?? f.height ?? (typeof (f.style as any)?.height === 'number' ? (f.style as any).height : undefined) ?? 420
-
-    if (businessMode) {
-      // Business Big Map requires top->down parent frame ordering.
+  if (businessMode) {
+    let cursorX = 0
+    let cursorY = 0
+    for (const f of framesInOrder) {
+      if (frameExplicitPos.has(f.id)) continue
+      const h = f.measured?.height ?? f.height ?? (typeof (f.style as any)?.height === 'number' ? (f.style as any).height : undefined) ?? 420
       f.position = { x: cursorX, y: cursorY }
       cursorY += h + parentGap
-    } else {
-      const verticalFirst = payload.direction === 'TB' || payload.direction === 'BT'
-      if (!verticalFirst) {
-        f.position = { x: cursorX, y: cursorY }
-        cursorX += w + FRAME_GAP
-        rowMaxH = Math.max(rowMaxH, h)
-        col += 1
-        if (col >= gridSpan) {
-          col = 0
-          row += 1
-          cursorX = 0
-          cursorY += rowMaxH + FRAME_GAP
-          rowMaxH = 0
-        }
-      } else {
-        f.position = { x: cursorX, y: cursorY }
-        cursorY += h + FRAME_GAP
-        colMaxW = Math.max(colMaxW, w)
-        row += 1
-        if (row >= gridSpan) {
-          row = 0
-          col += 1
-          cursorY = 0
-          cursorX += colMaxW + FRAME_GAP
-          colMaxW = 0
-        }
-      }
+    }
+  } else if (!mindMapMode && framesInOrder.length > 0) {
+    // 仅当有顶层画框时二次 ELK：wrapFramesToContents 会改画框尺寸，需按 ELK 拉开多画框/不连通子图。
+    // 无画框的纯节点图保持 transpiler 内 autoLayout(scope=all) 结果，避免无谓重排破坏几何推断等。
+    const explicitBackup = new Map<string, { x: number; y: number }>()
+    for (const id of frameExplicitPos) {
+      const n = safeNodes.find((x) => x.id === id)
+      if (n?.position) explicitBackup.set(id, { x: n.position.x, y: n.position.y })
+    }
+    safeNodes = await layoutTopLevel(safeNodes, edges, effectiveDirection, dagreFlowMode)
+    for (const [id, pos] of explicitBackup) {
+      const n = safeNodes.find((x) => x.id === id)
+      if (n) n.position = { ...pos }
     }
   }
 
@@ -1429,17 +1417,23 @@ export async function materializeGraphBatchPayloadToSnapshot(
 
   let safeEdges = applyInferredEdgeHandles(safeNodes, edges)
 
-  // Mind-map：强制左右句柄（标准思维导图），覆盖几何推断可能选出的上/下句柄。
   if (mindMapMode) {
+    // 思维导图连线规范：句柄必须与节点左右侧一致，避免脱离 handle 的视觉错位。
     safeEdges = applyMindMapHorizontalHandles(safeNodes, safeEdges)
+    for (const e of safeEdges) {
+      const d = (e.data ?? {}) as any
+      d.autoOffset = 0
+      e.data = d
+    }
   }
 
-  // Mind-map: avoid perpendicular autoOffset that makes bezier start/end not align with handle.
-  if (mindMapMode) {
+  // 流程图（Dagre）：严格按图方向固定 handle，避免几何推断/避让导致“看起来不从端口出入”。
+  if (dagreFlowMode && !mindMapMode && !businessMode) {
+    safeEdges = applyDirectionalHandles(safeEdges, effectiveDirection)
     for (const e of safeEdges) {
-      const data = (e.data ?? {}) as any
-      data.autoOffset = 0
-      e.data = data
+      const d = (e.data ?? {}) as any
+      d.autoOffset = 0
+      e.data = d
     }
   }
 

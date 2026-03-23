@@ -13,7 +13,7 @@ export type AiSceneCapsulePreset = {
 }
 
 /**
- * 场景胶囊：业务分层大图 / ELK 业务大图（实验）/ 思维导图 / 流程图
+ * 场景胶囊：业务分层大图 / 思维导图 / 流程图
  * 文案为自然语言预设，用户可删改；生成时通过 diagramScene 强制路由。
  */
 export const AI_SCENE_CAPSULE_PRESETS: AiSceneCapsulePreset[] = [
@@ -33,23 +33,6 @@ export const AI_SCENE_CAPSULE_PRESETS: AiSceneCapsulePreset[] = [
       '',
       '【补充约束】（可选）',
       '（例如：偏对内管理视角、偏客户旅程、需要体现与外部系统的边界等）',
-    ].join('\n'),
-  },
-  {
-    id: 'business-big-map-elk',
-    label: 'ELK业务大图（测试）',
-    scene: 'business-big-map-elk',
-    accentHex: AI_SCENE_CAPSULE_ACCENT_COLORS[3],
-    prompt: [
-      '【实验】请生成一张「业务分层大图」主题的结构图：与常规业务大图相同的 Planner + subgraph 嵌套语义，但物化阶段走内置 ELK layered 自动排版，不做旧版业务大图画布归一化；仍用分组与嵌套表达归属，不要输出连线。',
-      '',
-      '【主题 / 领域】',
-      '（一句话描述要展示的业务域或能力全景）',
-      '',
-      '【希望覆盖的板块】（可选，3～8 条关键词）',
-      '',
-      '【备注】',
-      '此为排版管线对比测试；若与「业务分层大图」胶囊效果不同属预期。',
     ].join('\n'),
   },
   {
@@ -74,18 +57,18 @@ export const AI_SCENE_CAPSULE_PRESETS: AiSceneCapsulePreset[] = [
     id: 'flowchart',
     label: '流程图',
     scene: 'flowchart',
-    accentHex: AI_SCENE_CAPSULE_ACCENT_COLORS[2],
+    accentHex: AI_SCENE_CAPSULE_ACCENT_COLORS[3],
     prompt: [
-      '请生成一张「流程图」：用 flowchart 表达主流程与关键阶段；优先用 subgraph 划分阶段或责任边界，主链路从左到右（或自上而下）清晰可读；分支与回流只保留最关键的一两条，边上用简短中文写清动作或结果。',
+      '请生成一张流程图：结构保持清晰分组与主链路；布局采用 Dagre（Graph layout for JavaScript）进行排版。',
       '',
       '【要描述的过程】',
-      '（例如：用户从注册 → 下单 → 支付 → 发货 → 售后的主路径；或审批从提交到归档的链路）',
+      '（一句话写清流程主题）',
       '',
       '【涉及角色 / 系统】（可选）',
-      '（例如：用户、运营、支付网关、订单服务、仓储系统……）',
+      '（例如：用户、前端、服务、数据库、第三方）',
       '',
       '【特别关注】（可选）',
-      '（例如：异常与回退、需要审计的节点、与第三方回调的衔接等）',
+      '（例如：异常与回退、需要审计节点、与第三方回调衔接）',
     ].join('\n'),
   },
 ]

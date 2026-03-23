@@ -627,12 +627,14 @@ function EditorInner({ onBackHome, source, previewSnapshot, readOnly: _readOnly 
   const [aiModalPrompt, setAiModalPrompt] = useState('')
   /** 与胶囊绑定：生成时传入 diagramScene；点 ✕ 取消高亮并清空输入框 */
   const [aiModalScene, setAiModalScene] = useState<AiDiagramSceneHint | null>(null)
+  const [aiFlowComplexityLevel, setAiFlowComplexityLevel] = useState<1 | 2 | 3 | 4 | 5>(3)
   const [aiConfigOpen, setAiConfigOpen] = useState(false)
   const [aiModalGenerating, setAiModalGenerating] = useState(false)
   /** 生成阶段文案（与控制台 [Flow2Go AI] 日志对应，用于区分慢 / 卡在某一步 / 失败） */
   const [aiModalProgress, setAiModalProgress] = useState<{ phase: string; detail?: string } | null>(null)
   const [aiGenElapsedSec, setAiGenElapsedSec] = useState(0)
   const [aiModalError, setAiModalError] = useState<string | null>(null)
+  const aiModalAbortRef = useRef<AbortController | null>(null)
   const [aiModalModel, setAiModalModel] = useState<string>(() => {
     try {
       return localStorage.getItem('flow2go-openrouter-model') || 'openai/gpt-5.4-nano'
@@ -1034,7 +1036,7 @@ function EditorInner({ onBackHome, source, previewSnapshot, readOnly: _readOnly 
           {
             ...conn,
             type: 'smoothstep',
-            style: { stroke: DEFAULT_EDGE_COLOR, strokeWidth: 3 },
+            style: { stroke: DEFAULT_EDGE_COLOR, strokeWidth: 2 },
             markerEnd: { type: MarkerType.ArrowClosed, color: DEFAULT_EDGE_COLOR },
             data: { arrowStyle: 'end' },
           },
@@ -1881,7 +1883,7 @@ function EditorInner({ onBackHome, source, previewSnapshot, readOnly: _readOnly 
   const addNodeAtPosition = useCallback(
     (nodeType: 'quad' | 'text', flowPos: { x: number; y: number }) => {
       const id = nowId('n')
-      const defaultSize = nodeType === 'quad' ? { w: 160, h: 44 } : { w: 120, h: 40 }
+      const defaultSize = nodeType === 'quad' ? { w: 160, h: 44 } : { w: 60, h: 28 }
       const currentNodes = nodesEdgesRef.current.nodes
       const position = findNonOverlappingPosition(flowPos, currentNodes, defaultSize.w, defaultSize.h)
       const base: FlowNode = {
@@ -1894,7 +1896,8 @@ function EditorInner({ onBackHome, source, previewSnapshot, readOnly: _readOnly 
         width: defaultSize.w,
         height: defaultSize.h,
         style: { width: defaultSize.w, height: defaultSize.h },
-        data: { label: nodeType === 'quad' ? `节点 ${id.slice(-4)}` : `文本 ${id.slice(-4)}` },
+        // 文本节点空标签：立即进入编辑态，并由 TextNode 按内容自适应宽高（类 Figma）
+        data: { label: nodeType === 'quad' ? `节点 ${id.slice(-4)}` : '' },
       }
       setNodes((nds) => {
         const next = nds.concat(base)
@@ -1982,10 +1985,15 @@ function EditorInner({ onBackHome, source, previewSnapshot, readOnly: _readOnly 
         type: nodeType === 'quad' ? 'quad' : (nodeType as FlowNode['type']),
         position,
         // Explicit default sizing for consistent initial width.
-        width: nodeType === 'quad' ? 160 : undefined,
-        height: nodeType === 'quad' ? 44 : undefined,
-        style: nodeType === 'quad' ? { width: 160, height: 44 } : undefined,
-        data: { label: `${nodeType} ${id.slice(-4)}` },
+        width: nodeType === 'quad' ? 160 : nodeType === 'text' ? 60 : undefined,
+        height: nodeType === 'quad' ? 44 : nodeType === 'text' ? 28 : undefined,
+        style:
+          nodeType === 'quad'
+            ? { width: 160, height: 44 }
+            : nodeType === 'text'
+              ? { width: 60, height: 28 }
+              : undefined,
+        data: { label: nodeType === 'text' ? '' : `${nodeType} ${id.slice(-4)}` },
       }
 
       setNodes((nds) => {
@@ -2942,7 +2950,7 @@ function EditorInner({ onBackHome, source, previewSnapshot, readOnly: _readOnly 
           elementsSelectable={isPreview ? false : !spacePressed}
           defaultEdgeOptions={{
             type: 'bezier',
-            style: { stroke: DEFAULT_EDGE_COLOR, strokeWidth: 1.5 },
+            style: { stroke: DEFAULT_EDGE_COLOR, strokeWidth: 2 },
             markerEnd: { ...DEFAULT_MARKER_END },
           }}
           proOptions={{ hideAttribution: true }}
@@ -3104,6 +3112,26 @@ function EditorInner({ onBackHome, source, previewSnapshot, readOnly: _readOnly 
                       setAiModalPrompt('')
                     }}
                   />
+                  {aiModalScene === 'flowchart' && (
+                    <div style={{ marginTop: 10, padding: '10px 12px', borderRadius: 10, border: '1px solid #e2e8f0', background: '#f8fafc' }}>
+                      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 6 }}>
+                        <div style={{ fontSize: 12, fontWeight: 700, color: '#334155' }}>流程复杂度</div>
+                        <div style={{ fontSize: 12, color: '#64748b' }}>{aiFlowComplexityLevel}/5</div>
+                      </div>
+                      <input
+                        type="range"
+                        min={1}
+                        max={5}
+                        step={1}
+                        value={aiFlowComplexityLevel}
+                        onChange={(e) => setAiFlowComplexityLevel(Number(e.target.value) as 1 | 2 | 3 | 4 | 5)}
+                        style={{ width: '100%' }}
+                      />
+                      <div style={{ marginTop: 6, fontSize: 12, color: '#64748b' }}>
+                        复杂度越高，连线和交叉通常越多，可阅读性会下降。
+                      </div>
+                    </div>
+                  )}
 
                   {aiModalError && <div className={styles.aiError}>{aiModalError}</div>}
 
@@ -3125,12 +3153,15 @@ function EditorInner({ onBackHome, source, previewSnapshot, readOnly: _readOnly 
                         setAiModalProgress({ phase: '已提交', detail: '等待 OpenRouter…' })
                         try {
                           const ac = new AbortController()
+                          aiModalAbortRef.current = ac
                           const draft = await openRouterGenerateDiagram({
                             apiKey: aiModalKey.trim(),
                             model: aiModalModel.trim() || 'openai/gpt-5.4-nano',
                             prompt: p,
                             signal: ac.signal,
                             diagramScene: aiModalScene ?? undefined,
+                            flowchartComplexityLevel:
+                              aiModalScene === 'flowchart' ? aiFlowComplexityLevel : undefined,
                             onProgress: (info: AiGenerateProgressInfo) => {
                               setAiModalProgress({ phase: info.phase, detail: info.detail })
                             },
@@ -3139,8 +3170,16 @@ function EditorInner({ onBackHome, source, previewSnapshot, readOnly: _readOnly 
                           applyAiDraftDirect(draft)
                           setAiModalOpen(false)
                         } catch (e) {
-                          setAiModalError(e instanceof Error ? e.message : '生成失败')
+                          const msg = e instanceof Error ? e.message : '生成失败'
+                          if (msg.includes('用户已取消')) {
+                            setAiModalError('已取消本次生成')
+                          } else if (msg.includes('请求超时')) {
+                            setAiModalError(`${msg}。系统已做超时兜底重试，建议减少描述冗余后再试。`)
+                          } else {
+                            setAiModalError(msg)
+                          }
                         } finally {
+                          aiModalAbortRef.current = null
                           setAiModalGenerating(false)
                           setAiModalProgress(null)
                         }
@@ -3152,7 +3191,20 @@ function EditorInner({ onBackHome, source, previewSnapshot, readOnly: _readOnly 
 
                   {aiModalGenerating && (
                     <div className={styles.aiGenProgress}>
-                      <div className={styles.aiGenProgressPhase}>{aiModalProgress?.phase ?? '准备中…'}</div>
+                      <div className={styles.aiGenProgressHead}>
+                        <div className={styles.aiGenProgressPhase}>{aiModalProgress?.phase ?? '准备中…'}</div>
+                        {String(aiModalProgress?.phase ?? '').includes('大模型生成 Mermaid') ? (
+                          <button
+                            type="button"
+                            className={styles.aiCancelBtn}
+                            onClick={() => {
+                              aiModalAbortRef.current?.abort()
+                            }}
+                          >
+                            取消生成
+                          </button>
+                        ) : null}
+                      </div>
                       {aiModalProgress?.detail ? (
                         <div className={styles.aiGenProgressDetail}>{aiModalProgress.detail}</div>
                       ) : null}

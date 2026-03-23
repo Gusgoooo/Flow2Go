@@ -1,7 +1,7 @@
 import { Position } from '@xyflow/react'
 
 /** 连线在源/目标端口处与节点轮廓的间隙（像素），首尾一致 */
-export const EDGE_HANDLE_GAP_PX = 2
+export const EDGE_HANDLE_GAP_PX = 0
 
 function outwardDelta(pos: Position, pad: number): { dx: number; dy: number } {
   switch (pos) {
