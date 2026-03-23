@@ -20,6 +20,8 @@ const FLOWCHART_BATCH_SYSTEM_PROMPT = [
   '5) 节点 title 要简洁（4-14字），禁止“步骤1/节点A/操作1”等占位命名。',
   '6) 保证 source/target 都引用存在节点；最后必须追加 graph.autoLayout(scope=all)。',
   '7) 推荐将角色或阶段组织成少量 frame，但避免过度嵌套。',
+  '8) 先做“简化过滤”：优先主链，合并重复/近义步骤，删除冗余分支；控制节点与边数量，降低交叉风险。',
+  '9) 预判交叉风险：避免大量跨层回跳和互相对向连线，优先 C/S 友好的邻近连接。',
   '',
   '输出示例（仅示意字段，不要照抄内容）：',
   '{',
@@ -35,6 +37,17 @@ const FLOWCHART_BATCH_SYSTEM_PROMPT = [
   '  ],',
   '  "meta":{"layoutProfile":"flow"}',
   '}',
+].join('\n')
+
+const FLOWCHART_SIMPLIFY_SYSTEM_PROMPT = [
+  '你是流程简化过滤器。',
+  '请把用户需求压缩为“低交叉风险”的流程要点清单：',
+  '- 保留主链与关键异常分支',
+  '- 合并重复或同义步骤',
+  '- 删除装饰性细节',
+  '- 节点标题要短（4-12字）',
+  '- 控制规模：建议 8-18 个步骤，12-24 条边',
+  '只输出中文要点列表，每行一个步骤，不要其它解释。',
 ].join('\n')
 
 function safeJsonParse(raw: string): any {
@@ -56,6 +69,9 @@ function validateFlowchartBatch(payload: any): GraphBatchPayload {
 
   const nodeIds = new Set<string>()
   const cleanOps: any[] = []
+  const frames: any[] = []
+  const nodes: any[] = []
+  const edges: any[] = []
   for (const op of ops) {
     if (!op || typeof op !== 'object' || typeof op.op !== 'string') continue
     if (op.op === 'graph.createNodeQuad') {
@@ -64,7 +80,7 @@ function validateFlowchartBatch(payload: any): GraphBatchPayload {
       if (!id || !title) continue
       if (/^(步骤|节点|操作)\d+$/i.test(title)) continue
       nodeIds.add(id)
-      cleanOps.push({
+      frames.push({
         op: 'graph.createNodeQuad',
         params: {
           id,
@@ -81,7 +97,7 @@ function validateFlowchartBatch(payload: any): GraphBatchPayload {
       const id = String(op?.params?.id ?? '').trim()
       const title = String(op?.params?.title ?? '').trim()
       if (!id || !title) continue
-      cleanOps.push({
+      nodes.push({
         op: 'graph.createFrame',
         params: {
           id,
@@ -98,7 +114,7 @@ function validateFlowchartBatch(payload: any): GraphBatchPayload {
       const target = String(op?.params?.target ?? '').trim()
       if (!id || !source || !target) continue
       if (!nodeIds.has(source) || !nodeIds.has(target)) continue
-      cleanOps.push({
+      edges.push({
         op: 'graph.createEdge',
         params: {
           id,
@@ -113,6 +129,29 @@ function validateFlowchartBatch(payload: any): GraphBatchPayload {
       continue
     }
   }
+
+  // 简化过滤层（后处理）：节点/边数量与高扇出约束
+  const MAX_NODES = 18
+  const MAX_EDGES = 24
+  const keptNodes = nodes.slice(0, MAX_NODES)
+  const keptNodeIds = new Set(keptNodes.map((n) => String(n.params.id)))
+  const outCnt = new Map<string, number>()
+  const dedup = new Set<string>()
+  const keptEdges: any[] = []
+  for (const e of edges) {
+    const s = String(e.params.source)
+    const t = String(e.params.target)
+    if (!keptNodeIds.has(s) || !keptNodeIds.has(t)) continue
+    const k = `${s}->${t}`
+    if (dedup.has(k)) continue
+    dedup.add(k)
+    const n = outCnt.get(s) ?? 0
+    if (n >= 2) continue
+    outCnt.set(s, n + 1)
+    keptEdges.push(e)
+    if (keptEdges.length >= MAX_EDGES) break
+  }
+  cleanOps.push(...frames, ...keptNodes, ...keptEdges)
 
   cleanOps.push({
     op: 'graph.autoLayout',
@@ -138,6 +177,28 @@ export async function generateFlowchartBatchWithLLM(
   const onAbort = () => controller.abort(signal?.reason)
   signal?.addEventListener('abort', onAbort, { once: true })
   try {
+    // LLM 简化过滤层：先压缩成低交叉风险流程要点
+    const simplifyRes = await fetch('https://openrouter.ai/api/v1/chat/completions', {
+      method: 'POST',
+      headers: {
+        Authorization: `Bearer ${apiKey.trim()}`,
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify({
+        model,
+        temperature: 0.2,
+        messages: [
+          { role: 'system', content: FLOWCHART_SIMPLIFY_SYSTEM_PROMPT },
+          { role: 'user', content: prompt },
+        ],
+      }),
+      signal: controller.signal,
+    })
+    const simplifyText = await simplifyRes.text()
+    if (!simplifyRes.ok) throw new Error(`OpenRouter 简化过滤失败: ${simplifyRes.status}`)
+    const simplifyOuter = JSON.parse(simplifyText)
+    const simplifiedPrompt = String(simplifyOuter?.choices?.[0]?.message?.content ?? '').trim() || prompt
+
     const res = await fetch('https://openrouter.ai/api/v1/chat/completions', {
       method: 'POST',
       headers: {
@@ -149,7 +210,7 @@ export async function generateFlowchartBatchWithLLM(
         temperature: 0.2,
         messages: [
           { role: 'system', content: FLOWCHART_BATCH_SYSTEM_PROMPT },
-          { role: 'user', content: prompt },
+          { role: 'user', content: simplifiedPrompt },
         ],
       }),
       signal: controller.signal,

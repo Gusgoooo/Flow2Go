@@ -1079,6 +1079,12 @@ function applyFlowchartStrictHandles(
   direction: FlowDirection,
 ): Array<Edge<any>> {
   const nodeById = new Map(nodes.map((n) => [n.id, n]))
+  const outDegree = new Map<string, number>()
+  const inDegree = new Map<string, number>()
+  for (const e of edges) {
+    outDegree.set(e.source, (outDegree.get(e.source) ?? 0) + 1)
+    inDegree.set(e.target, (inDegree.get(e.target) ?? 0) + 1)
+  }
   const incomingByNode = new Map<string, Set<Side>>()
   const outgoingByNode = new Map<string, Set<Side>>()
   const toSide = (h: string): Side => (h.endsWith('-top') ? 'top' : h.endsWith('-right') ? 'right' : h.endsWith('-bottom') ? 'bottom' : 'left')
@@ -1093,21 +1099,58 @@ function applyFlowchartStrictHandles(
     if (preferred === 'left') return ['left', 'top', 'bottom', 'right']
     return ['right', 'top', 'bottom', 'left']
   }
-  const pickSourceSide = (nodeId: string, preferred: Side): Side => {
+  const opposite = (s: Side): Side =>
+    s === 'top' ? 'bottom' : s === 'bottom' ? 'top' : s === 'left' ? 'right' : 'left'
+  const scoreOut = (nodeId: string, c: Side, preferred: Side) => {
     const incoming = incomingByNode.get(nodeId) ?? new Set<Side>()
+    const outgoing = outgoingByNode.get(nodeId) ?? new Set<Side>()
+    // 硬约束：同侧不能同时 in/out
+    if (incoming.has(c)) return Number.POSITIVE_INFINITY
+    // 强约束：尽量不出现对向侧都出线（left/right 或 top/bottom）
+    let score = 0
+    if (outgoing.has(opposite(c))) score += 100
+    if (c !== preferred) score += 6
+    // 轻惩罚：重复使用同侧会更拥挤
+    if (outgoing.has(c)) score += 2
+    return score
+  }
+  const scoreIn = (nodeId: string, c: Side, preferred: Side) => {
+    const outgoing = outgoingByNode.get(nodeId) ?? new Set<Side>()
+    const incoming = incomingByNode.get(nodeId) ?? new Set<Side>()
+    // 硬约束：同侧不能同时 in/out
+    if (outgoing.has(c)) return Number.POSITIVE_INFINITY
+    // 强约束：尽量不出现对向侧都入线
+    let score = 0
+    if (incoming.has(opposite(c))) score += 100
+    if (c !== preferred) score += 6
+    if (incoming.has(c)) score += 2
+    return score
+  }
+  const pickSourceSide = (nodeId: string, preferred: Side): Side => {
     const cands = sideCandidates(preferred)
+    let best = preferred
+    let bestScore = Number.POSITIVE_INFINITY
     for (const c of cands) {
-      if (!incoming.has(c)) return c
+      const s = scoreOut(nodeId, c, preferred)
+      if (s < bestScore) {
+        best = c
+        bestScore = s
+      }
     }
-    return preferred
+    return best
   }
   const pickTargetSide = (nodeId: string, preferred: Side): Side => {
-    const outgoing = outgoingByNode.get(nodeId) ?? new Set<Side>()
     const cands = sideCandidates(preferred)
+    let best = preferred
+    let bestScore = Number.POSITIVE_INFINITY
     for (const c of cands) {
-      if (!outgoing.has(c)) return c
+      const s = scoreIn(nodeId, c, preferred)
+      if (s < bestScore) {
+        best = c
+        bestScore = s
+      }
     }
-    return preferred
+    return best
   }
 
   return edges.map((e) => {
@@ -1119,15 +1162,17 @@ function applyFlowchartStrictHandles(
     let sourceHandle: string
     let targetHandle: string
     if (direction === 'LR' || direction === 'RL') {
-      const srcPref: Side = dx >= 0 ? 'right' : 'left'
-      const tgtPref: Side = dx >= 0 ? 'left' : 'right'
+      const congested = (outDegree.get(e.source) ?? 0) > 1 || (inDegree.get(e.target) ?? 0) > 1
+      const srcPref: Side = congested ? (dy >= 0 ? 'bottom' : 'top') : dx >= 0 ? 'right' : 'left'
+      const tgtPref: Side = congested ? (dy >= 0 ? 'top' : 'bottom') : dx >= 0 ? 'left' : 'right'
       const srcSide = pickSourceSide(e.source, srcPref)
       const tgtSide = pickTargetSide(e.target, tgtPref)
       sourceHandle = `s-${srcSide}`
       targetHandle = `t-${tgtSide}`
     } else if (direction === 'TB' || direction === 'BT') {
-      const srcPref: Side = dy >= 0 ? 'bottom' : 'top'
-      const tgtPref: Side = dy >= 0 ? 'top' : 'bottom'
+      const congested = (outDegree.get(e.source) ?? 0) > 1 || (inDegree.get(e.target) ?? 0) > 1
+      const srcPref: Side = congested ? (dx >= 0 ? 'right' : 'left') : dy >= 0 ? 'bottom' : 'top'
+      const tgtPref: Side = congested ? (dx >= 0 ? 'left' : 'right') : dy >= 0 ? 'top' : 'bottom'
       const srcSide = pickSourceSide(e.source, srcPref)
       const tgtSide = pickTargetSide(e.target, tgtPref)
       sourceHandle = `s-${srcSide}`
@@ -1146,7 +1191,9 @@ function applyFlowchartStrictHandles(
     addSide(outgoingByNode, e.source, toSide(sourceHandle))
     addSide(incomingByNode, e.target, toSide(targetHandle))
     const d = { ...((e.data ?? {}) as any), autoOffset: 0 }
-    return { ...e, sourceHandle, targetHandle, data: d }
+    const congested = (outDegree.get(e.source) ?? 0) > 1 || (inDegree.get(e.target) ?? 0) > 1
+    const nextType = congested ? 'smoothstep' : e.type
+    return { ...e, sourceHandle, targetHandle, type: nextType, data: d }
   })
 }
 
