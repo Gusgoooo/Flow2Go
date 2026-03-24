@@ -53,13 +53,16 @@ export function EditableBezierEdge(props: EdgeProps) {
 
   const rf = useReactFlow()
   const dataTyped = (data ?? {}) as EdgeData
+  const semanticType = dataTyped.semanticType
+  const shouldApplyAutoOffset = semanticType != null
   const autoOffset: number =
-    typeof dataTyped.autoOffset === 'number' && Number.isFinite(dataTyped.autoOffset) ? dataTyped.autoOffset : 0
+    shouldApplyAutoOffset && typeof dataTyped.autoOffset === 'number' && Number.isFinite(dataTyped.autoOffset)
+      ? dataTyped.autoOffset
+      : 0
 
   const srcPos = sourcePosition ?? Position.Right
   const tgtPos = targetPosition ?? Position.Left
 
-  const semanticType = dataTyped.semanticType
   const semanticStyle: React.CSSProperties = {}
   if (semanticType === 'returnFlow') {
     semanticStyle.strokeDasharray = '6 3'

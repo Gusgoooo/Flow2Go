@@ -96,15 +96,15 @@ function inferFlowLayoutMode(
 ): { layoutMode: LayoutMode; layoutEngine: LayoutEngine } {
   void _profile
   if (sceneKind === 'data-pipeline' || sceneKind === 'business-flow') {
-    return { layoutMode: 'layered', layoutEngine: 'elk' }
+    return { layoutMode: 'layered', layoutEngine: 'native' }
   }
   if (sceneKind === 'hierarchy') {
-    return { layoutMode: 'tree', layoutEngine: 'elk' }
+    return { layoutMode: 'tree', layoutEngine: 'native' }
   }
   if (sceneKind === 'agent-flow' || sceneKind === 'approval-flow') {
-    return { layoutMode: 'layered', layoutEngine: 'elk' }
+    return { layoutMode: 'layered', layoutEngine: 'native' }
   }
-  return { layoutMode: 'layered', layoutEngine: 'elk' }
+  return { layoutMode: 'layered', layoutEngine: 'native' }
 }
 
 /** 将旧版 templateKey 转为 SceneRouteV2 */

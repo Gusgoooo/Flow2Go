@@ -6,7 +6,6 @@ import {
   useRef,
   useState,
   type ChangeEvent,
-  type CSSProperties,
   type DragEvent,
 } from 'react'
 import {
@@ -48,7 +47,7 @@ import defaultExample from './defaultExample.json'
 import { getProject, saveProject } from './projectStorage'
 import styles from './flowEditor.module.css'
 import { GroupNode, type GroupNodeData } from './GroupNode'
-import { autoLayout as autoLayoutElk, type LayoutDirection } from './layout'
+import { type LayoutDirection } from './layout'
 import { autoLayoutDagre } from './dagreLayout'
 import { rerouteSwimlaneEdges } from './layout/routing/rerouteSwimlaneEdges'
 import { QuadNode } from './QuadNode'
@@ -114,7 +113,6 @@ type NodeData = {
 
 type FlowNode = Node<NodeData>
 type ArrowStyle = 'none' | 'end' | 'start' | 'both'
-type AiFlowLayoutRoute = 'dagre-default' | 'elk-test'
 type EdgeLabelStyle = { fontSize?: number; fontWeight?: string; color?: string }
 type FlowEdge = Edge<{
   arrowStyle?: ArrowStyle
@@ -629,9 +627,9 @@ function EditorInner({ onBackHome, source, previewSnapshot, readOnly: _readOnly 
   const [assetsPopupOpen, setAssetsPopupOpen] = useState(false)
   const [aiModalOpen, setAiModalOpen] = useState(false)
   const [aiModalPrompt, setAiModalPrompt] = useState('')
+  const [aiModalPromptUserEdited, setAiModalPromptUserEdited] = useState(false)
   /** 与胶囊绑定：生成时传入 diagramScene；点 ✕ 取消高亮并清空输入框 */
   const [aiModalScene, setAiModalScene] = useState<AiDiagramSceneHint | null>(null)
-  const [aiFlowLayoutRoute, setAiFlowLayoutRoute] = useState<AiFlowLayoutRoute>('dagre-default')
   const [aiConfigOpen, setAiConfigOpen] = useState(false)
   const [aiModalGenerating, setAiModalGenerating] = useState(false)
   /** 生成阶段文案（与控制台 [Flow2Go AI] 日志对应，用于区分慢 / 卡在某一步 / 失败） */
@@ -708,12 +706,6 @@ function EditorInner({ onBackHome, source, previewSnapshot, readOnly: _readOnly 
     }, 500)
     return () => window.clearInterval(id)
   }, [aiModalGenerating])
-
-  useEffect(() => {
-    if ((aiModalScene === 'mind-map' || aiModalScene === 'swimlane') && aiFlowLayoutRoute === 'elk-test') {
-      setAiFlowLayoutRoute('dagre-default')
-    }
-  }, [aiFlowLayoutRoute, aiModalScene])
 
   const initial = useMemo(() => {
     const normalizeSwimlaneSnapshot = (nodes: FlowNode[], edges: FlowEdge[]) => {
@@ -924,69 +916,17 @@ function EditorInner({ onBackHome, source, previewSnapshot, readOnly: _readOnly 
     [rf, snapshotSig],
   )
 
-  const relayoutGraphByEngine = useCallback(
-    async (
-      inputNodes: FlowNode[],
-      inputEdges: FlowEdge[],
-      direction: LayoutDirection,
-      engine: 'dagre' | 'elk',
-    ): Promise<FlowNode[]> => {
-      const groups = new Map<string, FlowNode[]>()
-      for (const n of inputNodes) {
-        if (n.hidden) continue
-        if (n.type === 'group') continue
-        const key = n.parentId ?? '__root__'
-        const arr = groups.get(key) ?? []
-        arr.push(n)
-        groups.set(key, arr)
-      }
-
-      const nextPosById = new Map<string, { x: number; y: number }>()
-      for (const bucket of groups.values()) {
-        if (bucket.length < 2) continue
-        const ids = new Set(bucket.map((n) => n.id))
-        const subEdges = inputEdges.filter((e) => !e.hidden && ids.has(e.source) && ids.has(e.target))
-        if (subEdges.length === 0) continue
-        const laid =
-          engine === 'elk'
-            ? await autoLayoutElk(bucket as Array<Node<any>>, subEdges as Array<Edge>, direction)
-            : await autoLayoutDagre(bucket as Array<Node<any>>, subEdges as Array<Edge>, direction)
-        for (const ln of laid) {
-          nextPosById.set(ln.id, { x: ln.position.x, y: ln.position.y })
-        }
-      }
-
-      if (nextPosById.size === 0) return inputNodes
-      return inputNodes.map((n) => {
-        const p = nextPosById.get(n.id)
-        if (!p) return n
-        return { ...n, position: { x: p.x, y: p.y }, positionAbsolute: undefined }
-      })
-    },
-    [],
-  )
-
   const applyAiDraftDirect = useCallback(
-    async (
-      draft: AiDiagramDraft,
-      opts?: {
-        flowLayoutRoute?: AiFlowLayoutRoute
-        onProgress?: (phase: string, detail?: string) => void
-      },
-    ) => {
+    (draft: AiDiagramDraft) => {
       const snap = normalizeAiDiagramToSnapshot(draft)
-      let nextNodes = (snap.nodes ?? []) as FlowNode[]
+      const nextNodes = (snap.nodes ?? []) as FlowNode[]
       const nextEdges = (snap.edges ?? []) as FlowEdge[]
-      if (opts?.flowLayoutRoute === 'elk-test') {
-        opts.onProgress?.('ELK 布局步骤', '流程图物化后，追加 ELK layered 测试重排…')
-        nextNodes = await relayoutGraphByEngine(nextNodes, nextEdges, 'LR', 'elk')
-      }
       setNodes(nextNodes)
       setEdges(nextEdges)
       pushHistory(nextNodes, nextEdges, 'ai-apply')
       if (snap.viewport) rf.setViewport(snap.viewport, { duration: 0 })
     },
-    [pushHistory, relayoutGraphByEngine, rf],
+    [pushHistory, rf],
   )
 
   // const _canUndo = historyRef.current.past.length > 0
@@ -1457,7 +1397,25 @@ function EditorInner({ onBackHome, source, previewSnapshot, readOnly: _readOnly 
             if (!wps || wps.length === 0) return e
             changed = true
             const moved = wps.map((p) => ({ x: p.x + dx, y: p.y + dy }))
-            return { ...e, data: { ...(e.data ?? {}), waypoints: moved } }
+            const routeRef = dataAny.routeRef as
+              | { sourceX: number; sourceY: number; targetX: number; targetY: number }
+              | undefined
+            const movedRouteRef = routeRef
+              ? {
+                  sourceX: routeRef.sourceX + dx,
+                  sourceY: routeRef.sourceY + dy,
+                  targetX: routeRef.targetX + dx,
+                  targetY: routeRef.targetY + dy,
+                }
+              : undefined
+            return {
+              ...e,
+              data: {
+                ...(e.data ?? {}),
+                waypoints: moved,
+                ...(movedRouteRef ? { routeRef: movedRouteRef } : {}),
+              },
+            }
           })
           return changed ? nextEdges : prevEdges
         })
@@ -3123,6 +3081,7 @@ function EditorInner({ onBackHome, source, previewSnapshot, readOnly: _readOnly 
                   setAiModalError(null)
                   setAiConfigOpen(false)
                   setAiModalPrompt('')
+                  setAiModalPromptUserEdited(false)
                   setAiModalScene(null)
                   setAiModalOpen(true)
                 }}
@@ -3246,7 +3205,11 @@ function EditorInner({ onBackHome, source, previewSnapshot, readOnly: _readOnly 
                   <div className={styles.aiChatInputWrap}>
                     <textarea
                       value={aiModalPrompt}
-                      onChange={(e) => setAiModalPrompt(e.target.value)}
+                      onChange={(e) => {
+                        const next = e.target.value
+                        setAiModalPrompt(next)
+                        setAiModalPromptUserEdited(next.trim().length > 0)
+                      }}
                       rows={10}
                       placeholder="输入你的需求，支持多层级描述…"
                       className={styles.aiChatInput}
@@ -3258,62 +3221,17 @@ function EditorInner({ onBackHome, source, previewSnapshot, readOnly: _readOnly 
                     disabled={aiModalGenerating}
                     onSelect={(preset) => {
                       setAiModalScene(preset.scene)
-                      // 已有输入时只锁定生图场景，不覆盖用户文案；空内容时才预填模板
-                      setAiModalPrompt((prev) => (prev.trim() ? prev : preset.prompt))
+                      // 仅当用户未手动编辑时，切换胶囊会切换预填文案。
+                      if (!aiModalPromptUserEdited) {
+                        setAiModalPrompt(preset.prompt)
+                      }
                     }}
                     onClearScene={() => {
                       setAiModalScene(null)
                       setAiModalPrompt('')
+                      setAiModalPromptUserEdited(false)
                     }}
                   />
-                  <div className={styles.aiLayoutRouteRow}>
-                    <div className={styles.aiLayoutRouteLabel}>布局链路</div>
-                    <div className={styles.aiSceneCapsules} role="group" aria-label="布局链路切换">
-                      <div
-                        className={`${styles.aiSceneCapsule} ${aiFlowLayoutRoute === 'dagre-default' ? styles.aiSceneCapsule_active : ''}`}
-                        style={
-                          aiFlowLayoutRoute === 'dagre-default'
-                            ? ({
-                                '--ai-capsule-accent': '#0f766e',
-                              } as CSSProperties)
-                            : undefined
-                        }
-                      >
-                        <button
-                          type="button"
-                          className={styles.aiSceneCapsuleMain}
-                          disabled={aiModalGenerating}
-                          aria-pressed={aiFlowLayoutRoute === 'dagre-default'}
-                          onClick={() => setAiFlowLayoutRoute('dagre-default')}
-                        >
-                          Dagre 默认
-                        </button>
-                      </div>
-                      <div
-                        className={`${styles.aiSceneCapsule} ${aiFlowLayoutRoute === 'elk-test' ? styles.aiSceneCapsule_active : ''}`}
-                        style={
-                          aiFlowLayoutRoute === 'elk-test'
-                            ? ({
-                                '--ai-capsule-accent': '#0369a1',
-                              } as CSSProperties)
-                            : undefined
-                        }
-                      >
-                        <button
-                          type="button"
-                          className={styles.aiSceneCapsuleMain}
-                          disabled={aiModalGenerating || aiModalScene === 'mind-map' || aiModalScene === 'swimlane'}
-                          aria-pressed={aiFlowLayoutRoute === 'elk-test'}
-                          onClick={() => setAiFlowLayoutRoute('elk-test')}
-                        >
-                          ELK 测试链路
-                        </button>
-                      </div>
-                    </div>
-                    <div className={styles.aiNote}>
-                      流程图默认走 Dagre。若选择 ELK 测试链路，会在流程图物化后额外加入一步 ELK layered 重排。
-                    </div>
-                  </div>
                   {aiModalError && <div className={styles.aiError}>{aiModalError}</div>}
 
                   <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
@@ -3370,12 +3288,7 @@ function EditorInner({ onBackHome, source, previewSnapshot, readOnly: _readOnly 
                             },
                           })
                           setAiDiagramDraft(draft)
-                          await applyAiDraftDirect(draft, {
-                            flowLayoutRoute: aiFlowLayoutRoute,
-                            onProgress: (phase, detail) => {
-                              setAiModalProgress({ phase, detail })
-                            },
-                          })
+                          applyAiDraftDirect(draft)
                           setAiModalOpen(false)
                         } catch (e) {
                           const msg = e instanceof Error ? e.message : '生成失败'

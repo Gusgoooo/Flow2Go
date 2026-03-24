@@ -1,5 +1,10 @@
 import type { Edge, Node } from '@xyflow/react'
 import { autoLayoutDagre } from '../dagreLayout'
+import {
+  doesPolylineIntersectAnyExclusionBox,
+  getNodeExclusionBoxes,
+} from '../layout/routing/exclusion'
+import { buildPolylineSignature } from '../layout/routing/polylineUtils'
 import { layoutMindMapMindElixirStyle } from '../mindMap/mindElixirLayout'
 import { autoLayoutSwimlane } from '../swimlaneLayout'
 import type { FlowDirection, GraphBatchPayload, GraphOperation } from './types'
@@ -676,6 +681,7 @@ function inferHandlesForEdge(
 }
 
 type Side = 'top' | 'right' | 'bottom' | 'left'
+type RoutePoint = { x: number; y: number }
 
 function handleToSide(handleId: unknown): Side | null {
   if (typeof handleId !== 'string') return null
@@ -699,6 +705,106 @@ function oppositeSide(side: Side): Side {
   if (side === 'bottom') return 'top'
   if (side === 'left') return 'right'
   return 'left'
+}
+
+const FLOW_ROUTE_LEAD = 24
+const FLOW_ROUTE_SHIFT_STEP = 24
+const FLOW_ROUTE_MAX_SHIFT_TRIES = 18
+
+function shiftSequence(step: number, maxTries: number): number[] {
+  const seq = [0]
+  for (let i = 1; i <= maxTries; i += 1) {
+    seq.push(i * step)
+    seq.push(-i * step)
+  }
+  return seq
+}
+
+function withLead(p: RoutePoint, side: Side, lead: number): RoutePoint {
+  if (side === 'left') return { x: p.x - lead, y: p.y }
+  if (side === 'right') return { x: p.x + lead, y: p.y }
+  if (side === 'top') return { x: p.x, y: p.y - lead }
+  return { x: p.x, y: p.y + lead }
+}
+
+function simplifyPolyline(points: RoutePoint[]): RoutePoint[] {
+  if (points.length <= 2) return points
+  const deduped: RoutePoint[] = [points[0]]
+  for (let i = 1; i < points.length; i += 1) {
+    const prev = deduped[deduped.length - 1]
+    const cur = points[i]
+    if (Math.abs(prev.x - cur.x) < 1e-6 && Math.abs(prev.y - cur.y) < 1e-6) continue
+    deduped.push(cur)
+  }
+  if (deduped.length <= 2) return deduped
+  const out: RoutePoint[] = [deduped[0]]
+  for (let i = 1; i < deduped.length - 1; i += 1) {
+    const a = out[out.length - 1]
+    const b = deduped[i]
+    const c = deduped[i + 1]
+    const collinearX = Math.abs(a.x - b.x) < 1e-6 && Math.abs(b.x - c.x) < 1e-6
+    const collinearY = Math.abs(a.y - b.y) < 1e-6 && Math.abs(b.y - c.y) < 1e-6
+    if (collinearX || collinearY) continue
+    out.push(b)
+  }
+  out.push(deduped[deduped.length - 1])
+  return out
+}
+
+function resolveHandlePoint(nodeId: string, side: Side, nodeById: Map<string, Node<any>>): RoutePoint | null {
+  const n = nodeById.get(nodeId)
+  if (!n) return null
+  const abs = getAbsolutePosition(nodeId, nodeById)
+  const size = getNodeSize(n)
+  if (side === 'left') return { x: abs.x, y: abs.y + size.h / 2 }
+  if (side === 'right') return { x: abs.x + size.w, y: abs.y + size.h / 2 }
+  if (side === 'top') return { x: abs.x + size.w / 2, y: abs.y }
+  return { x: abs.x + size.w / 2, y: abs.y + size.h }
+}
+
+function buildRoutePoints(
+  sourcePoint: RoutePoint,
+  targetPoint: RoutePoint,
+  sourceSide: Side,
+  targetSide: Side,
+  shift: number,
+  mode: 'auto' | 'horizontal' | 'vertical' = 'auto',
+): RoutePoint[] {
+  const srcLead = withLead(sourcePoint, sourceSide, FLOW_ROUTE_LEAD)
+  const tgtLead = withLead(targetPoint, targetSide, FLOW_ROUTE_LEAD)
+  const horizontalPair =
+    (sourceSide === 'left' || sourceSide === 'right') &&
+    (targetSide === 'left' || targetSide === 'right')
+  const verticalPair =
+    (sourceSide === 'top' || sourceSide === 'bottom') &&
+    (targetSide === 'top' || targetSide === 'bottom')
+
+  const useHorizontal =
+    mode === 'horizontal' ||
+    (mode === 'auto' &&
+      (horizontalPair || (!verticalPair && Math.abs(srcLead.x - tgtLead.x) >= Math.abs(srcLead.y - tgtLead.y))))
+
+  if (useHorizontal) {
+    const corridorY = (srcLead.y + tgtLead.y) / 2 + shift
+    return simplifyPolyline([
+      sourcePoint,
+      srcLead,
+      { x: srcLead.x, y: corridorY },
+      { x: tgtLead.x, y: corridorY },
+      tgtLead,
+      targetPoint,
+    ])
+  }
+
+  const corridorX = (srcLead.x + tgtLead.x) / 2 + shift
+  return simplifyPolyline([
+    sourcePoint,
+    srcLead,
+    { x: corridorX, y: srcLead.y },
+    { x: corridorX, y: tgtLead.y },
+    tgtLead,
+    targetPoint,
+  ])
 }
 
 function getCenters(
@@ -1078,11 +1184,93 @@ function applyFlowchartStrictHandles(
   edges: Array<Edge<any>>,
   direction: FlowDirection,
 ): Array<Edge<any>> {
-  // Reverted to Dagre default readability for flowcharts:
-  // keep inferred handles and edge type as-is, avoid secondary forced routing.
-  void nodes
+  const nodeById = new Map(nodes.map((n) => [n.id, n]))
+  const boxes = getNodeExclusionBoxes(nodes)
+  const shifts = shiftSequence(FLOW_ROUTE_SHIFT_STEP, FLOW_ROUTE_MAX_SHIFT_TRIES)
+  const occupiedRouteSignatures = new Set<string>()
   void direction
-  return edges
+  return edges.map((e) => {
+    let sourceHandle = e.sourceHandle
+    let targetHandle = e.targetHandle
+    if (!sourceHandle || !targetHandle) {
+      const inferred = inferHandlesForEdge(e.source, e.target, nodeById)
+      if (inferred) {
+        sourceHandle = sourceHandle ?? inferred.sourceHandle
+        targetHandle = targetHandle ?? inferred.targetHandle
+      }
+    }
+    const d = { ...((e.data ?? {}) as any), autoOffset: 0 }
+    const sourceSide = sourceHandle ? handleToSide(sourceHandle) : null
+    const targetSide = targetHandle ? handleToSide(targetHandle) : null
+    if (!sourceSide || !targetSide) {
+      return {
+        ...e,
+        ...(sourceHandle ? { sourceHandle } : {}),
+        ...(targetHandle ? { targetHandle } : {}),
+        data: d,
+      }
+    }
+
+    const srcPoint = resolveHandlePoint(e.source, sourceSide, nodeById)
+    const tgtPoint = resolveHandlePoint(e.target, targetSide, nodeById)
+    if (!srcPoint || !tgtPoint) {
+      return {
+        ...e,
+        ...(sourceHandle ? { sourceHandle } : {}),
+        ...(targetHandle ? { targetHandle } : {}),
+        data: d,
+      }
+    }
+
+    const basePolyline = buildRoutePoints(srcPoint, tgtPoint, sourceSide, targetSide, 0, 'auto')
+    const baseCollision = doesPolylineIntersectAnyExclusionBox(basePolyline, boxes, [e.source, e.target])
+    const baseSignature = buildPolylineSignature(basePolyline)
+    const baseFullOverlap = baseSignature ? occupiedRouteSignatures.has(baseSignature) : false
+    if (!baseCollision && !baseFullOverlap) {
+      if (baseSignature) occupiedRouteSignatures.add(baseSignature)
+      return {
+        ...e,
+        ...(sourceHandle ? { sourceHandle } : {}),
+        ...(targetHandle ? { targetHandle } : {}),
+        data: d,
+      }
+    }
+
+    const routeModes: Array<'auto' | 'horizontal' | 'vertical'> = ['auto', 'horizontal', 'vertical']
+    const candidates: RoutePoint[][] = []
+    for (const mode of routeModes) {
+      for (const shift of shifts) {
+        candidates.push(buildRoutePoints(srcPoint, tgtPoint, sourceSide, targetSide, shift, mode))
+      }
+    }
+
+    let selected = candidates[0]
+    let bestNodeSafe: RoutePoint[] | null = null
+    let bestNodeSafeNoOverlap: RoutePoint[] | null = null
+
+    for (const candidate of candidates) {
+      const collision = doesPolylineIntersectAnyExclusionBox(candidate, boxes, [e.source, e.target])
+      const sig = buildPolylineSignature(candidate)
+      const fullOverlap = sig ? occupiedRouteSignatures.has(sig) : false
+      if (!collision && !bestNodeSafe) bestNodeSafe = candidate
+      if (!collision && !fullOverlap) {
+        bestNodeSafeNoOverlap = candidate
+        break
+      }
+    }
+
+    selected = bestNodeSafeNoOverlap ?? bestNodeSafe ?? selected
+    const routedWaypoints = selected.slice(1, -1)
+    const selectedSignature = buildPolylineSignature(selected)
+    if (selectedSignature) occupiedRouteSignatures.add(selectedSignature)
+    return {
+      ...e,
+      ...(sourceHandle ? { sourceHandle } : {}),
+      ...(targetHandle ? { targetHandle } : {}),
+      type: routedWaypoints.length >= 2 ? 'smoothstep' : e.type,
+      data: { ...d, waypoints: routedWaypoints },
+    }
+  })
 }
 
 /**

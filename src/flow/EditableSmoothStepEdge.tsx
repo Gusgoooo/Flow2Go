@@ -11,6 +11,12 @@ type SwimlaneEdgeSemanticType = 'normal' | 'crossLane' | 'returnFlow' | 'conditi
 type EdgeData = {
   waypoints?: Point[]
   autoOffset?: number
+  routeRef?: {
+    sourceX: number
+    sourceY: number
+    targetX: number
+    targetY: number
+  }
   editingLabel?: boolean
   labelStyle?: EdgeLabelStyle
   labelLayout?: EdgeLabelLayoutConfig
@@ -249,6 +255,71 @@ function snapEndpointsToPorts(
   return snapped
 }
 
+function normalizeOrthogonalWaypoints(
+  source: Point,
+  target: Point,
+  waypoints: Point[],
+  sourcePosition: Position,
+  targetPosition: Position,
+): Point[] {
+  if (waypoints.length === 0) return []
+  const full = [source, ...waypoints.map((p) => ({ ...p })), target]
+  let horizontal = sourcePosition === Position.Left || sourcePosition === Position.Right
+  for (let i = 1; i < full.length - 1; i += 1) {
+    if (horizontal) {
+      full[i].y = full[i - 1].y
+    } else {
+      full[i].x = full[i - 1].x
+    }
+    horizontal = !horizontal
+  }
+
+  const targetHorizontal = targetPosition === Position.Left || targetPosition === Position.Right
+  const lastIdx = full.length - 2
+  if (lastIdx >= 1) {
+    if (targetHorizontal) {
+      full[lastIdx].y = full[full.length - 1].y
+    } else {
+      full[lastIdx].x = full[full.length - 1].x
+    }
+  }
+
+  const snapped = snapEndpointsToPorts(full, sourcePosition, targetPosition)
+  const out = snapped.slice(1, -1)
+  if (out.length === 0) return out
+  const deduped: Point[] = [out[0]]
+  for (let i = 1; i < out.length; i += 1) {
+    const prev = deduped[deduped.length - 1]
+    const cur = out[i]
+    if (Math.abs(prev.x - cur.x) < 1e-6 && Math.abs(prev.y - cur.y) < 1e-6) continue
+    deduped.push(cur)
+  }
+  return deduped
+}
+
+function adaptWaypointsByRouteRef(
+  waypoints: Point[],
+  routeRef: EdgeData['routeRef'] | undefined,
+  now: { sourceX: number; sourceY: number; targetX: number; targetY: number },
+): Point[] {
+  if (!routeRef || waypoints.length === 0) return waypoints
+  const dsx = now.sourceX - routeRef.sourceX
+  const dsy = now.sourceY - routeRef.sourceY
+  const dtx = now.targetX - routeRef.targetX
+  const dty = now.targetY - routeRef.targetY
+  if (Math.abs(dsx) < 1e-6 && Math.abs(dsy) < 1e-6 && Math.abs(dtx) < 1e-6 && Math.abs(dty) < 1e-6) {
+    return waypoints
+  }
+  const n = waypoints.length
+  return waypoints.map((p, i) => {
+    const t = (i + 1) / (n + 1)
+    return {
+      x: p.x + dsx * (1 - t) + dtx * t,
+      y: p.y + dsy * (1 - t) + dty * t,
+    }
+  })
+}
+
 export function EditableSmoothStepEdge(props: EdgeProps) {
   const {
     id,
@@ -302,6 +373,22 @@ export function EditableSmoothStepEdge(props: EdgeProps) {
   const savedWaypoints: Point[] | undefined = dataTyped.waypoints
   const autoOffset: number =
     typeof dataTyped.autoOffset === 'number' && Number.isFinite(dataTyped.autoOffset) ? dataTyped.autoOffset : 0
+  const sourcePoint = useMemo(() => ({ x: padded.sourceX, y: padded.sourceY }), [padded.sourceX, padded.sourceY])
+  const targetPoint = useMemo(() => ({ x: padded.targetX, y: padded.targetY }), [padded.targetX, padded.targetY])
+  const endpointSnapshot = useMemo(
+    () => ({
+      sourceX: padded.sourceX,
+      sourceY: padded.sourceY,
+      targetX: padded.targetX,
+      targetY: padded.targetY,
+    }),
+    [padded.sourceX, padded.sourceY, padded.targetX, padded.targetY],
+  )
+  const effectiveWaypoints = useMemo((): Point[] | undefined => {
+    if (!savedWaypoints || savedWaypoints.length === 0) return undefined
+    const adapted = adaptWaypointsByRouteRef(savedWaypoints, dataTyped.routeRef, endpointSnapshot)
+    return normalizeOrthogonalWaypoints(sourcePoint, targetPoint, adapted, srcPos, tgtPos)
+  }, [savedWaypoints, dataTyped.routeRef, endpointSnapshot, sourcePoint, targetPoint, srcPos, tgtPos])
 
   const points = useMemo((): Point[] => {
     const defaultPts = getDefaultOrthogonalPoints(
@@ -314,16 +401,16 @@ export function EditableSmoothStepEdge(props: EdgeProps) {
       24,
       autoOffset,
     )
-    if (savedWaypoints && savedWaypoints.length > 0) {
+    if (effectiveWaypoints && effectiveWaypoints.length > 0) {
       const rawPoints = [
         { x: padded.sourceX, y: padded.sourceY },
-        ...savedWaypoints,
+        ...effectiveWaypoints,
         { x: padded.targetX, y: padded.targetY },
       ]
       return snapEndpointsToPorts(rawPoints, srcPos, tgtPos)
     }
     return defaultPts
-  }, [padded, srcPos, tgtPos, autoOffset, savedWaypoints])
+  }, [padded, srcPos, tgtPos, autoOffset, effectiveWaypoints])
 
   /** 与 points 中「无自定义 waypoints」时的折线一致，供拖拽逻辑初始化 */
   const defaultPointsForDrag = useMemo(
@@ -362,6 +449,27 @@ export function EditableSmoothStepEdge(props: EdgeProps) {
     }
   }, [editing])
 
+  // 兼容历史数据：首次发现 waypoints 且缺 routeRef 时，补一个当前端点快照
+  useEffect(() => {
+    if (!savedWaypoints || savedWaypoints.length === 0) return
+    if (dataTyped.routeRef) return
+    rf.setEdges((eds) =>
+      eds.map((edge) => {
+        if (edge.id !== id) return edge
+        const d = (edge.data ?? {}) as EdgeData
+        const wps = d.waypoints
+        if (!wps || wps.length === 0 || d.routeRef) return edge
+        return {
+          ...edge,
+          data: {
+            ...(edge.data ?? {}),
+            routeRef: endpointSnapshot,
+          },
+        }
+      }),
+    )
+  }, [id, rf, savedWaypoints, dataTyped.routeRef, endpointSnapshot])
+
   // 拖拽某个线段（移动该线段两端的中间点）
   const handleSegmentDrag = useCallback(
     (segIndex: number, seg: { isVertical: boolean }) => (e: React.MouseEvent) => {
@@ -370,8 +478,8 @@ export function EditableSmoothStepEdge(props: EdgeProps) {
       const startY = e.clientY
       
       // 获取当前的中间点（不包含源和目标）
-      const currentWaypoints: Point[] = savedWaypoints 
-        ? [...savedWaypoints] 
+      const currentWaypoints: Point[] = effectiveWaypoints
+        ? effectiveWaypoints.map((p) => ({ ...p }))
         : defaultPointsForDrag.slice(1, -1).map((p: Point) => ({ ...p }))
       
       // segIndex 是 points 数组中的索引，对应 waypoints 的索引是 segIndex-1 和 segIndex
@@ -410,10 +518,18 @@ export function EditableSmoothStepEdge(props: EdgeProps) {
           return wp
         })
         
+        const normalized = normalizeOrthogonalWaypoints(sourcePoint, targetPoint, newWaypoints, srcPos, tgtPos)
         rf.setEdges((eds) =>
           eds.map((edge) =>
             edge.id === id
-              ? { ...edge, data: { ...(edge.data ?? {}), waypoints: newWaypoints } }
+              ? {
+                  ...edge,
+                  data: {
+                    ...(edge.data ?? {}),
+                    waypoints: normalized,
+                    routeRef: endpointSnapshot,
+                  },
+                }
               : edge,
           ),
         )
@@ -427,7 +543,7 @@ export function EditableSmoothStepEdge(props: EdgeProps) {
       window.addEventListener('mousemove', handleMove)
       window.addEventListener('mouseup', handleUp)
     },
-    [id, rf, savedWaypoints, defaultPointsForDrag],
+    [id, rf, effectiveWaypoints, defaultPointsForDrag, sourcePoint, targetPoint, srcPos, tgtPos, endpointSnapshot],
   )
 
   const handleLabelDrag = useCallback(
@@ -436,8 +552,8 @@ export function EditableSmoothStepEdge(props: EdgeProps) {
       e.stopPropagation()
       const startX = e.clientX
       const startY = e.clientY
-      const currentWaypoints: Point[] = savedWaypoints 
-        ? [...savedWaypoints] 
+      const currentWaypoints: Point[] = effectiveWaypoints
+        ? effectiveWaypoints.map((p) => ({ ...p }))
         : defaultPointsForDrag.slice(1, -1).map((p: Point) => ({ ...p }))
 
       const handleMove = (evt: MouseEvent) => {
@@ -452,10 +568,18 @@ export function EditableSmoothStepEdge(props: EdgeProps) {
           y: wp.y + dy,
         }))
         
+        const normalized = normalizeOrthogonalWaypoints(sourcePoint, targetPoint, newWaypoints, srcPos, tgtPos)
         rf.setEdges((eds) =>
           eds.map((edge) =>
             edge.id === id
-              ? { ...edge, data: { ...(edge.data ?? {}), waypoints: newWaypoints } }
+              ? {
+                  ...edge,
+                  data: {
+                    ...(edge.data ?? {}),
+                    waypoints: normalized,
+                    routeRef: endpointSnapshot,
+                  },
+                }
               : edge,
           ),
         )
@@ -469,7 +593,7 @@ export function EditableSmoothStepEdge(props: EdgeProps) {
       window.addEventListener('mousemove', handleMove)
       window.addEventListener('mouseup', handleUp)
     },
-    [id, rf, editing, savedWaypoints, defaultPointsForDrag],
+    [id, rf, editing, effectiveWaypoints, defaultPointsForDrag, sourcePoint, targetPoint, srcPos, tgtPos, endpointSnapshot],
   )
 
   const commit = (next: string) => {
@@ -577,8 +701,17 @@ export function EditableSmoothStepEdge(props: EdgeProps) {
 
       {/* 每个线段的拖拽区域 */}
       {segments.map((seg, idx) => {
+        const firstSeg = segments[0]
+        const lastSeg = segments[segments.length - 1]
+        const inOutSameAxis = Boolean(firstSeg && lastSeg && firstSeg.isVertical === lastSeg.isVertical)
+        const handleAllowedAxis = inOutSameAxis && firstSeg ? !firstSeg.isVertical : null
+
+        // 仅在较复杂路径（>=5段）显示可调手柄
+        if (segments.length < 5) return null
         // 跳过第一段和最后一段（连接到源/目标节点的段）
         if (idx === 0 || idx === segments.length - 1) return null
+        // 仅允许“垂直于 in/out 段方向”的中段出现手柄
+        if (handleAllowedAxis == null || seg.isVertical !== handleAllowedAxis) return null
         
         const segLength = seg.length
         if (segLength < 10) return null // 太短的线段不显示手柄
@@ -763,4 +896,3 @@ export function EditableSmoothStepEdge(props: EdgeProps) {
     </>
   )
 }
-

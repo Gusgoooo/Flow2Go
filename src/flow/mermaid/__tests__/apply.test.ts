@@ -112,6 +112,76 @@ describe('materializeGraphBatchPayloadToSnapshot - handle inference', () => {
     expect(e.sourceHandle).toBe('s-bottom')
     expect(e.targetHandle).toBe('t-top')
   })
+
+  it('keeps flowchart edges pinned to handles with zero autoOffset', async () => {
+    const payload: GraphBatchPayload = {
+      version: '1.0',
+      source: 'mermaid',
+      graphType: 'flowchart',
+      direction: 'LR',
+      operations: [
+        { op: 'graph.createNodeQuad', params: { id: 'A', title: 'A', shape: 'rect', position: { x: 0, y: 0 } } },
+        { op: 'graph.createNodeQuad', params: { id: 'B', title: 'B', shape: 'rect', position: { x: 260, y: 0 } } },
+        { op: 'graph.createNodeQuad', params: { id: 'C', title: 'C', shape: 'rect', position: { x: 260, y: 80 } } },
+        { op: 'graph.createEdge', params: { id: 'e_ab', source: 'A', target: 'B', type: 'smoothstep', arrowStyle: 'end' } },
+        { op: 'graph.createEdge', params: { id: 'e_ac', source: 'A', target: 'C', type: 'smoothstep', arrowStyle: 'end' } },
+      ],
+    }
+
+    const snap = await materializeGraphBatchPayloadToSnapshot(payload, { replace: true })
+    const eab = snap.edges.find((e) => e.id === 'e_ab') as any
+    const eac = snap.edges.find((e) => e.id === 'e_ac') as any
+    expect(eab.type).toBe('smoothstep')
+    expect(eac.type).toBe('smoothstep')
+    const offsets = [Number((eab.data ?? {}).autoOffset ?? 0), Number((eac.data ?? {}).autoOffset ?? 0)]
+    expect(offsets.every((v) => v === 0)).toBe(true)
+  })
+
+  it('reroutes overlapping flowchart edges with extra bends to avoid nodes', async () => {
+    const payload: GraphBatchPayload = {
+      version: '1.0',
+      source: 'mermaid',
+      graphType: 'flowchart',
+      direction: 'LR',
+      operations: [
+        { op: 'graph.createNodeQuad', params: { id: 'A', title: 'A', shape: 'rect', position: { x: 0, y: 0 } } },
+        { op: 'graph.createNodeQuad', params: { id: 'M', title: 'M', shape: 'rect', position: { x: 240, y: 0 } } },
+        { op: 'graph.createNodeQuad', params: { id: 'B', title: 'B', shape: 'rect', position: { x: 520, y: 0 } } },
+        { op: 'graph.createEdge', params: { id: 'e_ab', source: 'A', target: 'B', type: 'bezier', arrowStyle: 'end' } },
+      ],
+    }
+
+    const snap = await materializeGraphBatchPayloadToSnapshot(payload, { replace: true })
+    const eab = snap.edges.find((e) => e.id === 'e_ab') as any
+    expect(eab.sourceHandle).toBe('s-right')
+    expect(eab.targetHandle).toBe('t-left')
+    expect(eab.type).toBe('smoothstep')
+    const wps = ((eab.data ?? {}).waypoints ?? []) as Array<{ x: number; y: number }>
+    expect(wps.length).toBeGreaterThanOrEqual(3)
+    expect(Number((eab.data ?? {}).autoOffset ?? 0)).toBe(0)
+  })
+
+  it('avoids 100% overlap when two flowchart edges share the same endpoints', async () => {
+    const payload: GraphBatchPayload = {
+      version: '1.0',
+      source: 'mermaid',
+      graphType: 'flowchart',
+      direction: 'LR',
+      operations: [
+        { op: 'graph.createNodeQuad', params: { id: 'A', title: 'A', shape: 'rect', position: { x: 0, y: 0 } } },
+        { op: 'graph.createNodeQuad', params: { id: 'B', title: 'B', shape: 'rect', position: { x: 320, y: 0 } } },
+        { op: 'graph.createEdge', params: { id: 'e1', source: 'A', target: 'B', type: 'bezier', arrowStyle: 'end' } },
+        { op: 'graph.createEdge', params: { id: 'e2', source: 'A', target: 'B', type: 'bezier', arrowStyle: 'end' } },
+      ],
+    }
+
+    const snap = await materializeGraphBatchPayloadToSnapshot(payload, { replace: true })
+    const e1 = snap.edges.find((e) => e.id === 'e1') as any
+    const e2 = snap.edges.find((e) => e.id === 'e2') as any
+    const w1 = JSON.stringify(((e1.data ?? {}).waypoints ?? []) as Array<{ x: number; y: number }>)
+    const w2 = JSON.stringify(((e2.data ?? {}).waypoints ?? []) as Array<{ x: number; y: number }>)
+    expect(w1).not.toBe(w2)
+  })
 })
 
 describe('materializeGraphBatchPayloadToSnapshot - v2 nested frames', () => {
