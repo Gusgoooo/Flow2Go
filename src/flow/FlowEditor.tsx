@@ -71,6 +71,7 @@ import {
 } from './aiDiagram'
 import { AI_SCENE_CAPSULE_PRESETS } from './aiPromptPresets'
 import { AiSceneCapsules } from './AiSceneCapsules'
+import { postOpenRouter } from './openRouterClient'
 // overview 示例入口已移除
 
 export type AssetItem = {
@@ -287,33 +288,16 @@ function Sidebar({
 
     try {
       // 使用 OpenRouter 的 DALL-E 3 模型生成图片
-      const requestBody = JSON.stringify({
+      const requestBody = {
         model: 'openai/dall-e-3',
         prompt: enhancedPrompt,
         n: 1,
         size: '1024x1024',
         response_format: 'b64_json',
-      })
-      let response = await fetch('/api/openrouter/images/generations', {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          ...(apiKey.trim() ? { 'x-openrouter-key': apiKey.trim() } : {}),
-        },
-        body: requestBody,
-      })
-      if ((response.status === 404 || response.status === 405) && apiKey.trim()) {
-        response = await fetch('https://openrouter.ai/api/v1/images/generations', {
-          method: 'POST',
-          headers: {
-            'Content-Type': 'application/json',
-            Authorization: `Bearer ${apiKey.trim()}`,
-            'HTTP-Referer': window.location.origin,
-            'X-Title': 'Flow2Go',
-          },
-          body: requestBody,
-        })
       }
+      const response = await postOpenRouter('images/generations', requestBody, {
+        apiKey: apiKey.trim(),
+      })
 
       if (!response.ok) {
         const err = await response.text()

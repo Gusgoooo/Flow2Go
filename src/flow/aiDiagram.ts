@@ -52,6 +52,7 @@ import {
   sceneRouteFromLegacyTemplateKey,
   toPlannerComplexity,
 } from './aiLayoutTypes'
+import { postOpenRouter } from './openRouterClient'
 
 /** 兼容旧代码：模板名称（思维导图 + 流程图 profile） */
 export type UserTemplateKey =
@@ -171,36 +172,18 @@ async function openRouterChatComplete(args: {
   }
 
   try {
-    const requestBody = JSON.stringify({
+    const requestBody = {
       model: args.model,
       temperature: args.temperature,
       messages: [
         { role: 'system', content: args.system },
         { role: 'user', content: args.user },
       ],
-    })
-    let res = await fetch('/api/openrouter/chat/completions', {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-        ...(args.apiKey ? { 'x-openrouter-key': args.apiKey } : {}),
-      },
-      signal: mergedController.signal,
-      body: requestBody,
-    })
-    if ((res.status === 404 || res.status === 405) && args.apiKey?.trim()) {
-      res = await fetch('https://openrouter.ai/api/v1/chat/completions', {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          Authorization: `Bearer ${args.apiKey.trim()}`,
-          'HTTP-Referer': window.location.origin,
-          'X-Title': 'Flow2Go',
-        },
-        signal: mergedController.signal,
-        body: requestBody,
-      })
     }
+    const res = await postOpenRouter('chat/completions', requestBody, {
+      apiKey: args.apiKey,
+      signal: mergedController.signal,
+    })
 
     const text = await res.text()
     if (!res.ok) throw new Error(`OpenRouter 错误 ${res.status}: ${text}`)

@@ -3,6 +3,7 @@
  * LLM / 外部输入只需产出此结构，由 swimlaneDraftToGraphBatchPayload 转为 GraphBatchPayload。
  */
 import type { GraphBatchPayload, GraphOperation } from './mermaid/types'
+import { postOpenRouter } from './openRouterClient'
 
 export type SwimlaneDraftNode = {
   id: string
@@ -348,37 +349,18 @@ export async function generateSwimlaneDraftWithLLM(
   const onAbort = () => controller.abort(signal?.reason)
   signal?.addEventListener('abort', onAbort, { once: true })
   try {
-    const requestBody = JSON.stringify({
+    const requestBody = {
       model,
       temperature: 0.2,
       messages: [
         { role: 'system', content: SWIMLANE_DRAFT_SYSTEM_PROMPT },
         { role: 'user', content: prompt },
       ],
-    })
-    let res = await fetch('/api/openrouter/chat/completions', {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-        ...(apiKey.trim() ? { 'x-openrouter-key': apiKey.trim() } : {}),
-      },
-      body: requestBody,
+    }
+    const res = await postOpenRouter('chat/completions', requestBody, {
+      apiKey: apiKey.trim(),
       signal: controller.signal,
     })
-    if ((res.status === 404 || res.status === 405) && apiKey.trim()) {
-      res = await fetch('https://openrouter.ai/api/v1/chat/completions', {
-        method: 'POST',
-        headers: {
-          Authorization: `Bearer ${apiKey.trim()}`,
-          'Content-Type': 'application/json',
-        },
-        body: requestBody,
-        signal: controller.signal,
-      })
-    }
-    if ((res.status === 404 || res.status === 405) && !apiKey.trim()) {
-      throw new Error('OpenRouter 代理不可用（404/405），且当前未提供可用 API Key')
-    }
     const text = await res.text()
     if (!res.ok) throw new Error(`OpenRouter 请求失败: ${res.status} ${text}`)
     const json = safeJsonParse(JSON.parse(text).choices?.[0]?.message?.content ?? '')
