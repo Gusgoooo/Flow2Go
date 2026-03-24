@@ -13,6 +13,12 @@ Flow2Go solves this by using a **schema-first architecture**:
 
 This makes generated diagrams more predictable, easier to revise, and safer to use in production documentation.
 
+## Demo
+
+https://flow2go-nine.vercel.app/
+![Uploading 截屏2026-03-24 20.01.01.png…]()
+
+
 ## Key Features
 
 - Natural language -> structured diagram (JSON schema pipeline)
@@ -29,9 +35,6 @@ This makes generated diagrams more predictable, easier to revise, and safer to u
 - Stable, controllable, extensible generation pipeline
 - Deterministic post-processing before canvas materialization
 
-## Demo
-
-[link]
 
 ## Use cases
 
