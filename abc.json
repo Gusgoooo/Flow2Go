@@ -1,0 +1,22 @@
+{
+    "builder": {
+      "name": "@ali/builder-harmony-common",
+      "config": {
+        "framework": "vite",
+        "entry": "index.html",
+        "buildCommand": "npm run build",
+        "devCommand": "npm run dev",
+        "outputDir": "dist"
+      }
+    },
+    "cache": {
+      "build": {
+        "enable": true,
+        "cacheDir": [
+          "node_modules/.cache/**",
+          "dist/**"
+        ]
+      }
+    },
+    "nodeVersion": 22
+  }

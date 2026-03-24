@@ -1,0 +1,212 @@
+.group {
+  height: 100%;
+  width: 100%;
+  border-radius: 12px;
+  border: 2px solid #3b82f6;
+  background: rgba(59, 130, 246, 0.1);
+  /* 不能 hidden，否则会把 NodeResizer 的外侧控制点裁掉 */
+  overflow: visible;
+  position: relative;
+}
+
+.handle {
+  width: 14px;
+  height: 14px;
+  border-radius: 999px;
+  border: 1px solid #cbd5e1;
+  background: #ffffff;
+  opacity: 0;
+  transition: opacity 120ms ease;
+}
+
+.group:hover .handle {
+  opacity: 1;
+}
+
+/* 顶部居中：标题 + 副标题纵向排列，间距 2px（行高由内联「字号+8px」控制） */
+.titleStackTop {
+  position: absolute;
+  top: 8px;
+  left: 8px;
+  right: 8px;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 2px;
+}
+
+.title {
+  width: 100%;
+  text-align: center;
+  font-size: 13px;
+  font-weight: 800;
+  color: #1e3a8a;
+  user-select: none;
+  white-space: pre-wrap;
+  word-break: break-word;
+}
+
+.titleInput {
+  width: 100%;
+  border: none;
+  outline: none;
+  background: transparent;
+  text-align: center;
+  font-size: 13px;
+  font-weight: 800;
+  color: #1e3a8a;
+  resize: none;
+  font-family: inherit;
+  height: auto;
+  overflow: hidden;
+}
+
+.subtitle {
+  width: 100%;
+  text-align: center;
+  font-size: 11px;
+  font-weight: 400;
+  color: #64748b;
+  user-select: none;
+  white-space: pre-wrap;
+  word-break: break-word;
+  cursor: text;
+}
+
+.subtitleInput {
+  width: 100%;
+  border: none;
+  outline: none;
+  background: transparent;
+  text-align: center;
+  font-size: 11px;
+  font-weight: 400;
+  color: #64748b;
+  resize: none;
+  font-family: inherit;
+  height: auto;
+  overflow: hidden;
+}
+
+/* Left-center: 标题+副标题整体垂直居中，副标题在标题下、左对齐 */
+.titleBlockLeft {
+  position: absolute;
+  top: 50%;
+  left: 12px;
+  right: 8px;
+  transform: translateY(-50%);
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 2px;
+}
+
+.titleLeft {
+  font-size: 13px;
+  font-weight: 800;
+  color: #1e3a8a;
+  user-select: none;
+  white-space: pre-wrap;
+  word-break: break-word;
+  text-align: left;
+}
+
+.titleInputLeft {
+  border: none;
+  outline: none;
+  background: transparent;
+  font-size: 13px;
+  font-weight: 800;
+  color: #1e3a8a;
+  resize: none;
+  font-family: inherit;
+  height: auto;
+  overflow: hidden;
+  text-align: left;
+  width: 100%;
+  align-self: stretch;
+}
+
+.subtitleLeft {
+  font-size: 11px;
+  font-weight: 400;
+  color: #64748b;
+  user-select: none;
+  white-space: pre-wrap;
+  word-break: break-word;
+  cursor: text;
+  text-align: left;
+}
+
+.subtitleInputLeft {
+  border: none;
+  outline: none;
+  background: transparent;
+  font-size: 11px;
+  font-weight: 400;
+  color: #64748b;
+  resize: none;
+  font-family: inherit;
+  height: auto;
+  overflow: hidden;
+  text-align: left;
+  width: 100%;
+  align-self: stretch;
+}
+
+/* ─── Lane (swimlane) 专用样式 ─── */
+.laneNode {
+  border-radius: 8px;
+  border: 1.5px solid #94a3b8;
+  background: rgba(241, 245, 249, 0.5);
+  display: flex;
+  flex-direction: column;
+}
+
+.laneHeader {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: rgba(71, 85, 105, 0.08);
+  border-bottom: 1px solid #cbd5e1;
+  border-radius: 7px 7px 0 0;
+  padding: 0 16px;
+  flex-shrink: 0;
+}
+
+.laneHeaderTitle {
+  font-size: 14px;
+  font-weight: 700;
+  color: #334155;
+  user-select: none;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.laneHeaderInput {
+  border: none;
+  outline: none;
+  background: transparent;
+  font-size: 14px;
+  font-weight: 700;
+  color: #334155;
+  resize: none;
+  font-family: inherit;
+  height: auto;
+  overflow: hidden;
+  text-align: center;
+  width: 100%;
+}
+
+.laneBody {
+  flex: 1;
+  min-height: 40px;
+}
+
+.resizer .react-flow__resize-control {
+  transform: scale(0.85);
+  transform-origin: center center;
+  border-radius: 0;
+}
+

@@ -1,0 +1,121 @@
+/* 外层：仅提供尺寸与定位，不应用 clip-path，保证 Resizer/Handle 不被裁剪 */
+.node {
+  /* Keep quad nodes shrinkable to compact minimum width. */
+  min-width: 80px;
+  min-height: 44px;
+  position: relative;
+  height: 100%;
+  box-sizing: border-box;
+}
+
+/* 内层：视觉形状（含 clip-path）、描边、填充、内容区 */
+.nodeInner {
+  position: absolute;
+  inset: 0;
+  padding: 10px 12px;
+  border-radius: 12px;
+  border: 1px solid #e2e8f0;
+  background: #ffffff;
+  color: rgba(0, 0, 0, 0.8);
+  display: grid;
+  align-content: center;
+  justify-items: center;
+  box-sizing: border-box;
+}
+
+.measureBox {
+  position: absolute;
+  left: 0;
+  top: 0;
+  visibility: hidden;
+  pointer-events: none;
+  z-index: -1;
+  box-sizing: border-box;
+  padding: 10px 12px;
+}
+
+.label {
+  font-size: 12px;
+  font-weight: 700;
+  text-align: center;
+  width: 100%;
+  margin: 0;
+  white-space: pre-wrap;
+  word-break: break-word;
+  /* line-height 由组件按「字号+8px」内联 */
+}
+
+.subtitle {
+  font-size: 11px;
+  color: #64748b;
+  text-align: center;
+  width: 100%;
+  margin-top: 2px;
+  white-space: pre-wrap;
+  word-break: break-word;
+  /* 与主标题唯一关联：上间距 2px；行高由内联按副标题字号+8px */
+}
+
+.input {
+  width: 100%;
+  border: none;
+  outline: none;
+  background: transparent;
+  font-size: 12px;
+  font-weight: 700;
+  text-align: center;
+  margin: 0;
+  padding: 0;
+  resize: none;
+  font-family: inherit;
+  height: auto;
+  overflow: hidden;
+}
+
+.inputSubtitle {
+  width: 100%;
+  border: none;
+  outline: none;
+  background: transparent;
+  font-size: 11px;
+  text-align: center;
+  color: #64748b;
+  margin-top: 2px;
+  padding: 0;
+  resize: none;
+  font-family: inherit;
+  height: auto;
+  overflow: hidden;
+}
+
+.handle {
+  width: 14px;
+  height: 14px;
+  border-radius: 999px;
+  border: 1px solid #cbd5e1;
+  background: #ffffff;
+  opacity: 0;
+  transition: opacity 120ms ease;
+}
+
+.handleGhost {
+  opacity: 0 !important;
+  pointer-events: none;
+}
+
+/* hover 才显示“圆点” */
+.node:hover .handle {
+  opacity: 1;
+}
+
+/* 连接/拖拽时仍隐藏（避免满屏圆点闪烁） */
+.react-flow__node.dragging .handle,
+.react-flow__node.connecting .handle {
+  opacity: 0;
+}
+
+.resizer .react-flow__resize-control {
+  transform: scale(0.85);
+  transform-origin: center center;
+  border-radius: 0;
+}

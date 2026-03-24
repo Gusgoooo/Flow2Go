@@ -1,0 +1,1041 @@
+{
+  "version": 1,
+  "exportedAt": 1773734793615,
+  "name": "新手开屏new",
+  "nodes": [
+    {
+      "id": "g-1773731811519-81d8302bd53868",
+      "type": "group",
+      "position": {
+        "x": 1872,
+        "y": -1040
+      },
+      "width": 1712,
+      "height": 382,
+      "data": {
+        "title": "功能示例",
+        "stroke": "#e2e8f0",
+        "fill": "rgba(226,232,240,0.3)",
+        "titleFontSize": 16,
+        "titleColor": "#94a3b8"
+      },
+      "draggable": true,
+      "style": {
+        "width": 1328,
+        "height": 462.00000235661923
+      },
+      "zIndex": 0,
+      "measured": {
+        "width": 1712,
+        "height": 382
+      },
+      "selected": false,
+      "resizing": false,
+      "dragging": false
+    },
+    {
+      "id": "g-1773717549990-8a92385cecb468",
+      "type": "group",
+      "position": {
+        "x": 24,
+        "y": 50.000002356619234
+      },
+      "width": 768,
+      "height": 276,
+      "data": {
+        "title": "标题",
+        "stroke": "#e2e8f0",
+        "fill": "rgba(255,255,255,0.79)",
+        "strokeWidth": 0,
+        "showSubtitle": true,
+        "titleFontSize": 16,
+        "subtitle": "这是一个副标题",
+        "titleColor": "#64748b"
+      },
+      "draggable": true,
+      "style": {
+        "width": 768,
+        "height": 252
+      },
+      "zIndex": 2,
+      "measured": {
+        "width": 768,
+        "height": 276
+      },
+      "selected": false,
+      "resizing": false,
+      "dragging": false,
+      "parentId": "g-1773731811519-81d8302bd53868"
+    },
+    {
+      "id": "n-1773718490846-298453a01c2c5",
+      "type": "quad",
+      "position": {
+        "x": 992,
+        "y": 146.00000235661923
+      },
+      "data": {
+        "label": "标题",
+        "showSubtitle": false,
+        "title": "标题",
+        "color": "#ffffff",
+        "strokeWidth": 1,
+        "labelColor": "#0f172a"
+      },
+      "measured": {
+        "width": 160,
+        "height": 44
+      },
+      "selected": false,
+      "zIndex": 3,
+      "dragging": false,
+      "parentId": "g-1773731811519-81d8302bd53868"
+    },
+    {
+      "id": "n-1773718492713-523b37fb8b8828",
+      "type": "quad",
+      "position": {
+        "x": 1128,
+        "y": 266.00000235661923
+      },
+      "data": {
+        "label": "标题",
+        "showSubtitle": false,
+        "title": "标题",
+        "color": "#FFB100",
+        "strokeWidth": 0,
+        "labelColor": "#ffffff"
+      },
+      "measured": {
+        "width": 160,
+        "height": 44
+      },
+      "selected": false,
+      "zIndex": 3,
+      "dragging": false,
+      "parentId": "g-1773731811519-81d8302bd53868"
+    },
+    {
+      "id": "n-1773718494981-de8f098b6fde3",
+      "type": "quad",
+      "position": {
+        "x": 864,
+        "y": 266.00000235661923
+      },
+      "data": {
+        "label": "标题",
+        "showSubtitle": false,
+        "title": "标题",
+        "color": "#FF6CC4",
+        "strokeWidth": 0,
+        "labelColor": "#ffffff"
+      },
+      "measured": {
+        "width": 160,
+        "height": 44
+      },
+      "selected": false,
+      "zIndex": 3,
+      "dragging": false,
+      "parentId": "g-1773731811519-81d8302bd53868"
+    },
+    {
+      "id": "n-1773718558897-73e491ad6484c8",
+      "type": "quad",
+      "position": {
+        "x": 992,
+        "y": 74.00000235661923
+      },
+      "data": {
+        "label": "标题",
+        "showSubtitle": false,
+        "title": "标题",
+        "color": "#ffffff",
+        "strokeWidth": 1,
+        "labelColor": "#0f172a",
+        "stroke": "#0f172a"
+      },
+      "measured": {
+        "width": 160,
+        "height": 44
+      },
+      "selected": false,
+      "zIndex": 3,
+      "dragging": false,
+      "parentId": "g-1773731811519-81d8302bd53868"
+    },
+    {
+      "id": "g-1773732012659-2b6423a0d32858",
+      "type": "group",
+      "position": {
+        "x": 2480,
+        "y": -1392
+      },
+      "width": 488,
+      "height": 162,
+      "data": {
+        "title": "\n",
+        "stroke": "#ffffff",
+        "fill": "#ffffff"
+      },
+      "draggable": true,
+      "style": {
+        "width": 408,
+        "height": 146
+      },
+      "zIndex": 0,
+      "measured": {
+        "width": 488,
+        "height": 162
+      },
+      "selected": false,
+      "resizing": false,
+      "dragging": false
+    },
+    {
+      "id": "n-1773731674100-e1dbc7ee370f08",
+      "type": "text",
+      "position": {
+        "x": 80,
+        "y": 32
+      },
+      "data": {
+        "label": "👏欢迎使用Flow2Go！",
+        "labelFontSize": 32,
+        "labelColor": "#C059FF",
+        "labelFontWeight": "800"
+      },
+      "measured": {
+        "width": 335,
+        "height": 53
+      },
+      "selected": false,
+      "dragging": false,
+      "zIndex": 9999,
+      "parentId": "g-1773732012659-2b6423a0d32858"
+    },
+    {
+      "id": "n-1773731746338-89a0e8bdf8fc28",
+      "type": "text",
+      "position": {
+        "x": 80,
+        "y": 96
+      },
+      "data": {
+        "label": "➕鼠标右键点击画布新建节点",
+        "labelFontSize": 24,
+        "labelColor": "#64748b"
+      },
+      "measured": {
+        "width": 320,
+        "height": 42
+      },
+      "selected": false,
+      "dragging": false,
+      "zIndex": 9999,
+      "parentId": "g-1773732012659-2b6423a0d32858"
+    },
+    {
+      "id": "n-1773731856895-899aeac91549b",
+      "type": "quad",
+      "position": {
+        "x": 2256,
+        "y": -1160
+      },
+      "data": {
+        "label": "🔐数据在本地",
+        "title": "🔐数据在本地",
+        "showSubtitle": true,
+        "subtitle": "只存在浏览器缓存/下载，保证数据安全",
+        "labelFontSize": 16,
+        "subtitleFontSize": 13
+      },
+      "measured": {
+        "width": 280,
+        "height": 84
+      },
+      "selected": false,
+      "dragging": false,
+      "width": 280,
+      "height": 84,
+      "resizing": false,
+      "zIndex": 1
+    },
+    {
+      "id": "n-1773731902027-a89e3ebad85468",
+      "type": "quad",
+      "position": {
+        "x": 2584,
+        "y": -1160
+      },
+      "data": {
+        "label": "🧩极简交互",
+        "title": "🧩极简交互",
+        "showSubtitle": true,
+        "subtitle": "点击/右击 元素 展示相应属性修改",
+        "labelFontSize": 16,
+        "subtitleFontSize": 13
+      },
+      "measured": {
+        "width": 280,
+        "height": 84
+      },
+      "selected": false,
+      "dragging": false,
+      "width": 280,
+      "height": 84,
+      "resizing": false,
+      "zIndex": 1
+    },
+    {
+      "id": "n-1773731998309-f280cb2636e86",
+      "type": "quad",
+      "position": {
+        "x": 2912,
+        "y": -1160
+      },
+      "data": {
+        "label": "🏃即用即走",
+        "title": "🏃即用即走",
+        "showSubtitle": true,
+        "subtitle": "浏览器打开即用，关闭即走",
+        "labelFontSize": 16,
+        "subtitleFontSize": 13
+      },
+      "measured": {
+        "width": 288,
+        "height": 84
+      },
+      "selected": false,
+      "dragging": false,
+      "width": 288,
+      "height": 84,
+      "resizing": false,
+      "zIndex": 1
+    },
+    {
+      "id": "n-1773732715190-909e5ca77aa6f8",
+      "type": "quad",
+      "position": {
+        "x": 1424,
+        "y": 240
+      },
+      "data": {
+        "label": "节点 a6f8",
+        "shape": "circle",
+        "labelColor": "#C059FF",
+        "color": "rgba(192,89,255,0.15)",
+        "stroke": "#C059FF",
+        "strokeWidth": 2
+      },
+      "measured": {
+        "width": 80,
+        "height": 80
+      },
+      "selected": false,
+      "dragging": false,
+      "parentId": "g-1773731811519-81d8302bd53868",
+      "zIndex": 3,
+      "style": {
+        "width": 160,
+        "height": 160
+      },
+      "width": 80,
+      "height": 80,
+      "resizing": false
+    },
+    {
+      "id": "n-1773732736924-f52fc0d4732638",
+      "type": "quad",
+      "position": {
+        "x": 1328,
+        "y": 72
+      },
+      "data": {
+        "label": "标题",
+        "title": "标题"
+      },
+      "measured": {
+        "width": 160,
+        "height": 44
+      },
+      "selected": false,
+      "dragging": false,
+      "parentId": "g-1773731811519-81d8302bd53868",
+      "zIndex": 3
+    },
+    {
+      "id": "n-1773732748658-20c31b1c70a6",
+      "type": "quad",
+      "position": {
+        "x": 1520,
+        "y": 72
+      },
+      "data": {
+        "label": "标题",
+        "title": "标题"
+      },
+      "measured": {
+        "width": 160,
+        "height": 44
+      },
+      "selected": false,
+      "dragging": false,
+      "parentId": "g-1773731811519-81d8302bd53868",
+      "zIndex": 3
+    },
+    {
+      "id": "g-1773734616057-b25d3cb78807b8",
+      "type": "group",
+      "position": {
+        "x": 32,
+        "y": 112
+      },
+      "width": 176,
+      "height": 204,
+      "data": {
+        "title": "标题",
+        "titlePosition": "top-center",
+        "stroke": "#3b82f6",
+        "fill": "rgba(59, 130, 246, 0.10)",
+        "titleColor": "#4D9EF5",
+        "strokeWidth": 1
+      },
+      "draggable": true,
+      "style": {
+        "width": 176,
+        "height": 204
+      },
+      "zIndex": 2,
+      "measured": {
+        "width": 176,
+        "height": 204
+      },
+      "selected": false,
+      "resizing": false,
+      "dragging": false,
+      "parentId": "g-1773731811519-81d8302bd53868"
+    },
+    {
+      "id": "n-1773734616057-a9d5f05979a2a",
+      "type": "quad",
+      "position": {
+        "x": 8,
+        "y": 40
+      },
+      "data": {
+        "label": "标题",
+        "showSubtitle": false,
+        "title": "标题",
+        "color": "#4D9EF5",
+        "strokeWidth": 0,
+        "labelColor": "#ffffff"
+      },
+      "measured": {
+        "width": 160,
+        "height": 44
+      },
+      "selected": false,
+      "parentId": "g-1773734616057-b25d3cb78807b8",
+      "zIndex": 5
+    },
+    {
+      "id": "n-1773734616057-dd9d01bc47b44",
+      "type": "quad",
+      "position": {
+        "x": 8,
+        "y": 152
+      },
+      "data": {
+        "label": "标题",
+        "title": "标题"
+      },
+      "measured": {
+        "width": 160,
+        "height": 44
+      },
+      "selected": false,
+      "dragging": false,
+      "parentId": "g-1773734616057-b25d3cb78807b8",
+      "zIndex": 5
+    },
+    {
+      "id": "n-1773734616057-a65972e163114",
+      "type": "quad",
+      "position": {
+        "x": 8,
+        "y": 96
+      },
+      "data": {
+        "label": "标题",
+        "title": "标题"
+      },
+      "measured": {
+        "width": 160,
+        "height": 44
+      },
+      "selected": false,
+      "dragging": false,
+      "parentId": "g-1773734616057-b25d3cb78807b8",
+      "zIndex": 5
+    },
+    {
+      "id": "g-1773734616057-bf0237ac9c942",
+      "type": "group",
+      "position": {
+        "x": 224,
+        "y": 112
+      },
+      "width": 176,
+      "height": 204,
+      "data": {
+        "title": "标题",
+        "titlePosition": "top-center",
+        "stroke": "#FF6CC4",
+        "fill": "rgba(255,108,196,0.12)",
+        "strokeWidth": 1,
+        "titleColor": "#FF6CC4"
+      },
+      "draggable": true,
+      "style": {
+        "width": 176,
+        "height": 204
+      },
+      "zIndex": 2,
+      "measured": {
+        "width": 176,
+        "height": 204
+      },
+      "selected": false,
+      "resizing": false,
+      "dragging": false,
+      "parentId": "g-1773731811519-81d8302bd53868"
+    },
+    {
+      "id": "n-1773734616057-442221d915de68",
+      "type": "quad",
+      "position": {
+        "x": 8,
+        "y": 40
+      },
+      "data": {
+        "label": "标题",
+        "showSubtitle": false,
+        "title": "标题",
+        "color": "#FF6CC4",
+        "strokeWidth": 0,
+        "labelColor": "#ffffff"
+      },
+      "measured": {
+        "width": 160,
+        "height": 44
+      },
+      "selected": false,
+      "parentId": "g-1773734616057-bf0237ac9c942",
+      "zIndex": 5
+    },
+    {
+      "id": "n-1773734616057-ccda2e6f930048",
+      "type": "quad",
+      "position": {
+        "x": 8,
+        "y": 152
+      },
+      "data": {
+        "label": "标题",
+        "title": "标题"
+      },
+      "measured": {
+        "width": 160,
+        "height": 44
+      },
+      "selected": false,
+      "dragging": false,
+      "parentId": "g-1773734616057-bf0237ac9c942",
+      "zIndex": 5
+    },
+    {
+      "id": "n-1773734616057-2acbc543f82728",
+      "type": "quad",
+      "position": {
+        "x": 8,
+        "y": 96
+      },
+      "data": {
+        "label": "标题",
+        "title": "标题"
+      },
+      "measured": {
+        "width": 160,
+        "height": 44
+      },
+      "selected": false,
+      "dragging": false,
+      "parentId": "g-1773734616057-bf0237ac9c942",
+      "zIndex": 5
+    },
+    {
+      "id": "g-1773734616057-9ee31289dc98e",
+      "type": "group",
+      "position": {
+        "x": 416,
+        "y": 112
+      },
+      "width": 176,
+      "height": 204,
+      "data": {
+        "title": "标题",
+        "titlePosition": "top-center",
+        "stroke": "#FFB100",
+        "fill": "rgba(255,177,0,0.12)",
+        "titleColor": "#FFB100",
+        "strokeWidth": 1
+      },
+      "draggable": true,
+      "style": {
+        "width": 176,
+        "height": 204
+      },
+      "zIndex": 2,
+      "measured": {
+        "width": 176,
+        "height": 204
+      },
+      "selected": false,
+      "resizing": false,
+      "dragging": false,
+      "parentId": "g-1773731811519-81d8302bd53868"
+    },
+    {
+      "id": "n-1773734616057-c908dcd19e733",
+      "type": "quad",
+      "position": {
+        "x": 8,
+        "y": 40
+      },
+      "data": {
+        "label": "标题",
+        "showSubtitle": false,
+        "title": "标题",
+        "color": "#FFB100",
+        "strokeWidth": 0,
+        "labelColor": "#ffffff"
+      },
+      "measured": {
+        "width": 160,
+        "height": 44
+      },
+      "selected": false,
+      "parentId": "g-1773734616057-9ee31289dc98e",
+      "zIndex": 5
+    },
+    {
+      "id": "n-1773734616057-23e333f484b29",
+      "type": "quad",
+      "position": {
+        "x": 8,
+        "y": 152
+      },
+      "data": {
+        "label": "标题",
+        "title": "标题"
+      },
+      "measured": {
+        "width": 160,
+        "height": 44
+      },
+      "selected": false,
+      "dragging": false,
+      "parentId": "g-1773734616057-9ee31289dc98e",
+      "zIndex": 5
+    },
+    {
+      "id": "n-1773734616057-f4aef65cca88c",
+      "type": "quad",
+      "position": {
+        "x": 8,
+        "y": 96
+      },
+      "data": {
+        "label": "标题",
+        "title": "标题"
+      },
+      "measured": {
+        "width": 160,
+        "height": 44
+      },
+      "selected": false,
+      "dragging": false,
+      "parentId": "g-1773734616057-9ee31289dc98e",
+      "zIndex": 5
+    },
+    {
+      "id": "g-1773734616057-beb4d26431f0e",
+      "type": "group",
+      "position": {
+        "x": 608,
+        "y": 112
+      },
+      "width": 176,
+      "height": 204,
+      "data": {
+        "title": "标题",
+        "titlePosition": "top-center",
+        "stroke": "#FF4E4E",
+        "fill": "rgba(255,78,78,0.12)",
+        "titleColor": "#FF4E4E",
+        "strokeWidth": 1
+      },
+      "draggable": true,
+      "style": {
+        "width": 176,
+        "height": 204
+      },
+      "zIndex": 2,
+      "measured": {
+        "width": 176,
+        "height": 204
+      },
+      "selected": false,
+      "resizing": false,
+      "dragging": false,
+      "parentId": "g-1773731811519-81d8302bd53868"
+    },
+    {
+      "id": "n-1773734616057-a532ad545a0db8",
+      "type": "quad",
+      "position": {
+        "x": 8,
+        "y": 40
+      },
+      "data": {
+        "label": "标题",
+        "showSubtitle": false,
+        "title": "标题",
+        "color": "#FF4E4E",
+        "strokeWidth": 0,
+        "labelColor": "#ffffff"
+      },
+      "measured": {
+        "width": 160,
+        "height": 44
+      },
+      "selected": false,
+      "parentId": "g-1773734616057-beb4d26431f0e",
+      "zIndex": 5
+    },
+    {
+      "id": "n-1773734616057-21a0f97db6d768",
+      "type": "quad",
+      "position": {
+        "x": 8,
+        "y": 152
+      },
+      "data": {
+        "label": "标题",
+        "title": "标题"
+      },
+      "measured": {
+        "width": 160,
+        "height": 44
+      },
+      "selected": false,
+      "dragging": false,
+      "parentId": "g-1773734616057-beb4d26431f0e",
+      "zIndex": 5
+    },
+    {
+      "id": "n-1773734616057-c7e51d6f15db9",
+      "type": "quad",
+      "position": {
+        "x": 8,
+        "y": 96
+      },
+      "data": {
+        "label": "标题",
+        "title": "标题"
+      },
+      "measured": {
+        "width": 160,
+        "height": 44
+      },
+      "selected": false,
+      "dragging": false,
+      "parentId": "g-1773734616057-beb4d26431f0e",
+      "zIndex": 5
+    }
+  ],
+  "edges": [
+    {
+      "type": "smoothstep",
+      "style": {
+        "stroke": "#FF6CC4",
+        "strokeWidth": 3,
+        "--xy-edge-stroke": "#FF6CC4"
+      },
+      "markerEnd": {
+        "type": "arrowclosed",
+        "color": "#FF6CC4"
+      },
+      "source": "n-1773718490846-298453a01c2c5",
+      "sourceHandle": "s-bottom",
+      "target": "n-1773718494981-de8f098b6fde3",
+      "targetHandle": "t-top",
+      "data": {
+        "arrowStyle": "end",
+        "waypoints": [
+          {
+            "x": 2992.0000547028853,
+            "y": -815.9999482503983
+          },
+          {
+            "x": 2848.0000547028853,
+            "y": -815.9999482503983
+          }
+        ],
+        "editingLabel": false
+      },
+      "id": "xy-edge__n-1773718490846-298453a01c2c5s-bottom-n-1773718494981-de8f098b6fde3t-top",
+      "selected": false,
+      "label": "路径A"
+    },
+    {
+      "type": "smoothstep",
+      "style": {
+        "stroke": "#FFB100",
+        "strokeWidth": 3,
+        "--xy-edge-stroke": "#FFB100"
+      },
+      "markerEnd": {
+        "type": "arrowclosed",
+        "color": "#FFB100"
+      },
+      "source": "n-1773718490846-298453a01c2c5",
+      "sourceHandle": "s-bottom",
+      "target": "n-1773718492713-523b37fb8b8828",
+      "targetHandle": "t-top",
+      "data": {
+        "arrowStyle": "end",
+        "waypoints": [
+          {
+            "x": 2992.0000547028853,
+            "y": -815.9999482503983
+          },
+          {
+            "x": 3152.0000547028853,
+            "y": -815.9999482503983
+          }
+        ],
+        "editingLabel": false
+      },
+      "id": "xy-edge__n-1773718490846-298453a01c2c5s-bottom-n-1773718492713-523b37fb8b8828t-top",
+      "selected": false,
+      "animated": true,
+      "label": "路径B"
+    },
+    {
+      "type": "smoothstep",
+      "style": {
+        "stroke": "#94a3b8",
+        "strokeWidth": 2
+      },
+      "markerEnd": {
+        "type": "arrowclosed",
+        "color": "#94a3b8"
+      },
+      "source": "n-1773718558897-73e491ad6484c8",
+      "sourceHandle": "s-right",
+      "target": "n-1773718490846-298453a01c2c5",
+      "targetHandle": "t-right",
+      "data": {
+        "arrowStyle": "both",
+        "waypoints": [
+          {
+            "x": 3109.0006502902806,
+            "y": -1072
+          },
+          {
+            "x": 3109.0006502902806,
+            "y": -983.9999482503983
+          }
+        ],
+        "editingLabel": false
+      },
+      "id": "xy-edge__n-1773718558897-73e491ad6484c8s-right-n-1773718490846-298453a01c2c5t-right",
+      "selected": false,
+      "label": "标签",
+      "markerStart": {
+        "type": "arrowclosed",
+        "color": "#94a3b8"
+      }
+    },
+    {
+      "type": "smoothstep",
+      "style": {
+        "stroke": "#94a3b8",
+        "strokeWidth": 2
+      },
+      "markerEnd": {
+        "type": "arrowclosed",
+        "color": "#94a3b8"
+      },
+      "source": "g-1773732012659-2b6423a0d32858",
+      "sourceHandle": "s-bottom",
+      "target": "n-1773731856895-899aeac91549b",
+      "targetHandle": "t-top",
+      "data": {
+        "arrowStyle": "end",
+        "waypoints": [
+          {
+            "x": 2723.9999263351574,
+            "y": -1196.0000548318417
+          },
+          {
+            "x": 2452.0000425353883,
+            "y": -1196.0000548318417
+          }
+        ]
+      },
+      "id": "xy-edge__g-1773732012659-2b6423a0d32858s-bottom-n-1773731856895-899aeac91549bt-top",
+      "selected": false,
+      "animated": true
+    },
+    {
+      "type": "smoothstep",
+      "style": {
+        "stroke": "#94a3b8",
+        "strokeWidth": 2
+      },
+      "markerEnd": {
+        "type": "arrowclosed",
+        "color": "#94a3b8"
+      },
+      "source": "g-1773732012659-2b6423a0d32858",
+      "sourceHandle": "s-bottom",
+      "target": "n-1773731902027-a89e3ebad85468",
+      "targetHandle": "t-top",
+      "data": {
+        "arrowStyle": "end"
+      },
+      "id": "xy-edge__g-1773732012659-2b6423a0d32858s-bottom-n-1773731902027-a89e3ebad85468t-top",
+      "selected": false,
+      "animated": true
+    },
+    {
+      "type": "smoothstep",
+      "style": {
+        "stroke": "#94a3b8",
+        "strokeWidth": 2
+      },
+      "markerEnd": {
+        "type": "arrowclosed",
+        "color": "#94a3b8"
+      },
+      "source": "g-1773732012659-2b6423a0d32858",
+      "sourceHandle": "s-bottom",
+      "target": "n-1773731998309-f280cb2636e86",
+      "targetHandle": "t-top",
+      "data": {
+        "arrowStyle": "end",
+        "waypoints": [
+          {
+            "x": 2723.9999263351574,
+            "y": -1196.0000548318417
+          },
+          {
+            "x": 2995.999900188967,
+            "y": -1196.0000548318417
+          }
+        ]
+      },
+      "id": "xy-edge__g-1773732012659-2b6423a0d32858s-bottom-n-1773731998309-f280cb2636e86t-top",
+      "selected": false,
+      "animated": true
+    },
+    {
+      "type": "bezier",
+      "style": {
+        "stroke": "#33D8EA",
+        "strokeWidth": 2,
+        "--xy-edge-stroke": "#33D8EA"
+      },
+      "markerEnd": {
+        "type": "arrowclosed",
+        "color": "#33D8EA"
+      },
+      "source": "n-1773732736924-f52fc0d4732638",
+      "sourceHandle": "s-bottom",
+      "target": "n-1773732715190-909e5ca77aa6f8",
+      "targetHandle": "t-top",
+      "data": {
+        "arrowStyle": "end"
+      },
+      "id": "xy-edge__n-1773732736924-f52fc0d4732638s-bottom-n-1773732715190-909e5ca77aa6f8t-top",
+      "selected": false,
+      "animated": true
+    },
+    {
+      "type": "bezier",
+      "style": {
+        "stroke": "#C059FF",
+        "strokeWidth": 2,
+        "--xy-edge-stroke": "#C059FF"
+      },
+      "markerEnd": {
+        "type": "arrowclosed",
+        "color": "#C059FF"
+      },
+      "source": "n-1773732748658-20c31b1c70a6",
+      "sourceHandle": "s-bottom",
+      "target": "n-1773732715190-909e5ca77aa6f8",
+      "targetHandle": "t-top",
+      "data": {
+        "arrowStyle": "both",
+        "waypoints": [
+          {
+            "x": 3471.999934992172,
+            "y": -862.0000130098468
+          },
+          {
+            "x": 3376.0001937812967,
+            "y": -862.0000130098468
+          }
+        ]
+      },
+      "id": "xy-edge__n-1773732748658-20c31b1c70a6s-bottom-n-1773732715190-909e5ca77aa6f8t-top",
+      "selected": false,
+      "markerStart": {
+        "type": "arrowclosed",
+        "color": "#C059FF"
+      }
+    }
+  ],
+  "viewport": {
+    "x": -768.4637490293626,
+    "y": 1064.8175824504883,
+    "zoom": 0.6370390876321678
+  },
+  "assets": [
+    {
+      "id": "asset-1773627598239-3",
+      "name": "箭头.svg",
+      "type": "svg",
+      "fileName": "asset-1773627598239-3.svg",
+      "path": "assets/asset-1773627598239-3.svg"
+    },
+    {
+      "id": "asset-1773627654343-0",
+      "name": "ChatGPT Image 2026年3月13日 17_28_13 1.png",
+      "type": "png",
+      "fileName": "asset-1773627654343-0.png",
+      "path": "assets/asset-1773627654343-0.png"
+    },
+    {
+      "id": "asset-1773652422323-0",
+      "name": "双向箭头.png",
+      "type": "png",
+      "fileName": "asset-1773652422323-0.png",
+      "path": "assets/asset-1773652422323-0.png"
+    }
+  ]
+}

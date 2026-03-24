@@ -1,0 +1,128 @@
+.annotation {
+  padding: 10px 12px;
+}
+
+.annotationTitle {
+  font-weight: 800;
+  font-size: 11px;
+  color: #9a3412;
+}
+
+.annotationBody {
+  margin-top: 6px;
+  font-size: 12px;
+  color: #0f172a;
+  line-height: 1.5;
+  max-width: 260px;
+}
+
+.circleLabel {
+  font-weight: 800;
+  color: #1e3a8a;
+}
+
+.textInput {
+  padding: 10px 12px;
+  display: grid;
+  gap: 8px;
+}
+
+.textInputTitle {
+  font-weight: 800;
+  font-size: 12px;
+  color: #0f172a;
+}
+
+.textInputField {
+  border: 1px solid #e2e8f0;
+  border-radius: 12px;
+  padding: 8px 10px;
+  font-size: 12px;
+}
+
+.textInputHint {
+  font-size: 11px;
+  color: #64748b;
+}
+
+.tools {
+  padding: 10px 12px;
+  display: grid;
+  gap: 8px;
+}
+
+.toolsTitle {
+  font-weight: 800;
+  font-size: 12px;
+  color: #0f172a;
+}
+
+.toolsHint {
+  font-size: 11px;
+  color: #64748b;
+}
+
+.toolbar {
+  display: flex;
+  gap: 6px;
+  padding: 8px;
+  border: 1px solid #e2e8f0;
+  border-radius: 12px;
+  background: rgba(255, 255, 255, 0.92);
+}
+
+.toolbarBtn {
+  border: 1px solid #e2e8f0;
+  background: #ffffff;
+  border-radius: 12px;
+  padding: 6px 10px;
+  font-size: 12px;
+  cursor: pointer;
+}
+
+.toolbarBtn:hover {
+  border-color: #cbd5e1;
+}
+
+.resizer {
+  width: 100%;
+  height: 100%;
+  padding: 10px 12px;
+  display: grid;
+  gap: 6px;
+  border-radius: 12px;
+  border: 1px solid #e2e8f0;
+  background: #ffffff;
+}
+
+.resizerTitle {
+  font-weight: 800;
+  font-size: 12px;
+  color: #0f172a;
+}
+
+.resizerHint {
+  font-size: 11px;
+  color: #64748b;
+}
+
+.edgeLabel {
+  position: absolute;
+  pointer-events: all;
+}
+
+.edgeBtn {
+  width: 26px;
+  height: 26px;
+  border-radius: 999px;
+  border: 1px solid #e2e8f0;
+  background: #ffffff;
+  cursor: pointer;
+  line-height: 1;
+  font-size: 16px;
+}
+
+.edgeBtn:hover {
+  border-color: #cbd5e1;
+}
+

@@ -1,0 +1,114 @@
+.xy-theme {
+  --xy-node-bg: #ffffff;
+  --xy-node-border: #e2e8f0;
+  --xy-text: #0f172a;
+  --xy-muted: #64748b;
+  --xy-accent: #2563eb;
+  font-family: 'AlibabaPuHuiTi', system-ui, -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Arial, sans-serif;
+}
+
+.xy-theme .react-flow__node {
+  border: 1px solid var(--xy-node-border);
+  background: var(--xy-node-bg);
+  color: var(--xy-text);
+  border-radius: 12px;
+  font-size: 12px;
+  cursor: default;
+}
+
+.xy-theme .react-flow__edge-text,
+.xy-theme .react-flow__controls,
+.xy-theme .react-flow__panel {
+  font-family: inherit;
+}
+
+.xy-theme .react-flow__node-quad,
+.xy-theme .react-flow__node-annotation,
+.xy-theme .react-flow__node-tools,
+.xy-theme .react-flow__node-resizer,
+.xy-theme .react-flow__node-circle,
+.xy-theme .react-flow__node-textinput,
+.xy-theme .react-flow__node-asset,
+.xy-theme .react-flow__node-text {
+  border: none;
+  background: transparent;
+  padding: 0;
+  border-radius: 0;
+}
+
+.xy-theme .react-flow__node-quad.selected,
+.xy-theme .react-flow__node-annotation.selected,
+.xy-theme .react-flow__node-tools.selected,
+.xy-theme .react-flow__node-resizer.selected,
+.xy-theme .react-flow__node-circle.selected,
+.xy-theme .react-flow__node-textinput.selected,
+.xy-theme .react-flow__node-asset.selected,
+.xy-theme .react-flow__node-text.selected {
+  box-shadow: none;
+}
+
+.xy-theme .react-flow__node-group,
+.xy-theme .react-flow__node.group,
+.xy-theme .react-flow__node-groupbox {
+  border: none;
+  background: transparent;
+  padding: 0;
+}
+
+.xy-theme .react-flow__node-group.selected,
+.xy-theme .react-flow__node.group.selected,
+.xy-theme .react-flow__node-groupbox.selected {
+  border: none;
+  box-shadow: none;
+}
+
+.xy-theme .react-flow__pane {
+  cursor: default;
+}
+
+.xy-theme .react-flow__handle {
+  cursor: default;
+}
+
+.xy-theme .react-flow__node.annotation {
+  background: #fff7ed;
+  border-color: #fed7aa;
+}
+
+.xy-theme .react-flow__node.circle {
+  border-radius: 999px;
+  width: 120px;
+  height: 120px;
+  display: grid;
+  place-items: center;
+  border-color: #c7d2fe;
+  background: #eef2ff;
+}
+
+.xy-theme .react-flow__node.textinput {
+  min-width: 220px;
+}
+
+.xy-theme .react-flow__node.tools {
+  background: #f8fafc;
+  border-color: #cbd5e1;
+}
+
+.xy-theme .react-flow__edge-path {
+  stroke: #94a3b8;
+  stroke-width: 1;
+}
+
+.xy-theme .react-flow__handle {
+  width: 10px;
+  height: 10px;
+  border: 1px solid #e2e8f0;
+  background: #ffffff;
+  opacity: 0;
+  transition: opacity 120ms ease;
+}
+
+.xy-theme .react-flow__node:hover .react-flow__handle {
+  opacity: 1;
+}
+
