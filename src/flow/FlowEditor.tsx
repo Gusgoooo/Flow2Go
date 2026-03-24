@@ -49,7 +49,6 @@ import styles from './flowEditor.module.css'
 import { GroupNode, type GroupNodeData } from './GroupNode'
 import { type LayoutDirection } from './layout'
 import { autoLayoutDagre } from './dagreLayout'
-import { rerouteSwimlaneEdges } from './layout/routing/rerouteSwimlaneEdges'
 import { QuadNode } from './QuadNode'
 import { EditableSmoothStepEdge } from './EditableSmoothStepEdge'
 import { EditableBezierEdge } from './EditableBezierEdge'
@@ -738,23 +737,13 @@ function EditorInner({ onBackHome, source, previewSnapshot, readOnly: _readOnly 
   }, [aiModalGenerating])
 
   const initial = useMemo(() => {
-    const normalizeSwimlaneSnapshot = (nodes: FlowNode[], edges: FlowEdge[]) => {
-      const hasSwimlane =
-        nodes.some((n) => (n.data as any)?.role === 'lane') ||
-        nodes.some((n) => (n.data as any)?.laneId || n.parentId)
-      if (!hasSwimlane || edges.length === 0) return { nodes, edges }
-      const rerouted = rerouteSwimlaneEdges(nodes as unknown as Node<any>[], edges as unknown as Edge<any>[])
-      return { nodes, edges: rerouted as FlowEdge[] }
-    }
-
     // 预览模式：使用 previewSnapshot
     if (previewSnapshot) {
       const nodes = (previewSnapshot.nodes as FlowNode[]) ?? []
       const edges = (previewSnapshot.edges as FlowEdge[]) ?? []
-      const normalized = normalizeSwimlaneSnapshot(nodes, edges)
       return {
-        nodes: normalized.nodes,
-        edges: normalized.edges,
+        nodes,
+        edges,
         viewport: previewSnapshot.viewport ?? { x: 0, y: 0, zoom: 1 },
         name: '模板预览',
         isDefaultExample: false,
@@ -771,10 +760,9 @@ function EditorInner({ onBackHome, source, previewSnapshot, readOnly: _readOnly 
       // 用户第一次打开产品：使用默认示例并居中展示
       const nodes = (defaultExample.nodes as FlowNode[]) ?? []
       const edges = (defaultExample.edges as FlowEdge[]) ?? []
-      const normalized = normalizeSwimlaneSnapshot(nodes, edges)
       return {
-        nodes: normalized.nodes,
-        edges: normalized.edges,
+        nodes,
+        edges,
         viewport: (defaultExample as any).viewport ?? { x: 0, y: 0, zoom: 1 },
         name: 'untitled',
         isDefaultExample: true,
@@ -783,10 +771,9 @@ function EditorInner({ onBackHome, source, previewSnapshot, readOnly: _readOnly 
     const snap2 = (proj as any).snapshot
     const nodes = (snap2.nodes as FlowNode[]) ?? []
     const edges = (snap2.edges as FlowEdge[]) ?? []
-    const normalized = normalizeSwimlaneSnapshot(nodes, edges)
     return {
-      nodes: normalized.nodes,
-      edges: normalized.edges,
+      nodes,
+      edges,
       viewport: snap2.viewport ?? { x: 0, y: 0, zoom: 1 },
       name: proj?.name ?? 'untitled',
       isDefaultExample: false,
