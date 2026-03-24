@@ -171,22 +171,36 @@ async function openRouterChatComplete(args: {
   }
 
   try {
-    const res = await fetch('/api/openrouter/chat/completions', {
+    const requestBody = JSON.stringify({
+      model: args.model,
+      temperature: args.temperature,
+      messages: [
+        { role: 'system', content: args.system },
+        { role: 'user', content: args.user },
+      ],
+    })
+    let res = await fetch('/api/openrouter/chat/completions', {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
         ...(args.apiKey ? { 'x-openrouter-key': args.apiKey } : {}),
       },
       signal: mergedController.signal,
-      body: JSON.stringify({
-        model: args.model,
-        temperature: args.temperature,
-        messages: [
-          { role: 'system', content: args.system },
-          { role: 'user', content: args.user },
-        ],
-      }),
+      body: requestBody,
     })
+    if ((res.status === 404 || res.status === 405) && args.apiKey?.trim()) {
+      res = await fetch('https://openrouter.ai/api/v1/chat/completions', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          Authorization: `Bearer ${args.apiKey.trim()}`,
+          'HTTP-Referer': window.location.origin,
+          'X-Title': 'Flow2Go',
+        },
+        signal: mergedController.signal,
+        body: requestBody,
+      })
+    }
 
     const text = await res.text()
     if (!res.ok) throw new Error(`OpenRouter 错误 ${res.status}: ${text}`)
