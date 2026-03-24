@@ -149,12 +149,6 @@ const OPENROUTER_MASK = '*****'
 const GITLAB_PREFILL_KEY_ENC =
   '*****c2stb3ItdjEtNmRhYTdlOGFhYzk2MTZlMzhlODI0ZGYwMDkzOWY2NDEzMWZiZTE1ODczYmRjYTBiNjUwNDI4ZTIyYjVhNGNhZA==*****'
 
-function isGitlabLikeHost(): boolean {
-  if (typeof window === 'undefined') return false
-  const h = window.location.hostname.toLowerCase()
-  return h.includes('alibaba-inc.com') || h.includes('gitlab')
-}
-
 function decodeOpenRouterKey(raw: string): string {
   const t = raw.trim()
   if (!t) return ''
@@ -175,8 +169,7 @@ function encodeOpenRouterKey(raw: string): string {
 }
 
 function readPrefilledOpenRouterKey(): string {
-  // 仅 GitLab/内网域名预填；GitHub 等公网域名不预填。
-  if (!isGitlabLikeHost()) return ''
+  // 预填 AK（优先环境变量，其次内置加密值）
   const envGitlab = (import.meta as any)?.env?.VITE_OPENROUTER_KEY_ENC_GITLAB
   if (typeof envGitlab === 'string' && envGitlab.trim()) return decodeOpenRouterKey(envGitlab)
   return decodeOpenRouterKey(GITLAB_PREFILL_KEY_ENC)
@@ -683,9 +676,9 @@ function EditorInner({ onBackHome, source, previewSnapshot, readOnly: _readOnly 
   const aiModalAbortRef = useRef<AbortController | null>(null)
   const [aiModalModel, setAiModalModel] = useState<string>(() => {
     try {
-      return localStorage.getItem('flow2go-openrouter-model') || 'openai/gpt-5.4-nano'
+      return localStorage.getItem('flow2go-openrouter-model') || 'minimax/minimax-m2.7'
     } catch {
-      return 'openai/gpt-5.4-nano'
+      return 'minimax/minimax-m2.7'
     }
   })
   const [aiModalKey, setAiModalKey] = useState<string>(() => {
@@ -3213,7 +3206,7 @@ function EditorInner({ onBackHome, source, previewSnapshot, readOnly: _readOnly 
                         setAiModalModel(e.target.value)
                         try { localStorage.setItem('flow2go-openrouter-model', e.target.value) } catch {}
                       }}
-                      placeholder="openai/gpt-5.4-nano"
+                      placeholder="minimax/minimax-m2.7"
                     />
                     <div className={styles.aiNote} style={{ opacity: 0.9 }}>
                       配置只保存在本地浏览器。未配置 Key 时，无法发起生成。
@@ -3287,7 +3280,7 @@ function EditorInner({ onBackHome, source, previewSnapshot, readOnly: _readOnly 
                             const { materializeGraphBatchPayloadToSnapshot } = await import('./mermaid/apply')
                             const draftFromPrompt = await generateSwimlaneDraftWithLLM({
                               apiKey: aiModalKey.trim(),
-                              model: aiModalModel.trim() || 'openai/gpt-5.4-nano',
+                              model: aiModalModel.trim() || 'minimax/minimax-m2.7',
                               prompt: p,
                               signal: ac.signal,
                             })
@@ -3306,7 +3299,7 @@ function EditorInner({ onBackHome, source, previewSnapshot, readOnly: _readOnly 
                           }
                           const draft = await openRouterGenerateDiagram({
                             apiKey: aiModalKey.trim(),
-                            model: aiModalModel.trim() || 'openai/gpt-5.4-nano',
+                            model: aiModalModel.trim() || 'minimax/minimax-m2.7',
                             prompt: p,
                             signal: ac.signal,
                             diagramScene: aiModalScene ?? undefined,
