@@ -16,8 +16,6 @@ This makes generated diagrams more predictable, easier to revise, and safer to u
 ## Demo
 
 https://flow2go-nine.vercel.app/
-![Uploading 截屏2026-03-24 20.01.01.png…]()
-
 
 ## Key Features
 
