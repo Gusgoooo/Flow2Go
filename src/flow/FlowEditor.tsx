@@ -146,6 +146,14 @@ const DEFAULT_MARKER_END = {
   color: DEFAULT_EDGE_COLOR,
 } as const
 const OPENROUTER_MASK = '*****'
+const GITLAB_PREFILL_KEY_ENC =
+  '*****c2stb3ItdjEtNmRhYTdlOGFhYzk2MTZlMzhlODI0ZGYwMDkzOWY2NDEzMWZiZTE1ODczYmRjYTBiNjUwNDI4ZTIyYjVhNGNhZA==*****'
+
+function isGitlabLikeHost(): boolean {
+  if (typeof window === 'undefined') return false
+  const h = window.location.hostname.toLowerCase()
+  return h.includes('alibaba-inc.com') || h.includes('gitlab')
+}
 
 function decodeOpenRouterKey(raw: string): string {
   const t = raw.trim()
@@ -167,8 +175,11 @@ function encodeOpenRouterKey(raw: string): string {
 }
 
 function readPrefilledOpenRouterKey(): string {
-  const envVal = (import.meta as any)?.env?.VITE_OPENROUTER_KEY_ENC
-  return typeof envVal === 'string' ? decodeOpenRouterKey(envVal) : ''
+  // 仅 GitLab/内网域名预填；GitHub 等公网域名不预填。
+  if (!isGitlabLikeHost()) return ''
+  const envGitlab = (import.meta as any)?.env?.VITE_OPENROUTER_KEY_ENC_GITLAB
+  if (typeof envGitlab === 'string' && envGitlab.trim()) return decodeOpenRouterKey(envGitlab)
+  return decodeOpenRouterKey(GITLAB_PREFILL_KEY_ENC)
 }
 
 function readStoredOpenRouterKey(): string {
