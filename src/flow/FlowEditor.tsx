@@ -162,9 +162,9 @@ function decodeOpenRouterKey(raw: string): string {
   const core = wrapped ? t.slice(OPENROUTER_MASK.length, t.length - OPENROUTER_MASK.length) : t
   try {
     const decoded = atob(core)
-    return decoded.startsWith('sk-or-') ? decoded : core
+    return decoded.startsWith('sk-or-') ? decoded : ''
   } catch {
-    return core
+    return t.startsWith('sk-or-') ? t : ''
   }
 }
 
@@ -3243,6 +3243,9 @@ function EditorInner({ onBackHome, source, previewSnapshot, readOnly: _readOnly 
                       placeholder="输入你的需求，支持多层级描述…"
                       className={styles.aiChatInput}
                     />
+                    <div className={styles.aiNote} style={{ marginTop: 8, color: '#ef4444' }}>
+                      请勿使用该功能发送公司数据
+                    </div>
                   </div>
                   <AiSceneCapsules
                     presets={AI_SCENE_CAPSULE_PRESETS}
