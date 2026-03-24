@@ -342,17 +342,17 @@ export async function generateSwimlaneDraftWithLLM(
   opts: GenerateSwimlaneDraftOptions,
 ): Promise<SwimlaneDraft> {
   const { apiKey, model, prompt, signal, timeoutMs = 45_000 } = opts
-  if (!apiKey.trim()) throw new Error('生成泳道图需要 OpenRouter API Key')
+  // Key 可选：生产环境可通过服务端代理环境变量提供
   const controller = new AbortController()
   const timer = setTimeout(() => controller.abort(new Error('timeout')), timeoutMs)
   const onAbort = () => controller.abort(signal?.reason)
   signal?.addEventListener('abort', onAbort, { once: true })
   try {
-    const res = await fetch('https://openrouter.ai/api/v1/chat/completions', {
+    const res = await fetch('/api/openrouter/chat/completions', {
       method: 'POST',
       headers: {
-        Authorization: `Bearer ${apiKey.trim()}`,
         'Content-Type': 'application/json',
+        ...(apiKey.trim() ? { 'x-openrouter-key': apiKey.trim() } : {}),
       },
       body: JSON.stringify({
         model,

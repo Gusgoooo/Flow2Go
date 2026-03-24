@@ -171,13 +171,11 @@ async function openRouterChatComplete(args: {
   }
 
   try {
-    const res = await fetch('https://openrouter.ai/api/v1/chat/completions', {
+    const res = await fetch('/api/openrouter/chat/completions', {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
-        Authorization: `Bearer ${args.apiKey}`,
-        'HTTP-Referer': window.location.origin,
-        'X-Title': 'Flow2Go',
+        ...(args.apiKey ? { 'x-openrouter-key': args.apiKey } : {}),
       },
       signal: mergedController.signal,
       body: JSON.stringify({
@@ -234,7 +232,7 @@ export type LayoutProfileSelectResult = {
 export async function openRouterSelectLayoutProfile(args: OpenRouterChatOptions): Promise<LayoutProfileSelectResult> {
   const { apiKey, model, prompt, signal, timeoutMs = DEFAULT_TIMEOUT_MS } = args
   const key = (apiKey ?? '').trim()
-  if (!key) throw new Error('缺少 OpenRouter API Key')
+  // Key 可选：生产环境可通过服务端代理环境变量提供
   if (!prompt.trim()) throw new Error('请输入生成描述')
 
   const raw = await openRouterChatComplete({
@@ -513,7 +511,7 @@ function parseSceneRouteJson(raw: string): SceneRouteV2 | null {
 async function openRouterSceneRoute(args: OpenRouterChatOptions): Promise<SceneRouteV2> {
   const { apiKey, model, prompt, signal, timeoutMs = DEFAULT_TIMEOUT_MS } = args
   const key = (apiKey ?? '').trim()
-  if (!key) throw new Error('缺少 OpenRouter API Key')
+  // Key 可选：生产环境可通过服务端代理环境变量提供
   if (!prompt.trim()) throw new Error('请输入生成描述')
 
   const raw = await openRouterChatComplete({
@@ -536,7 +534,7 @@ async function openRouterDiagramPlanner(
 ): Promise<string> {
   const { apiKey, model, prompt, signal, timeoutMs = DEFAULT_TIMEOUT_MS, templateKey, complexityMode, extraUserHint } = args
   const key = (apiKey ?? '').trim()
-  if (!key) throw new Error('缺少 OpenRouter API Key')
+  // Key 可选：生产环境可通过服务端代理环境变量提供
   if (!prompt.trim()) throw new Error('请输入生成描述')
 
   const raw = await openRouterChatComplete({
@@ -582,7 +580,7 @@ export async function openRouterGenerateDiagram(opts: OpenRouterChatOptions): Pr
     onProgress,
   } = opts
   const key = (apiKey ?? '').trim()
-  if (!key) throw new Error('缺少 OpenRouter API Key')
+  // Key 可选：生产环境可通过服务端代理环境变量提供
   if (!prompt.trim()) throw new Error('请输入生成描述')
 
   const t0 = typeof performance !== 'undefined' ? performance.now() : Date.now()

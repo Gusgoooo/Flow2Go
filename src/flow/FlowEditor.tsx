@@ -146,6 +146,47 @@ const DEFAULT_MARKER_END = {
   type: MarkerType.ArrowClosed,
   color: DEFAULT_EDGE_COLOR,
 } as const
+const OPENROUTER_MASK = '*****'
+
+function decodeOpenRouterKey(raw: string): string {
+  const t = raw.trim()
+  if (!t) return ''
+  const wrapped = t.startsWith(OPENROUTER_MASK) && t.endsWith(OPENROUTER_MASK) && t.length > OPENROUTER_MASK.length * 2
+  const core = wrapped ? t.slice(OPENROUTER_MASK.length, t.length - OPENROUTER_MASK.length) : t
+  try {
+    const decoded = atob(core)
+    return decoded.startsWith('sk-or-') ? decoded : core
+  } catch {
+    return core
+  }
+}
+
+function encodeOpenRouterKey(raw: string): string {
+  const t = raw.trim()
+  if (!t) return ''
+  return `${OPENROUTER_MASK}${btoa(t)}${OPENROUTER_MASK}`
+}
+
+function readPrefilledOpenRouterKey(): string {
+  const envVal = (import.meta as any)?.env?.VITE_OPENROUTER_KEY_ENC
+  return typeof envVal === 'string' ? decodeOpenRouterKey(envVal) : ''
+}
+
+function readStoredOpenRouterKey(): string {
+  try {
+    const stored = localStorage.getItem('flow2go-openrouter-key') || ''
+    const decoded = decodeOpenRouterKey(stored)
+    return decoded || readPrefilledOpenRouterKey()
+  } catch {
+    return readPrefilledOpenRouterKey()
+  }
+}
+
+function persistOpenRouterKey(raw: string) {
+  try {
+    localStorage.setItem('flow2go-openrouter-key', encodeOpenRouterKey(raw))
+  } catch {}
+}
 
 function nowId(prefix: string) {
   return `${prefix}-${Date.now()}-${Math.random().toString(16).slice(2)}`
@@ -180,11 +221,7 @@ function Sidebar({
   const [aiGenerating, setAiGenerating] = useState(false)
   const [aiError, setAiError] = useState<string | null>(null)
   const [openRouterKey, setOpenRouterKey] = useState<string>(() => {
-    try {
-      return localStorage.getItem('flow2go-openrouter-key') || ''
-    } catch {
-      return ''
-    }
+    return readStoredOpenRouterKey()
   })
   const apiKey = openRouterKey.trim()
   const [dslModalOpen, setDslModalOpen] = useState(false)
@@ -201,9 +238,7 @@ function Sidebar({
   const sidebarResizeRef = useRef<{ active: boolean; startX: number; startWidth: number } | null>(null)
 
   useEffect(() => {
-    try {
-      localStorage.setItem('flow2go-openrouter-key', openRouterKey)
-    } catch {}
+    persistOpenRouterKey(openRouterKey)
   }, [openRouterKey])
 
   useEffect(() => {
@@ -249,13 +284,11 @@ function Sidebar({
 
     try {
       // 使用 OpenRouter 的 DALL-E 3 模型生成图片
-      const response = await fetch('https://openrouter.ai/api/v1/images/generations', {
+      const response = await fetch('/api/openrouter/images/generations', {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
-          'Authorization': `Bearer ${apiKey.trim()}`,
-          'HTTP-Referer': window.location.origin,
-          'X-Title': 'Flow2Go',
+          ...(apiKey.trim() ? { 'x-openrouter-key': apiKey.trim() } : {}),
         },
         body: JSON.stringify({
           model: 'openai/dall-e-3',
@@ -496,6 +529,7 @@ function Sidebar({
               <div className={styles.aiNote}>OpenRouter API Key（仅保存在本地浏览器）</div>
               <input
                 className={styles.aiApiKeyInput}
+                type="password"
                 value={openRouterKey}
                 onChange={(e) => setOpenRouterKey(e.target.value)}
                 placeholder="sk-or-..."
@@ -514,7 +548,7 @@ function Sidebar({
             <button
               type="button"
               className={styles.aiGenerateBtn}
-              disabled={aiGenerating || !aiPrompt.trim() || !apiKey}
+              disabled={aiGenerating || !aiPrompt.trim()}
               onClick={generateAiAsset}
             >
               {aiGenerating ? '生成中...' : '生成图标'}
@@ -645,11 +679,7 @@ function EditorInner({ onBackHome, source, previewSnapshot, readOnly: _readOnly 
     }
   })
   const [aiModalKey, setAiModalKey] = useState<string>(() => {
-    try {
-      return localStorage.getItem('flow2go-openrouter-key') || ''
-    } catch {
-      return ''
-    }
+    return readStoredOpenRouterKey()
   })
 
   const [inlineInspector, setInlineInspector] = useState<{
@@ -3170,10 +3200,11 @@ function EditorInner({ onBackHome, source, previewSnapshot, readOnly: _readOnly 
                     <div className={styles.aiConfigTitle}>OpenRouter 配置</div>
                     <input
                       className={styles.aiApiKeyInput}
+                      type="password"
                       value={aiModalKey}
                       onChange={(e) => {
                         setAiModalKey(e.target.value)
-                        try { localStorage.setItem('flow2go-openrouter-key', e.target.value) } catch {}
+                        persistOpenRouterKey(e.target.value)
                       }}
                       placeholder="sk-or-..."
                     />
@@ -3242,11 +3273,6 @@ function EditorInner({ onBackHome, source, previewSnapshot, readOnly: _readOnly 
                       onClick={async () => {
                         const p = aiModalPrompt.trim()
                         if (!p) return
-                        if (!aiModalKey.trim()) {
-                          setAiModalError('请先填写 OpenRouter API Key')
-                          setAiConfigOpen(true)
-                          return
-                        }
                         setAiModalGenerating(true)
                         setAiModalError(null)
                         setAiModalProgress({ phase: '已提交', detail: '等待 OpenRouter…' })
