@@ -98,6 +98,11 @@
   transition: opacity 120ms ease;
 }
 
+.handleGhost {
+  opacity: 0 !important;
+  pointer-events: none;
+}
+
 /* hover 才显示“圆点” */
 .node:hover .handle {
   opacity: 1;
@@ -114,4 +119,3 @@
   transform-origin: center center;
   border-radius: 0;
 }
-

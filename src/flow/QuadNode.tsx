@@ -392,35 +392,36 @@ export function QuadNode(props: NodeProps) {
       </div>
 
       {/* target handles - 与 nodeInner 平级，不被 clip-path 裁剪 */}
-      {showLeftRightHandles ? (
-        <>
-          <Handle className={styles.handle} type="target" position={Position.Right} id="t-right" />
-          <Handle className={styles.handle} type="target" position={Position.Left} id="t-left" />
-        </>
-      ) : (
-        <>
-          <Handle className={styles.handle} type="target" position={Position.Top} id="t-top" />
-          <Handle className={styles.handle} type="target" position={Position.Right} id="t-right" />
-          <Handle className={styles.handle} type="target" position={Position.Bottom} id="t-bottom" />
-          <Handle className={styles.handle} type="target" position={Position.Left} id="t-left" />
-        </>
-      )}
+      <Handle
+        className={`${styles.handle} ${showLeftRightHandles ? styles.handleGhost : ''}`}
+        type="target"
+        position={Position.Top}
+        id="t-top"
+      />
+      <Handle className={styles.handle} type="target" position={Position.Right} id="t-right" />
+      <Handle
+        className={`${styles.handle} ${showLeftRightHandles ? styles.handleGhost : ''}`}
+        type="target"
+        position={Position.Bottom}
+        id="t-bottom"
+      />
+      <Handle className={styles.handle} type="target" position={Position.Left} id="t-left" />
 
       {/* source handles */}
-      {showLeftRightHandles ? (
-        <>
-          <Handle className={styles.handle} type="source" position={Position.Right} id="s-right" />
-          <Handle className={styles.handle} type="source" position={Position.Left} id="s-left" />
-        </>
-      ) : (
-        <>
-          <Handle className={styles.handle} type="source" position={Position.Top} id="s-top" />
-          <Handle className={styles.handle} type="source" position={Position.Right} id="s-right" />
-          <Handle className={styles.handle} type="source" position={Position.Bottom} id="s-bottom" />
-          <Handle className={styles.handle} type="source" position={Position.Left} id="s-left" />
-        </>
-      )}
+      <Handle
+        className={`${styles.handle} ${showLeftRightHandles ? styles.handleGhost : ''}`}
+        type="source"
+        position={Position.Top}
+        id="s-top"
+      />
+      <Handle className={styles.handle} type="source" position={Position.Right} id="s-right" />
+      <Handle
+        className={`${styles.handle} ${showLeftRightHandles ? styles.handleGhost : ''}`}
+        type="source"
+        position={Position.Bottom}
+        id="s-bottom"
+      />
+      <Handle className={styles.handle} type="source" position={Position.Left} id="s-left" />
     </div>
   )
 }
-
