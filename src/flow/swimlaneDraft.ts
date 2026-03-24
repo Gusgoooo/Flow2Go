@@ -348,22 +348,34 @@ export async function generateSwimlaneDraftWithLLM(
   const onAbort = () => controller.abort(signal?.reason)
   signal?.addEventListener('abort', onAbort, { once: true })
   try {
-    const res = await fetch('/api/openrouter/chat/completions', {
+    const requestBody = JSON.stringify({
+      model,
+      temperature: 0.2,
+      messages: [
+        { role: 'system', content: SWIMLANE_DRAFT_SYSTEM_PROMPT },
+        { role: 'user', content: prompt },
+      ],
+    })
+    let res = await fetch('/api/openrouter/chat/completions', {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
         ...(apiKey.trim() ? { 'x-openrouter-key': apiKey.trim() } : {}),
       },
-      body: JSON.stringify({
-        model,
-        temperature: 0.2,
-        messages: [
-          { role: 'system', content: SWIMLANE_DRAFT_SYSTEM_PROMPT },
-          { role: 'user', content: prompt },
-        ],
-      }),
+      body: requestBody,
       signal: controller.signal,
     })
+    if ((res.status === 404 || res.status === 405) && apiKey.trim()) {
+      res = await fetch('https://openrouter.ai/api/v1/chat/completions', {
+        method: 'POST',
+        headers: {
+          Authorization: `Bearer ${apiKey.trim()}`,
+          'Content-Type': 'application/json',
+        },
+        body: requestBody,
+        signal: controller.signal,
+      })
+    }
     const text = await res.text()
     if (!res.ok) throw new Error(`OpenRouter 请求失败: ${res.status}`)
     const json = safeJsonParse(JSON.parse(text).choices?.[0]?.message?.content ?? '')

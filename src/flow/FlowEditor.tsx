@@ -287,20 +287,33 @@ function Sidebar({
 
     try {
       // 使用 OpenRouter 的 DALL-E 3 模型生成图片
-      const response = await fetch('/api/openrouter/images/generations', {
+      const requestBody = JSON.stringify({
+        model: 'openai/dall-e-3',
+        prompt: enhancedPrompt,
+        n: 1,
+        size: '1024x1024',
+        response_format: 'b64_json',
+      })
+      let response = await fetch('/api/openrouter/images/generations', {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
           ...(apiKey.trim() ? { 'x-openrouter-key': apiKey.trim() } : {}),
         },
-        body: JSON.stringify({
-          model: 'openai/dall-e-3',
-          prompt: enhancedPrompt,
-          n: 1,
-          size: '1024x1024',
-          response_format: 'b64_json',
-        }),
+        body: requestBody,
       })
+      if ((response.status === 404 || response.status === 405) && apiKey.trim()) {
+        response = await fetch('https://openrouter.ai/api/v1/images/generations', {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+            Authorization: `Bearer ${apiKey.trim()}`,
+            'HTTP-Referer': window.location.origin,
+            'X-Title': 'Flow2Go',
+          },
+          body: requestBody,
+        })
+      }
 
       if (!response.ok) {
         const err = await response.text()
