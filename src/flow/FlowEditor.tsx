@@ -676,9 +676,9 @@ function EditorInner({ onBackHome, source, previewSnapshot, readOnly: _readOnly 
   const aiModalAbortRef = useRef<AbortController | null>(null)
   const [aiModalModel, setAiModalModel] = useState<string>(() => {
     try {
-      return localStorage.getItem('flow2go-openrouter-model') || 'minimax/minimax-m2.7'
+      return localStorage.getItem('flow2go-openrouter-model') || 'qwen/qwen3-max-thinking'
     } catch {
-      return 'minimax/minimax-m2.7'
+      return 'qwen/qwen3-max-thinking'
     }
   })
   const [aiModalKey, setAiModalKey] = useState<string>(() => {
@@ -3206,7 +3206,7 @@ function EditorInner({ onBackHome, source, previewSnapshot, readOnly: _readOnly 
                         setAiModalModel(e.target.value)
                         try { localStorage.setItem('flow2go-openrouter-model', e.target.value) } catch {}
                       }}
-                      placeholder="minimax/minimax-m2.7"
+                      placeholder="qwen/qwen3-max-thinking"
                     />
                     <div className={styles.aiNote} style={{ opacity: 0.9 }}>
                       配置只保存在本地浏览器。未配置 Key 时，无法发起生成。
@@ -3280,7 +3280,7 @@ function EditorInner({ onBackHome, source, previewSnapshot, readOnly: _readOnly 
                             const { materializeGraphBatchPayloadToSnapshot } = await import('./mermaid/apply')
                             const draftFromPrompt = await generateSwimlaneDraftWithLLM({
                               apiKey: aiModalKey.trim(),
-                              model: aiModalModel.trim() || 'minimax/minimax-m2.7',
+                              model: aiModalModel.trim() || 'qwen/qwen3-max-thinking',
                               prompt: p,
                               signal: ac.signal,
                             })
@@ -3299,7 +3299,7 @@ function EditorInner({ onBackHome, source, previewSnapshot, readOnly: _readOnly 
                           }
                           const draft = await openRouterGenerateDiagram({
                             apiKey: aiModalKey.trim(),
-                            model: aiModalModel.trim() || 'minimax/minimax-m2.7',
+                            model: aiModalModel.trim() || 'qwen/qwen3-max-thinking',
                             prompt: p,
                             signal: ac.signal,
                             diagramScene: aiModalScene ?? undefined,
