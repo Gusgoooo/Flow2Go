@@ -5,6 +5,7 @@
  */
 import type { Edge, Node } from '@xyflow/react'
 import type { FlowDirection } from './mermaid/types'
+import { doesPolylineIntersectAnyExclusionBox, getNodeExclusionBoxes } from './layout/routing/exclusion'
 
 const LANE_HEADER_SIZE = 44
 const LANE_GAP = 24
@@ -238,6 +239,7 @@ export function autoLayoutSwimlane(args: {
   const byId = new Map(nodes.map((n) => [n.id, n]))
   const laneIndexById = new Map(lanes.map((l, i) => [l.id, i]))
   const laneOrderCounter = new Map<string, number>()
+  const exclusionBoxes = getNodeExclusionBoxes(nodes as Node<any>[])
   const routedEdges = edges.map((e) => {
     const srcNode = byId.get(e.source)
     const tgtNode = byId.get(e.target)
@@ -255,17 +257,14 @@ export function autoLayoutSwimlane(args: {
     const targetHandle = tgtIdx > srcIdx ? 't-top' : 't-bottom'
     const sp = getHandlePoint(srcNode, sourceHandle, byId)
     const tp = getHandlePoint(tgtNode, targetHandle, byId)
-    const srcLaneAbs = getAbsolutePosition(srcLane, byId)
-    const tgtLaneAbs = getAbsolutePosition(tgtLane, byId)
-    const srcLaneRight = srcLaneAbs.x + estimateNodeSize(srcLane).w
-    const tgtLaneRight = tgtLaneAbs.x + estimateNodeSize(tgtLane).w
     const pairKey = `${srcLaneId}->${tgtLaneId}`
     const order = laneOrderCounter.get(pairKey) ?? 0
     laneOrderCounter.set(pairKey, order + 1)
     const signed = order % 2 === 0 ? order / 2 : -((order + 1) / 2)
-    const corridorX = Math.max(srcLaneRight, tgtLaneRight) + 40 + Math.abs(signed) * 24
-    const lift = 18 + Math.abs(signed) * 8
-    const waypoints =
+    // 走“就近 corridor”，仅在必要时逐步外扩，避免夸张拉线到泳道外
+    const baseLift = 14 + Math.abs(signed) * 6
+    const baseCorridor = (sp.x + tp.x) / 2 + signed * 12
+    const buildWaypoints = (corridorX: number, lift: number) =>
       sourceHandle === 's-bottom'
         ? [
             { x: sp.x, y: sp.y + lift },
@@ -279,9 +278,25 @@ export function autoLayoutSwimlane(args: {
             { x: corridorX, y: tp.y + lift },
             { x: tp.x, y: tp.y + lift },
           ]
+
+    let bestWaypoints = buildWaypoints(baseCorridor, baseLift)
+    let found = false
+    for (let i = 0; i <= 10; i++) {
+      const tryLift = baseLift + i * 4
+      const tryCorridor = baseCorridor + (i % 2 === 0 ? i * 10 : -i * 10)
+      const tryWaypoints = buildWaypoints(tryCorridor, tryLift)
+      const polyline = [{ x: sp.x, y: sp.y }, ...tryWaypoints, { x: tp.x, y: tp.y }]
+      const collide = doesPolylineIntersectAnyExclusionBox(polyline, exclusionBoxes, [srcNode.id, tgtNode.id])
+      if (!collide) {
+        bestWaypoints = tryWaypoints
+        found = true
+        break
+      }
+      bestWaypoints = tryWaypoints
+    }
     return {
       ...e,
-      type: 'smoothstep',
+      type: found ? 'smoothstep' : 'bezier',
       sourceHandle,
       targetHandle,
       data: {
@@ -289,7 +304,7 @@ export function autoLayoutSwimlane(args: {
         semanticType: 'crossLane',
         sourceLaneId: srcLaneId,
         targetLaneId: tgtLaneId,
-        waypoints,
+        ...(found ? { waypoints: bestWaypoints } : {}),
         autoOffset: 0,
       },
     }
