@@ -1,47 +1,174 @@
-# Flow2Go（类 Figma 的大图编辑器）
+# Flow2Go
 
-Flow2Go 是一个基于 `@xyflow/react`（React Flow）的浏览器端大图/流程图编辑器。核心目标是让你用接近 Figma 的方式组织内容：**节点 + 边 + 画框(Frame)容器 + 素材**，并支持嵌套、拖入/拖出重挂载、快速编辑与保存。
+Flow2Go is a local-first, AI-assisted diagram editor for polished presentation graphics.
 
-## 核心特性
+Many tools can help people sketch logic quickly. The problem usually appears when the diagram is used in a formal report: structure is correct, but visual quality is not - spacing feels loose, colors are inconsistent, and the overall result looks unrefined.
 
-- **Frame（画框）是真实容器**：用 `parentId` 建立父子关系，子节点坐标是父容器的**局部坐标**（不是视觉包裹）
-- **Frame 可嵌套**：支持 A 包 B 包 C；拖出 C 时光标落在 B/A 内会重挂载到 B/A（Figma 语义）
-- **编组（Group）可多层嵌套**：允许对群组再包一层；bounds 计算包含子树与相关边几何
-- **边（Edge）**：label 双击编辑；菜单保留简洁项（类型/箭头/颜色/线宽/动画）
-- **可编辑折线**：支持 waypoints 拖拽与随动
-- **素材（Asset）**：导入 SVG/PNG；45°步进旋转、水平/垂直翻转；SVG 支持颜色覆盖（同款拾色板）
+Most non-designers do not have a clear method to fix these issues. As a designer, I wanted a stricter and repeatable way to make diagrams both usable and visually solid, so I built Flow2Go for my own daily workflow first. If it improves my own speed and quality bar, it should also help other teams.
 
+Flow2Go does not try to be a giant all-in-one tool. It focuses on three practical problems:
 
-## 快速开始（本地开发）
+1. **Layout difficulty -> Grid snapping system**
+2. **Color inconsistency -> Curated presets and fast replacement**
+3. **Editing friction -> Minimal interaction model**
+
+It is fully local-first: no cloud data storage by default, safer for sensitive content, and easy to embed in documentation workflows with a borderless canvas style.
+
+## Core Product Principles
+
+### 1) Layout Difficulty -> Grid Snapping
+
+- Canvas editing uses snap-to-grid behavior for consistent rhythm and cleaner alignment.
+- The editor keeps diagrams structurally readable without forcing users into manual pixel-level alignment.
+- Nodes, groups, and frame containers are designed for fast placement and stable structure.
+
+### 2) Color Difficulty -> Presets + Fast Replacement
+
+- Built-in color choices are intentionally curated for better visual consistency.
+- Color editing is quick and repeatable, reducing design overhead for non-designers.
+- SVG assets support color override workflows for theme consistency.
+
+### 3) Interaction Friction -> Minimal Editing Model
+
+- Create node -> double-click to edit text -> drag to connect.
+- Text editing and edge editing are optimized for direct manipulation.
+- Complex operations (grouping, nested structures, re-parenting) are still available without introducing heavy UI complexity.
+
+## Feature Set (Current)
+
+- **Canvas & Graph**
+  - Node/edge editing with React Flow-based interaction.
+  - Editable bezier and smooth-step edge behavior.
+  - Context menus and inline editing for common operations.
+  - Borderless canvas look for embedding into docs and reports.
+
+- **Frame & Group Containers**
+  - Frames are true containers based on `parentId`.
+  - Nested frame/group composition is supported.
+  - Drag in/out behavior supports structural re-parenting.
+
+- **Assets**
+  - Upload-only asset panel for `SVG` / `PNG`.
+  - Drag assets from panel to canvas.
+  - Asset transforms: rotation, flip, SVG color override.
+  - Asset library persisted locally with project data.
+
+- **Diagram AI Generation**
+  - OpenRouter-powered generation path.
+  - Scene-aware routing (mind map / flowchart / swimlane).
+  - Structured planner + Mermaid conversion + graph materialization pipeline.
+  - Progress reporting and retry/fallback handling for stability.
+
+- **Persistence & Portability**
+  - Local browser persistence by default.
+  - Import/export support including project snapshot + assets.
+  - No mandatory cloud storage.
+
+## AI Generation Path (Technical)
+
+Flow2Go's AI path is implemented around these modules:
+
+- `src/flow/FlowEditor.tsx`  
+  UI entry, AI modal, progress state, abort/cancel control, and final apply-to-canvas behavior.
+
+- `src/flow/aiDiagram.ts`  
+  Main orchestration pipeline:
+  - scene routing
+  - layout profile selection
+  - planner JSON generation
+  - Mermaid generation
+  - Mermaid parsing/transpiling
+  - normalization/materialization into editor snapshot
+
+- `src/flow/openRouterClient.ts`  
+  OpenRouter transport strategy:
+  - proxy-first call (`VITE_OPENROUTER_PROXY_BASE`, default `/openrouter-proxy`)
+  - fallback to direct OpenRouter API when API key is available
+  - retryability rules on specific gateway/proxy statuses
+
+- `src/flow/swimlaneDraft.ts` + `src/flow/mermaid/*`  
+  Swimlane and Mermaid conversion/materialization internals.
+
+### AI Request/Execution Notes
+
+- Default API base path supports reverse-proxy deployment.
+- API key can be supplied from local UI config.
+- Long-input scenarios use extended timeout logic and complexity guards.
+- Scene capsules can force specific generation pipelines.
+
+## Open-Source Dependencies
+
+### Runtime
+
+- `react`, `react-dom`
+- `@xyflow/react` (canvas graph editor foundation)
+- `@floating-ui/react` (floating interactions/popups)
+- `lucide-react` (icons)
+- `react-colorful` (color picker UI)
+- `dagre` (layout)
+- `elkjs` (layout algorithms)
+- `mind-elixir` (mind-map related flow)
+- `jszip` (import/export packaging)
+
+### Development
+
+- `vite`, `@vitejs/plugin-react`
+- `typescript`
+- `eslint`, `typescript-eslint`, `@eslint/js`, `eslint-plugin-react-hooks`, `eslint-plugin-react-refresh`
+- `vitest`
+
+## Project Structure (High-Level)
+
+- `src/main.tsx` - app bootstrap
+- `src/App.tsx` - top-level app composition + project loading
+- `src/flow/` - main editor domain (nodes, edges, layout, persistence, AI, assets)
+- `src/flow/mermaid/` - Mermaid parse/transpile/materialize path
+
+## Local-First Data Model
+
+- Project/session data is saved in browser storage by default.
+- AI key/settings are local to the current browser context.
+- Clearing browser data may remove unsaved projects.
+- Recommended: regularly export local backup files.
+
+## Getting Started
+
+### Install
 
 ```bash
 npm install
+```
+
+### Run development server
+
+```bash
 npm run dev
 ```
 
-打开 `http://localhost:5173`。
+Open [http://localhost:5173](http://localhost:5173).
 
-## AI（可选）
+## Scripts
 
-如果你要用「生成图标 / 生成草稿图」等 AI 能力，请在侧边栏对应面板里**手动填写 OpenRouter API Key**。
-该 Key 会**仅保存在你的浏览器 localStorage** 中（清除浏览器数据会丢失）。
+- `npm run dev` - start local dev server
+- `npm run build` - type-check and create production build
+- `npm run preview` - preview built output
+- `npm run lint` - run lint checks
+- `npm run test` - run tests
 
-## 构建
+## Build
 
 ```bash
 npm run build
 ```
 
-产物在 `dist/`。
+Output directory: `dist/`
 
-## Docker（可选）
-
-### 生产模式（Nginx 静态托管）
+## Docker (Optional)
 
 ```bash
 docker build -t flow2go .
 docker run --rm -p 8080:80 flow2go
 ```
 
-打开 `http://localhost:8080`。
+Then open [http://localhost:8080](http://localhost:8080).
 
