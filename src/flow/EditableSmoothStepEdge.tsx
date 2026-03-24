@@ -705,16 +705,18 @@ export function EditableSmoothStepEdge(props: EdgeProps) {
         const lastSeg = segments[segments.length - 1]
         const inOutSameAxis = Boolean(firstSeg && lastSeg && firstSeg.isVertical === lastSeg.isVertical)
         const handleAllowedAxis = inOutSameAxis && firstSeg ? !firstSeg.isVertical : null
+        const middleIdx = Math.floor(segments.length / 2)
+        const isMiddleSeg = idx === middleIdx
 
         // 仅在较复杂路径（>=5段）显示可调手柄
         if (segments.length < 5) return null
         // 跳过第一段和最后一段（连接到源/目标节点的段）
         if (idx === 0 || idx === segments.length - 1) return null
         // 仅允许“垂直于 in/out 段方向”的中段出现手柄
-        if (handleAllowedAxis == null || seg.isVertical !== handleAllowedAxis) return null
+        if (!isMiddleSeg && (handleAllowedAxis == null || seg.isVertical !== handleAllowedAxis)) return null
         
         const segLength = seg.length
-        if (segLength < 10) return null // 太短的线段不显示手柄
+        if (!isMiddleSeg && segLength < 10) return null // 中段手柄强制保留
         
         const isHovered = hoveredSegment === idx
         
