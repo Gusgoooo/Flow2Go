@@ -6,6 +6,7 @@ import {
   useRef,
   useState,
   type ChangeEvent,
+  type CSSProperties,
   type DragEvent,
 } from 'react'
 import {
@@ -47,7 +48,9 @@ import defaultExample from './defaultExample.json'
 import { getProject, saveProject } from './projectStorage'
 import styles from './flowEditor.module.css'
 import { GroupNode, type GroupNodeData } from './GroupNode'
-import { autoLayout, type LayoutDirection } from './layout'
+import { autoLayout as autoLayoutElk, type LayoutDirection } from './layout'
+import { autoLayoutDagre } from './dagreLayout'
+import { rerouteSwimlaneEdges } from './layout/routing/rerouteSwimlaneEdges'
 import { QuadNode } from './QuadNode'
 import { EditableSmoothStepEdge } from './EditableSmoothStepEdge'
 import { EditableBezierEdge } from './EditableBezierEdge'
@@ -111,6 +114,7 @@ type NodeData = {
 
 type FlowNode = Node<NodeData>
 type ArrowStyle = 'none' | 'end' | 'start' | 'both'
+type AiFlowLayoutRoute = 'dagre-default' | 'elk-test'
 type EdgeLabelStyle = { fontSize?: number; fontWeight?: string; color?: string }
 type FlowEdge = Edge<{
   arrowStyle?: ArrowStyle
@@ -627,6 +631,7 @@ function EditorInner({ onBackHome, source, previewSnapshot, readOnly: _readOnly 
   const [aiModalPrompt, setAiModalPrompt] = useState('')
   /** 与胶囊绑定：生成时传入 diagramScene；点 ✕ 取消高亮并清空输入框 */
   const [aiModalScene, setAiModalScene] = useState<AiDiagramSceneHint | null>(null)
+  const [aiFlowLayoutRoute, setAiFlowLayoutRoute] = useState<AiFlowLayoutRoute>('dagre-default')
   const [aiConfigOpen, setAiConfigOpen] = useState(false)
   const [aiModalGenerating, setAiModalGenerating] = useState(false)
   /** 生成阶段文案（与控制台 [Flow2Go AI] 日志对应，用于区分慢 / 卡在某一步 / 失败） */
@@ -704,12 +709,30 @@ function EditorInner({ onBackHome, source, previewSnapshot, readOnly: _readOnly 
     return () => window.clearInterval(id)
   }, [aiModalGenerating])
 
+  useEffect(() => {
+    if ((aiModalScene === 'mind-map' || aiModalScene === 'swimlane') && aiFlowLayoutRoute === 'elk-test') {
+      setAiFlowLayoutRoute('dagre-default')
+    }
+  }, [aiFlowLayoutRoute, aiModalScene])
+
   const initial = useMemo(() => {
+    const normalizeSwimlaneSnapshot = (nodes: FlowNode[], edges: FlowEdge[]) => {
+      const hasSwimlane =
+        nodes.some((n) => (n.data as any)?.role === 'lane') ||
+        nodes.some((n) => (n.data as any)?.laneId || n.parentId)
+      if (!hasSwimlane || edges.length === 0) return { nodes, edges }
+      const rerouted = rerouteSwimlaneEdges(nodes as unknown as Node<any>[], edges as unknown as Edge<any>[])
+      return { nodes, edges: rerouted as FlowEdge[] }
+    }
+
     // 预览模式：使用 previewSnapshot
     if (previewSnapshot) {
+      const nodes = (previewSnapshot.nodes as FlowNode[]) ?? []
+      const edges = (previewSnapshot.edges as FlowEdge[]) ?? []
+      const normalized = normalizeSwimlaneSnapshot(nodes, edges)
       return {
-        nodes: (previewSnapshot.nodes as FlowNode[]) ?? [],
-        edges: (previewSnapshot.edges as FlowEdge[]) ?? [],
+        nodes: normalized.nodes,
+        edges: normalized.edges,
         viewport: previewSnapshot.viewport ?? { x: 0, y: 0, zoom: 1 },
         name: '模板预览',
         isDefaultExample: false,
@@ -724,18 +747,24 @@ function EditorInner({ onBackHome, source, previewSnapshot, readOnly: _readOnly 
       (snap.nodes.length > 0 || snap.edges.length > 0)
     if (!hasValidSnapshot) {
       // 用户第一次打开产品：使用默认示例并居中展示
+      const nodes = (defaultExample.nodes as FlowNode[]) ?? []
+      const edges = (defaultExample.edges as FlowEdge[]) ?? []
+      const normalized = normalizeSwimlaneSnapshot(nodes, edges)
       return {
-        nodes: (defaultExample.nodes as FlowNode[]) ?? [],
-        edges: (defaultExample.edges as FlowEdge[]) ?? [],
+        nodes: normalized.nodes,
+        edges: normalized.edges,
         viewport: (defaultExample as any).viewport ?? { x: 0, y: 0, zoom: 1 },
         name: 'untitled',
         isDefaultExample: true,
       }
     }
     const snap2 = (proj as any).snapshot
+    const nodes = (snap2.nodes as FlowNode[]) ?? []
+    const edges = (snap2.edges as FlowEdge[]) ?? []
+    const normalized = normalizeSwimlaneSnapshot(nodes, edges)
     return {
-      nodes: (snap2.nodes as FlowNode[]) ?? [],
-      edges: (snap2.edges as FlowEdge[]) ?? [],
+      nodes: normalized.nodes,
+      edges: normalized.edges,
       viewport: snap2.viewport ?? { x: 0, y: 0, zoom: 1 },
       name: proj?.name ?? 'untitled',
       isDefaultExample: false,
@@ -895,17 +924,69 @@ function EditorInner({ onBackHome, source, previewSnapshot, readOnly: _readOnly 
     [rf, snapshotSig],
   )
 
+  const relayoutGraphByEngine = useCallback(
+    async (
+      inputNodes: FlowNode[],
+      inputEdges: FlowEdge[],
+      direction: LayoutDirection,
+      engine: 'dagre' | 'elk',
+    ): Promise<FlowNode[]> => {
+      const groups = new Map<string, FlowNode[]>()
+      for (const n of inputNodes) {
+        if (n.hidden) continue
+        if (n.type === 'group') continue
+        const key = n.parentId ?? '__root__'
+        const arr = groups.get(key) ?? []
+        arr.push(n)
+        groups.set(key, arr)
+      }
+
+      const nextPosById = new Map<string, { x: number; y: number }>()
+      for (const bucket of groups.values()) {
+        if (bucket.length < 2) continue
+        const ids = new Set(bucket.map((n) => n.id))
+        const subEdges = inputEdges.filter((e) => !e.hidden && ids.has(e.source) && ids.has(e.target))
+        if (subEdges.length === 0) continue
+        const laid =
+          engine === 'elk'
+            ? await autoLayoutElk(bucket as Array<Node<any>>, subEdges as Array<Edge>, direction)
+            : await autoLayoutDagre(bucket as Array<Node<any>>, subEdges as Array<Edge>, direction)
+        for (const ln of laid) {
+          nextPosById.set(ln.id, { x: ln.position.x, y: ln.position.y })
+        }
+      }
+
+      if (nextPosById.size === 0) return inputNodes
+      return inputNodes.map((n) => {
+        const p = nextPosById.get(n.id)
+        if (!p) return n
+        return { ...n, position: { x: p.x, y: p.y }, positionAbsolute: undefined }
+      })
+    },
+    [],
+  )
+
   const applyAiDraftDirect = useCallback(
-    (draft: AiDiagramDraft) => {
+    async (
+      draft: AiDiagramDraft,
+      opts?: {
+        flowLayoutRoute?: AiFlowLayoutRoute
+        onProgress?: (phase: string, detail?: string) => void
+      },
+    ) => {
       const snap = normalizeAiDiagramToSnapshot(draft)
-      const nextNodes = (snap.nodes ?? []) as FlowNode[]
+      let nextNodes = (snap.nodes ?? []) as FlowNode[]
       const nextEdges = (snap.edges ?? []) as FlowEdge[]
+      if (opts?.flowLayoutRoute === 'elk-test') {
+        opts.onProgress?.('ELK 布局步骤', '流程图物化后，追加 ELK layered 测试重排…')
+        nextNodes = await relayoutGraphByEngine(nextNodes, nextEdges, 'LR', 'elk')
+      }
       setNodes(nextNodes)
       setEdges(nextEdges)
       pushHistory(nextNodes, nextEdges, 'ai-apply')
       if (snap.viewport) rf.setViewport(snap.viewport, { duration: 0 })
     },
-    [pushHistory, rf],
+    [pushHistory, relayoutGraphByEngine, rf],
   )
 
   // const _canUndo = historyRef.current.past.length > 0
@@ -1037,11 +1118,54 @@ function EditorInner({ onBackHome, source, previewSnapshot, readOnly: _readOnly 
         const tgtLaneId = ((tgtNode?.data as any)?.laneId ?? tgtNode?.parentId) as string | undefined
         const inSwimlane = Boolean(srcLaneId || tgtLaneId)
         const isCrossLane = Boolean(srcLaneId && tgtLaneId && srcLaneId !== tgtLaneId)
+        let defaultSourceHandle: string = 's-right'
+        let defaultTargetHandle: string = 't-left'
+
+        if (isCrossLane && srcLaneId && tgtLaneId) {
+          const srcLane = nodes.find((n) => n.id === srcLaneId)
+          const tgtLane = nodes.find((n) => n.id === tgtLaneId)
+
+          if (srcLane && tgtLane) {
+            const nodeSize = (n: FlowNode) => {
+              const style = (n.style ?? {}) as any
+              const width = n.measured?.width ?? n.width ?? (typeof style?.width === 'number' ? style.width : 140)
+              const height = n.measured?.height ?? n.height ?? (typeof style?.height === 'number' ? style.height : 56)
+              return { width, height }
+            }
+            const center = (n: FlowNode) => {
+              const s = nodeSize(n)
+              return { x: (n.position?.x ?? 0) + s.width / 2, y: (n.position?.y ?? 0) + s.height / 2 }
+            }
+            const explicitAxis = ((srcLane.data as any)?.laneMeta?.laneAxis ?? (tgtLane.data as any)?.laneMeta?.laneAxis) as
+              | 'row'
+              | 'column'
+              | undefined
+            const srcCenter = center(srcLane)
+            const tgtCenter = center(tgtLane)
+            const inferredAxis = Math.abs(srcCenter.y - tgtCenter.y) >= Math.abs(srcCenter.x - tgtCenter.x) ? 'row' : 'column'
+            const laneAxis = explicitAxis ?? inferredAxis
+
+            if (laneAxis === 'row') {
+              const downward = tgtCenter.y >= srcCenter.y
+              defaultSourceHandle = downward ? 's-bottom' : 's-top'
+              defaultTargetHandle = downward ? 't-top' : 't-bottom'
+            } else {
+              const rightward = tgtCenter.x >= srcCenter.x
+              defaultSourceHandle = rightward ? 's-right' : 's-left'
+              defaultTargetHandle = rightward ? 't-left' : 't-right'
+            }
+          }
+        }
         const next = addEdge(
           {
             ...conn,
-            ...(inSwimlane ? { sourceHandle: conn.sourceHandle ?? 's-right', targetHandle: conn.targetHandle ?? 't-left' } : {}),
-            type: inSwimlane ? (isCrossLane ? 'smoothstep' : 'bezier') : 'smoothstep',
+            ...(inSwimlane
+              ? {
+                  sourceHandle: conn.sourceHandle ?? defaultSourceHandle,
+                  targetHandle: conn.targetHandle ?? defaultTargetHandle,
+                }
+              : {}),
+            type: inSwimlane ? (isCrossLane ? 'smoothstep' : 'bezier') : 'bezier',
             style: { stroke: DEFAULT_EDGE_COLOR, strokeWidth: 2 },
             markerEnd: { type: MarkerType.ArrowClosed, color: DEFAULT_EDGE_COLOR },
             data: {
@@ -2539,7 +2663,7 @@ function EditorInner({ onBackHome, source, previewSnapshot, readOnly: _readOnly 
         const oldCx = (oldBounds.minX + oldBounds.maxX) / 2
         const oldCy = (oldBounds.minY + oldBounds.maxY) / 2
 
-        const laid = await autoLayout(picked, subEdges, dir)
+        const laid = await autoLayoutDagre(picked as Array<Node<any>>, subEdges as Array<Edge>, dir)
         const newBounds = laid.reduce(
           (acc, n) => {
             const w = n.measured?.width ?? n.width ?? 180
@@ -3142,6 +3266,54 @@ function EditorInner({ onBackHome, source, previewSnapshot, readOnly: _readOnly 
                       setAiModalPrompt('')
                     }}
                   />
+                  <div className={styles.aiLayoutRouteRow}>
+                    <div className={styles.aiLayoutRouteLabel}>布局链路</div>
+                    <div className={styles.aiSceneCapsules} role="group" aria-label="布局链路切换">
+                      <div
+                        className={`${styles.aiSceneCapsule} ${aiFlowLayoutRoute === 'dagre-default' ? styles.aiSceneCapsule_active : ''}`}
+                        style={
+                          aiFlowLayoutRoute === 'dagre-default'
+                            ? ({
+                                '--ai-capsule-accent': '#0f766e',
+                              } as CSSProperties)
+                            : undefined
+                        }
+                      >
+                        <button
+                          type="button"
+                          className={styles.aiSceneCapsuleMain}
+                          disabled={aiModalGenerating}
+                          aria-pressed={aiFlowLayoutRoute === 'dagre-default'}
+                          onClick={() => setAiFlowLayoutRoute('dagre-default')}
+                        >
+                          Dagre 默认
+                        </button>
+                      </div>
+                      <div
+                        className={`${styles.aiSceneCapsule} ${aiFlowLayoutRoute === 'elk-test' ? styles.aiSceneCapsule_active : ''}`}
+                        style={
+                          aiFlowLayoutRoute === 'elk-test'
+                            ? ({
+                                '--ai-capsule-accent': '#0369a1',
+                              } as CSSProperties)
+                            : undefined
+                        }
+                      >
+                        <button
+                          type="button"
+                          className={styles.aiSceneCapsuleMain}
+                          disabled={aiModalGenerating || aiModalScene === 'mind-map' || aiModalScene === 'swimlane'}
+                          aria-pressed={aiFlowLayoutRoute === 'elk-test'}
+                          onClick={() => setAiFlowLayoutRoute('elk-test')}
+                        >
+                          ELK 测试链路
+                        </button>
+                      </div>
+                    </div>
+                    <div className={styles.aiNote}>
+                      流程图默认走 Dagre。若选择 ELK 测试链路，会在流程图物化后额外加入一步 ELK layered 重排。
+                    </div>
+                  </div>
                   {aiModalError && <div className={styles.aiError}>{aiModalError}</div>}
 
                   <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
@@ -3198,7 +3370,12 @@ function EditorInner({ onBackHome, source, previewSnapshot, readOnly: _readOnly 
                             },
                           })
                           setAiDiagramDraft(draft)
-                          applyAiDraftDirect(draft)
+                          await applyAiDraftDirect(draft, {
+                            flowLayoutRoute: aiFlowLayoutRoute,
+                            onProgress: (phase, detail) => {
+                              setAiModalProgress({ phase, detail })
+                            },
+                          })
                           setAiModalOpen(false)
                         } catch (e) {
                           const msg = e instanceof Error ? e.message : '生成失败'
@@ -3645,4 +3822,3 @@ export function FlowEditor(props: FlowEditorProps) {
 }
 
 export default FlowEditor
-

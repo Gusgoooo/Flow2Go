@@ -58,7 +58,7 @@ export async function applyGraphBatchPayload(
 }
 
 function dirToLayoutDirection(dir: FlowDirection) {
-  // ELK layered + elk.direction 映射 LR/TB/RL/BT（见 layout.ts）
+  // Dagre rankdir 映射 LR/TB/RL/BT
   return dir as any
 }
 
@@ -1078,146 +1078,11 @@ function applyFlowchartStrictHandles(
   edges: Array<Edge<any>>,
   direction: FlowDirection,
 ): Array<Edge<any>> {
-  const nodeById = new Map(nodes.map((n) => [n.id, n]))
-  const GEOM_DOMINANT_RATIO = 1.15
-  const inferPreferredSidesByGeometry = (dx: number, dy: number): { src: Side; tgt: Side } => {
-    const adx = Math.abs(dx)
-    const ady = Math.abs(dy)
-    if (adx >= ady * GEOM_DOMINANT_RATIO) {
-      return dx >= 0 ? { src: 'right', tgt: 'left' } : { src: 'left', tgt: 'right' }
-    }
-    if (ady >= adx * GEOM_DOMINANT_RATIO) {
-      return dy >= 0 ? { src: 'bottom', tgt: 'top' } : { src: 'top', tgt: 'bottom' }
-    }
-    // 对角区：按象限 + 主次维度
-    if (dx >= 0 && dy >= 0) {
-      return ady > adx ? { src: 'bottom', tgt: 'top' } : { src: 'right', tgt: 'left' }
-    }
-    if (dx >= 0 && dy < 0) {
-      return ady > adx ? { src: 'top', tgt: 'bottom' } : { src: 'right', tgt: 'left' }
-    }
-    if (dx < 0 && dy >= 0) {
-      return ady > adx ? { src: 'bottom', tgt: 'top' } : { src: 'left', tgt: 'right' }
-    }
-    return ady > adx ? { src: 'top', tgt: 'bottom' } : { src: 'left', tgt: 'right' }
-  }
-  const outDegree = new Map<string, number>()
-  const inDegree = new Map<string, number>()
-  for (const e of edges) {
-    outDegree.set(e.source, (outDegree.get(e.source) ?? 0) + 1)
-    inDegree.set(e.target, (inDegree.get(e.target) ?? 0) + 1)
-  }
-  const incomingByNode = new Map<string, Set<Side>>()
-  const outgoingByNode = new Map<string, Set<Side>>()
-  const toSide = (h: string): Side => (h.endsWith('-top') ? 'top' : h.endsWith('-right') ? 'right' : h.endsWith('-bottom') ? 'bottom' : 'left')
-  const addSide = (m: Map<string, Set<Side>>, id: string, side: Side) => {
-    const s = m.get(id) ?? new Set<Side>()
-    s.add(side)
-    m.set(id, s)
-  }
-  const sideCandidates = (preferred: Side): Side[] => {
-    if (preferred === 'top') return ['top', 'left', 'right', 'bottom']
-    if (preferred === 'bottom') return ['bottom', 'left', 'right', 'top']
-    if (preferred === 'left') return ['left', 'top', 'bottom', 'right']
-    return ['right', 'top', 'bottom', 'left']
-  }
-  const opposite = (s: Side): Side =>
-    s === 'top' ? 'bottom' : s === 'bottom' ? 'top' : s === 'left' ? 'right' : 'left'
-  const scoreOut = (nodeId: string, c: Side, preferred: Side) => {
-    const incoming = incomingByNode.get(nodeId) ?? new Set<Side>()
-    const outgoing = outgoingByNode.get(nodeId) ?? new Set<Side>()
-    // 硬约束：同侧不能同时 in/out
-    if (incoming.has(c)) return Number.POSITIVE_INFINITY
-    // 强约束：尽量不出现对向侧都出线（left/right 或 top/bottom）
-    let score = 0
-    if (outgoing.has(opposite(c))) score += 100
-    if (c !== preferred) score += 6
-    // 轻惩罚：重复使用同侧会更拥挤
-    if (outgoing.has(c)) score += 2
-    return score
-  }
-  const scoreIn = (nodeId: string, c: Side, preferred: Side) => {
-    const outgoing = outgoingByNode.get(nodeId) ?? new Set<Side>()
-    const incoming = incomingByNode.get(nodeId) ?? new Set<Side>()
-    // 硬约束：同侧不能同时 in/out
-    if (outgoing.has(c)) return Number.POSITIVE_INFINITY
-    // 强约束：尽量不出现对向侧都入线
-    let score = 0
-    if (incoming.has(opposite(c))) score += 100
-    if (c !== preferred) score += 6
-    if (incoming.has(c)) score += 2
-    return score
-  }
-  const pickSourceSide = (nodeId: string, preferred: Side): Side => {
-    const cands = sideCandidates(preferred)
-    let best = preferred
-    let bestScore = Number.POSITIVE_INFINITY
-    for (const c of cands) {
-      const s = scoreOut(nodeId, c, preferred)
-      if (s < bestScore) {
-        best = c
-        bestScore = s
-      }
-    }
-    return best
-  }
-  const pickTargetSide = (nodeId: string, preferred: Side): Side => {
-    const cands = sideCandidates(preferred)
-    let best = preferred
-    let bestScore = Number.POSITIVE_INFINITY
-    for (const c of cands) {
-      const s = scoreIn(nodeId, c, preferred)
-      if (s < bestScore) {
-        best = c
-        bestScore = s
-      }
-    }
-    return best
-  }
-
-  return edges.map((e) => {
-    const centers = getCenters(e.source, e.target, nodeById)
-    if (!centers) return e
-    const dx = centers.tCx - centers.sCx
-    const dy = centers.tCy - centers.sCy
-
-    let sourceHandle: string
-    let targetHandle: string
-    const pref = inferPreferredSidesByGeometry(dx, dy)
-    if (direction === 'LR' || direction === 'RL') {
-      const congested = (outDegree.get(e.source) ?? 0) > 1 || (inDegree.get(e.target) ?? 0) > 1
-      const srcPref: Side = congested ? pref.src : pref.src
-      const tgtPref: Side = congested ? pref.tgt : pref.tgt
-      const srcSide = pickSourceSide(e.source, srcPref)
-      const tgtSide = pickTargetSide(e.target, tgtPref)
-      sourceHandle = `s-${srcSide}`
-      targetHandle = `t-${tgtSide}`
-    } else if (direction === 'TB' || direction === 'BT') {
-      const congested = (outDegree.get(e.source) ?? 0) > 1 || (inDegree.get(e.target) ?? 0) > 1
-      const srcPref: Side = congested ? pref.src : pref.src
-      const tgtPref: Side = congested ? pref.tgt : pref.tgt
-      const srcSide = pickSourceSide(e.source, srcPref)
-      const tgtSide = pickTargetSide(e.target, tgtPref)
-      sourceHandle = `s-${srcSide}`
-      targetHandle = `t-${tgtSide}`
-    } else {
-      const inferred = inferHandlesForEdge(e.source, e.target, nodeById)
-      if (!inferred) return e
-      const srcPref = toSide(inferred.sourceHandle)
-      const tgtPref = toSide(inferred.targetHandle)
-      const srcSide = pickSourceSide(e.source, srcPref)
-      const tgtSide = pickTargetSide(e.target, tgtPref)
-      sourceHandle = `s-${srcSide}`
-      targetHandle = `t-${tgtSide}`
-    }
-
-    addSide(outgoingByNode, e.source, toSide(sourceHandle))
-    addSide(incomingByNode, e.target, toSide(targetHandle))
-    const d = { ...((e.data ?? {}) as any), autoOffset: 0 }
-    const congested = (outDegree.get(e.source) ?? 0) > 1 || (inDegree.get(e.target) ?? 0) > 1
-        const nextType = congested ? 'bezier' : e.type
-    return { ...e, sourceHandle, targetHandle, type: nextType, data: d }
-  })
+  // Reverted to Dagre default readability for flowcharts:
+  // keep inferred handles and edge type as-is, avoid secondary forced routing.
+  void nodes
+  void direction
+  return edges
 }
 
 /**
@@ -1402,7 +1267,7 @@ export async function materializeGraphBatchPayloadToSnapshot(
       const isCrossLane = edgeData.semanticType === 'crossLane'
       const edgeType = swimlaneMode
         ? (isCrossLane ? 'smoothstep' : (op.params.type ?? 'bezier'))
-        : (mindMapMode || flowchartMode ? 'bezier' : op.params.type ?? 'bezier')
+        : (mindMapMode ? 'bezier' : (flowchartMode ? (op.params.type ?? 'bezier') : op.params.type ?? 'bezier'))
 
       const edge: Edge<any> = {
         id: op.params.id,
@@ -1442,7 +1307,7 @@ export async function materializeGraphBatchPayloadToSnapshot(
         continue
       }
       const withinFrameDir: FlowDirection = op.params.direction
-      const topLevelDir: FlowDirection = 'LR'
+      const topLevelDir: FlowDirection = op.params.direction
       if (op.params.scope === 'withinFrame' && op.params.frameId) {
         const next = await layoutWithinFrame(
           nodes,
@@ -1546,7 +1411,7 @@ export async function materializeGraphBatchPayloadToSnapshot(
       const n = safeNodes.find((x) => x.id === id)
       if (n?.position) explicitBackup.set(id, { x: n.position.x, y: n.position.y })
     }
-    const topLevelDir: FlowDirection = 'LR'
+    const topLevelDir: FlowDirection = payload.direction
     safeNodes = await layoutTopLevel(safeNodes, edges, topLevelDir)
     for (const [id, pos] of explicitBackup) {
       const n = safeNodes.find((x) => x.id === id)

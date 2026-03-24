@@ -44,9 +44,9 @@
   - `A[文本]` -> `title='文本'`，`shape='rect'`
   - `A(文本)` -> `title='文本'`，`shape='circle'`
   - `A{文本}` -> `title='文本'`，`shape='diamond'`
-- 边 -> **smoothstep edge**
+- 边 -> **bezier edge**
   - 输出 `graph.createEdge`
-  - `type='smoothstep'`，`arrowStyle='end'`
+  - `type='bezier'`，`arrowStyle='end'`
   - `A -->|标签| B` 映射到 `label='标签'`
 
 ## Frame/parentId 规则（v1）
@@ -91,7 +91,7 @@ type MermaidToGraphResult = {
 - `parseMermaidFlowchart(input)`：Mermaid → `MermaidFlowIR`
 - `transpileMermaidFlowIR(ir, rawMermaid, warnings)`：IR → `GraphBatchPayload`
 - `applyMermaidFlowchart(input, ctx)`：一条龙（走 `graph.batch` 或 `applyOperation`）
-- `materializeGraphBatchPayloadToSnapshot(payload)`：`async`，payload → Flow2Go nodes/edges 快照（用于草稿/预览；流程图布局使用 **ELK.js layered**）
+- `materializeGraphBatchPayloadToSnapshot(payload)`：`async`，payload → Flow2Go nodes/edges 快照（用于草稿/预览；流程图布局使用 **Dagre 默认布局**）
 - `applyGraphBatchPayloadToFlow2Go(payload, ctx)`：payload → 一次性应用到 Flow2Go（一次 pushHistory，reason='ai-apply'）
 
 ## 示例

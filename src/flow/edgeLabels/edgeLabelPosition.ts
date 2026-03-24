@@ -56,7 +56,7 @@ function cubicBezierXY(
 }
 
 /**
- * Bezier 边：center 与 getBezierPath 返回值一致；head/tail 取 t≈0.22 / 0.78。
+ * Bezier 边：center 与 getBezierPath 返回值一致；head/tail 取 t≈1/3 / 2/3。
  */
 export function getBezierLabelAnchors(params: GetBezierPathParams): EdgeLabelAnchors {
   const curvature = params.curvature ?? 0.25
@@ -80,7 +80,7 @@ export function getBezierLabelAnchors(params: GetBezierPathParams): EdgeLabelAnc
   return {
     center: { x: cx, y: cy },
     head: cubicBezierXY(
-      0.22,
+      1 / 3,
       params.sourceX,
       params.sourceY,
       sourceControlX,
@@ -91,7 +91,7 @@ export function getBezierLabelAnchors(params: GetBezierPathParams): EdgeLabelAnc
       params.targetY,
     ),
     tail: cubicBezierXY(
-      0.78,
+      2 / 3,
       params.sourceX,
       params.sourceY,
       sourceControlX,
@@ -155,7 +155,7 @@ export function getPolylineLabelAnchors(points: ReadonlyArray<XY>): EdgeLabelAnc
 
   return {
     center: atRatio(0.5),
-    head: atRatio(0.22),
-    tail: atRatio(0.78),
+    head: atRatio(1 / 3),
+    tail: atRatio(2 / 3),
   }
 }

@@ -102,7 +102,7 @@ const FLOWCHART_PROFILE_SUBGRAPH_SOFT_HINT = [
   '【流程图 layout profile（软提示）】',
   '- profile 名称仅作语义参考（前后端链路 / 数据管道 / Agent / 审批 / 架构 / 用户旅程等），按 Planner JSON 与用户诉求组织 subgraph 与节点即可。',
   '- 不强制固定分区标题、不强制最少 subgraph 数量；需要分组时用 subgraph，不需要时可少画框或扁平节点。',
-  '- 画布上：子图内部与顶层画框/节点的相对位置由 Flow2Go 内置 ELK `layered` 自动布局；画框间距与层间距遵循 ELK 默认值，无需为留白而删减内容。',
+  '- 画布上：子图内部与顶层画框/节点的相对位置由 Flow2Go 内置 Dagre 自动布局；间距遵循 Dagre 默认值，无需为留白而删减内容。',
 ].join('\n')
 
 const LAYOUT_PROFILE_SUBGRAPH_RULES: Record<LayoutProfileKey, string> = {
@@ -134,7 +134,7 @@ function layoutDecisionSystemSnippet(ld: LayoutDecision): string {
   ]
   if (ld.diagramType === 'flowchart') {
     lines.push(
-      '- 流程图物化：每个子图内部与顶层元素各跑一次 ELK layered；间距/组件间距为 ELK 默认（未传 LayoutSpacingOptions）。不要求人为压缩节点或边数量。',
+      '- 流程图物化：每个子图内部与顶层元素各跑一次 Dagre 默认布局；不要求人为压缩节点或边数量。',
     )
   }
   return lines.join('\n')
@@ -871,4 +871,3 @@ export async function openRouterGenerateDiagram(opts: OpenRouterChatOptions): Pr
   report('生成完成', '流程图/通用')
   return d1
 }
-

@@ -20,6 +20,13 @@ export function flowRectsOverlap(a: FlowRect, b: FlowRect, gap = GAP): boolean {
   return !(a.right + gap <= b.left || b.right + gap <= a.left || a.bottom + gap <= b.top || b.bottom + gap <= a.top)
 }
 
+function overlapsObstacles(rect: FlowRect, obstacles: ReadonlyArray<FlowRect>): boolean {
+  for (const o of obstacles) {
+    if (flowRectsOverlap(rect, o)) return true
+  }
+  return false
+}
+
 function centerForSpec(spec: CollisionLabelSpec): { cx: number; cy: number } {
   const { preferred, anchors, manual, state } = spec
   const ax = anchors[state.activeAnchor]
@@ -54,6 +61,7 @@ export function resolveEdgeLabelCollisions(
   specs: CollisionLabelSpec[],
   sizes: Map<string, { w: number; h: number }>,
   maxRounds = 10,
+  obstacles: ReadonlyArray<FlowRect> = [],
 ): Map<string, EdgeLabelCollisionState> {
   const states = new Map<string, EdgeLabelCollisionState>()
   for (const s of specs) {
@@ -75,6 +83,7 @@ export function resolveEdgeLabelCollisions(
   const hasOverlapFor = (id: string, boxes: Array<{ id: string; rect: FlowRect }>): boolean => {
     const self = boxes.find((b) => b.id === id)
     if (!self) return false
+    if (overlapsObstacles(self.rect, obstacles)) return true
     for (const o of boxes) {
       if (o.id === id) continue
       if (flowRectsOverlap(self.rect, o.rect)) return true
@@ -83,6 +92,9 @@ export function resolveEdgeLabelCollisions(
   }
 
   const anyOverlap = (boxes: Array<{ id: string; rect: FlowRect }>): boolean => {
+    for (const b of boxes) {
+      if (overlapsObstacles(b.rect, obstacles)) return true
+    }
     for (let i = 0; i < boxes.length; i += 1) {
       for (let j = i + 1; j < boxes.length; j += 1) {
         if (flowRectsOverlap(boxes[i].rect, boxes[j].rect)) return true

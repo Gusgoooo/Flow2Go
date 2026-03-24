@@ -14,7 +14,7 @@ import {
   resolveEdgeLabelCollisions,
   type CollisionLabelSpec,
 } from './edgeLabelCollision'
-import type { EdgeLabelAnchors, EdgeLabelCollisionState, EdgeLabelPlacement, SmartEdgeLabelProps } from './types'
+import type { EdgeLabelAnchors, EdgeLabelCollisionState, EdgeLabelPlacement, FlowRect, SmartEdgeLabelProps } from './types'
 
 type RegistryEntry = {
   id: string
@@ -26,7 +26,7 @@ type RegistryEntry = {
 }
 
 type EdgeLabelLayoutFullContext = {
-  getResolved: (id: string) => EdgeLabelCollisionState
+  getResolved: (id: string, preferred: EdgeLabelPlacement) => EdgeLabelCollisionState
   register: (entry: RegistryEntry) => void
   unregister: (id: string) => void
   /** 锚点/文案等变化时触发，使避让重新计算（不依赖整条边的 zustand 引用） */
@@ -43,16 +43,88 @@ function noopUnregister(id: string) {
 }
 function noopBump() {}
 
+function defaultPlacementForEdge(edgeId: string): Exclude<EdgeLabelPlacement, 'manual' | 'center'> {
+  let h = 0
+  for (let i = 0; i < edgeId.length; i += 1) {
+    h = (h * 31 + edgeId.charCodeAt(i)) | 0
+  }
+  return (h & 1) === 0 ? 'head' : 'tail'
+}
+
+function numericOr(fallback: number, ...vals: Array<unknown>): number {
+  for (const v of vals) {
+    if (typeof v === 'number' && Number.isFinite(v)) return v
+  }
+  return fallback
+}
+
+function buildNodeObstacles(nodes: Array<any>): FlowRect[] {
+  if (nodes.length === 0) return []
+  const byId = new Map<string, any>()
+  for (const n of nodes) byId.set(n.id, n)
+
+  const absCache = new Map<string, { x: number; y: number }>()
+  const visiting = new Set<string>()
+  const getAbs = (id: string): { x: number; y: number } => {
+    const cached = absCache.get(id)
+    if (cached) return cached
+    const n = byId.get(id)
+    if (!n) return { x: 0, y: 0 }
+    if (visiting.has(id)) {
+      const x = numericOr(0, n.positionAbsolute?.x, n.position?.x)
+      const y = numericOr(0, n.positionAbsolute?.y, n.position?.y)
+      return { x, y }
+    }
+    visiting.add(id)
+    const localX = numericOr(0, n.positionAbsolute?.x, n.position?.x)
+    const localY = numericOr(0, n.positionAbsolute?.y, n.position?.y)
+    let abs = { x: localX, y: localY }
+    const parentId = typeof n.parentId === 'string' ? n.parentId : ''
+    if (parentId) {
+      const p = getAbs(parentId)
+      abs = { x: p.x + localX, y: p.y + localY }
+    }
+    absCache.set(id, abs)
+    visiting.delete(id)
+    return abs
+  }
+
+  const out: FlowRect[] = []
+  for (const n of nodes) {
+    if (n?.hidden) continue
+    if (n?.type === 'group') continue
+    const abs = getAbs(n.id)
+    const w = numericOr(160, n?.measured?.width, n?.width, (n?.style as any)?.width)
+    const h = numericOr(44, n?.measured?.height, n?.height, (n?.style as any)?.height)
+    if (w <= 0 || h <= 0) continue
+    out.push({
+      left: abs.x,
+      top: abs.y,
+      right: abs.x + w,
+      bottom: abs.y + h,
+    })
+  }
+  return out
+}
+
 function selectLayoutTrigger(s: ReactFlowState) {
   return {
     tx: s.transform[0],
     ty: s.transform[1],
     zoom: s.transform[2],
-    sig: s.edges
+    edgeSig: s.edges
       .map(
         (e) =>
           `${e.id}:${String(e.label ?? '')}:${JSON.stringify((e.data as { labelLayout?: unknown })?.labelLayout ?? {})}`,
       )
+      .join('|'),
+    nodeSig: s.nodes
+      .map((n) => {
+        const na = n as any
+        return `${n.id}:${n.type ?? ''}:${n.parentId ?? ''}:${n.hidden ? 1 : 0}:${n.position?.x ?? 0}:${n.position?.y ?? 0}:${
+          na.positionAbsolute?.x ?? ''
+        }:${na.positionAbsolute?.y ?? ''}:${n.measured?.width ?? n.width ?? ''}:${n.measured?.height ?? n.height ?? ''}`
+      })
       .join('|'),
   }
 }
@@ -99,6 +171,7 @@ export function EdgeLabelLayoutProvider({ children }: { children: ReactNode }) {
       setCollisionMap(new Map())
       return
     }
+    const obstacleRects = buildNodeObstacles(rf.getNodes())
 
     const sizes = new Map<string, { w: number; h: number }>()
     for (const e of entries) {
@@ -128,7 +201,7 @@ export function EdgeLabelLayoutProvider({ children }: { children: ReactNode }) {
         })
       }
       if (specs.length === 0) return prev.size === 0 ? prev : new Map()
-      const next = resolveEdgeLabelCollisions(specs, sizes, 12)
+      const next = resolveEdgeLabelCollisions(specs, sizes, 12, obstacleRects)
       return collisionMapsEqual(prev, next) ? prev : next
     })
   }, [layoutTrigger, rf, layoutEpoch])
@@ -136,7 +209,8 @@ export function EdgeLabelLayoutProvider({ children }: { children: ReactNode }) {
 
   const value = useMemo<EdgeLabelLayoutFullContext>(
     () => ({
-      getResolved: (id: string) => collisionMap.get(id) ?? initialCollisionState('center'),
+      getResolved: (id: string, preferred: EdgeLabelPlacement) =>
+        collisionMap.get(id) ?? initialCollisionState(preferred),
       register,
       unregister,
       bumpLayout,
@@ -151,9 +225,9 @@ function useEdgeLabelLayout(): EdgeLabelLayoutFullContext {
   const v = useContext(EdgeLabelLayoutContext)
   if (!v) {
     return {
-      getResolved: (id: string) => {
+      getResolved: (id: string, preferred: EdgeLabelPlacement) => {
         void id
-        return initialCollisionState('center')
+        return initialCollisionState(preferred)
       },
       register: noopRegister,
       unregister: noopUnregister,
@@ -204,14 +278,14 @@ export function SmartEdgeLabel(props: SmartEdgeLabelProps) {
 
   const { getResolved, register, unregister, bumpLayout } = useEdgeLabelLayout()
 
-  const preferred: EdgeLabelPlacement = labelLayout?.placement ?? 'center'
+  const preferred: EdgeLabelPlacement = labelLayout?.placement ?? defaultPlacementForEdge(edgeId)
   const manual = useMemo(
     () => ({ x: labelLayout?.offsetX ?? 0, y: labelLayout?.offsetY ?? 0 }),
     [labelLayout?.offsetX, labelLayout?.offsetY],
   )
 
   const wrapperRef = useRef<HTMLDivElement | null>(null)
-  const collision = getResolved(edgeId)
+  const collision = getResolved(edgeId, preferred)
   const { x: cx, y: cy } = computeLabelCenter(anchors, preferred, manual, collision)
 
   const enabled = editing || Boolean(text?.trim()) || Boolean(showWhenEmpty)
