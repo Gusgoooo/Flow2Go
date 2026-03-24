@@ -71,7 +71,6 @@ import {
 } from './aiDiagram'
 import { AI_SCENE_CAPSULE_PRESETS } from './aiPromptPresets'
 import { AiSceneCapsules } from './AiSceneCapsules'
-import { postOpenRouter } from './openRouterClient'
 // overview 示例入口已移除
 
 export type AssetItem = {
@@ -288,15 +287,22 @@ function Sidebar({
 
     try {
       // 使用 OpenRouter 的 DALL-E 3 模型生成图片
-      const requestBody = {
+      const requestBody = JSON.stringify({
         model: 'openai/dall-e-3',
         prompt: enhancedPrompt,
         n: 1,
         size: '1024x1024',
         response_format: 'b64_json',
-      }
-      const response = await postOpenRouter('images/generations', requestBody, {
-        apiKey: apiKey.trim(),
+      })
+      const response = await fetch('https://openrouter.ai/api/v1/images/generations', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          Authorization: `Bearer ${apiKey.trim()}`,
+          'HTTP-Referer': window.location.origin,
+          'X-Title': 'Flow2Go',
+        },
+        body: requestBody,
       })
 
       if (!response.ok) {

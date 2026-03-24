@@ -39,7 +39,7 @@ export type OpenRouterChatOptions = {
 import { parseMermaidFlowchart, transpileMermaidFlowIR } from './mermaid'
 import { materializeGraphBatchPayloadToSnapshot } from './mermaid/apply'
 
-const DEFAULT_TIMEOUT_MS = 45_000
+const DEFAULT_TIMEOUT_MS = 90_000
 
 import MERMAID_GENERATOR_SYSTEM_PROMPT from './aiPromptPresets/mermaid-generator-system-prompt.md?raw'
 import {
@@ -52,7 +52,6 @@ import {
   sceneRouteFromLegacyTemplateKey,
   toPlannerComplexity,
 } from './aiLayoutTypes'
-import { postOpenRouter } from './openRouterClient'
 
 /** 兼容旧代码：模板名称（思维导图 + 流程图 profile） */
 export type UserTemplateKey =
@@ -172,17 +171,24 @@ async function openRouterChatComplete(args: {
   }
 
   try {
-    const requestBody = {
+    const requestBody = JSON.stringify({
       model: args.model,
       temperature: args.temperature,
       messages: [
         { role: 'system', content: args.system },
         { role: 'user', content: args.user },
       ],
-    }
-    const res = await postOpenRouter('chat/completions', requestBody, {
-      apiKey: args.apiKey,
+    })
+    const res = await fetch('https://openrouter.ai/api/v1/chat/completions', {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        Authorization: `Bearer ${args.apiKey.trim()}`,
+        'HTTP-Referer': window.location.origin,
+        'X-Title': 'Flow2Go',
+      },
       signal: mergedController.signal,
+      body: requestBody,
     })
 
     const text = await res.text()
@@ -401,7 +407,7 @@ const SCENE_ROUTER_SYSTEM_PROMPT = [
 ].join('\n')
 
 const LONG_INPUT_SUMMARY_THRESHOLD = 2200
-const LONG_INPUT_TIMEOUT_MS = 90_000
+const LONG_INPUT_TIMEOUT_MS = 150_000
 const FLOWCHART_GUARD_NODE_MAX = 20
 const FLOWCHART_GUARD_EDGE_MAX = 26
 

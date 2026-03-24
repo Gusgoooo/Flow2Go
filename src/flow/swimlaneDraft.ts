@@ -3,7 +3,6 @@
  * LLM / 外部输入只需产出此结构，由 swimlaneDraftToGraphBatchPayload 转为 GraphBatchPayload。
  */
 import type { GraphBatchPayload, GraphOperation } from './mermaid/types'
-import { postOpenRouter } from './openRouterClient'
 
 export type SwimlaneDraftNode = {
   id: string
@@ -342,24 +341,29 @@ function validateSwimlaneDraft(draft: any): SwimlaneDraft {
 export async function generateSwimlaneDraftWithLLM(
   opts: GenerateSwimlaneDraftOptions,
 ): Promise<SwimlaneDraft> {
-  const { apiKey, model, prompt, signal, timeoutMs = 45_000 } = opts
+  const { apiKey, model, prompt, signal, timeoutMs = 90_000 } = opts
   // Key 可选：生产环境可通过服务端代理环境变量提供
   const controller = new AbortController()
   const timer = setTimeout(() => controller.abort(new Error('timeout')), timeoutMs)
   const onAbort = () => controller.abort(signal?.reason)
   signal?.addEventListener('abort', onAbort, { once: true })
   try {
-    const requestBody = {
+    const requestBody = JSON.stringify({
       model,
       temperature: 0.2,
       messages: [
         { role: 'system', content: SWIMLANE_DRAFT_SYSTEM_PROMPT },
         { role: 'user', content: prompt },
       ],
-    }
-    const res = await postOpenRouter('chat/completions', requestBody, {
-      apiKey: apiKey.trim(),
+    })
+    const res = await fetch('https://openrouter.ai/api/v1/chat/completions', {
+      method: 'POST',
+      headers: {
+        Authorization: `Bearer ${apiKey.trim()}`,
+        'Content-Type': 'application/json',
+      },
       signal: controller.signal,
+      body: requestBody,
     })
     const text = await res.text()
     if (!res.ok) throw new Error(`OpenRouter 请求失败: ${res.status} ${text}`)
