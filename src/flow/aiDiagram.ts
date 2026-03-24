@@ -789,6 +789,8 @@ export async function openRouterGenerateDiagram(opts: OpenRouterChatOptions): Pr
     '4) 禁止：任何 subgraph / end / frame / 画框 / 编组。',
     '5) 禁止：生成步骤式“流程图语序/章节链条”；只能做树状发散。',
     '6) Mermaid 第一行必须是 flowchart LR。',
+    '7) 所有节点文本必须短词化：2~8个汉字，严禁整句；超过10个字必须先压缩。',
+    '8) 禁止主副标题写法（包括 ｜ 或 \\n）；思维导图节点只能单行短标题。',
   ].join('\n')
 
   const generateOnce = async (extraUserHint?: string, mermaidStepLabel?: string) => {

@@ -57,6 +57,10 @@ function lineHeightForFontSizePx(fs: number) {
   return `${Math.round(fs) + 8}px`
 }
 
+function subtitleLineHeightForFontSizePx(fs: number) {
+  return `${Math.round(fs) + 2}px`
+}
+
 export function QuadNode(props: NodeProps) {
   const data = (props.data ?? {}) as QuadNodeData
   const rf = useReactFlow()
@@ -177,7 +181,7 @@ export function QuadNode(props: NodeProps) {
     fontSize: subtitleFs,
     fontWeight: data.subtitleFontWeight ?? '400',
     color: data.subtitleColor ?? '#64748b',
-    lineHeight: lineHeightForFontSizePx(subtitleFs),
+    lineHeight: subtitleLineHeightForFontSizePx(subtitleFs),
   }
 
   const nodeColor = data.color
