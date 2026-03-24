@@ -1,47 +1,89 @@
-# Flow2Go（类 Figma 的大图编辑器）
+# Flow2Go
 
-Flow2Go 是一个基于 `@xyflow/react`（React Flow）的浏览器端大图/流程图编辑器。核心目标是让你用接近 Figma 的方式组织内容：**节点 + 边 + 画框(Frame)容器 + 素材**，并支持嵌套、拖入/拖出重挂载、快速编辑与保存。
+Flow2Go is a browser-based diagram editor built with `@xyflow/react` (React Flow).  
+It is designed for Figma-like canvas workflows: nodes, edges, frame containers, assets, grouping, and fast editing on large diagrams.
 
-## 核心特性
+## What You Can Do
 
-- **Frame（画框）是真实容器**：用 `parentId` 建立父子关系，子节点坐标是父容器的**局部坐标**（不是视觉包裹）
-- **Frame 可嵌套**：支持 A 包 B 包 C；拖出 C 时光标落在 B/A 内会重挂载到 B/A（Figma 语义）
-- **编组（Group）可多层嵌套**：允许对群组再包一层；bounds 计算包含子树与相关边几何
-- **边（Edge）**：label 双击编辑；菜单保留简洁项（类型/箭头/颜色/线宽/动画）
-- **可编辑折线**：支持 waypoints 拖拽与随动
-- **素材（Asset）**：导入 SVG/PNG；45°步进旋转、水平/垂直翻转；SVG 支持颜色覆盖（同款拾色板）
+- Build diagrams with draggable nodes and editable edges.
+- Use **Frame containers** with real parent-child relationships (`parentId`), not visual-only grouping.
+- Nest frames and groups, and re-parent elements by dragging in/out of containers.
+- Edit edge labels, edge styles, arrows, colors, and widths.
+- Upload **SVG/PNG assets** and drag them directly onto the canvas.
+- Apply asset transforms such as rotation and flip, with SVG color override support.
+- Save/export and import projects (including assets) for local backup and sharing.
+- Generate diagrams with AI (optional OpenRouter-based workflow).
 
+## Tech Stack
 
-## 快速开始（本地开发）
+- React 19
+- TypeScript
+- Vite
+- `@xyflow/react`
+- Vitest + ESLint
+
+## Getting Started
+
+### 1) Install dependencies
 
 ```bash
 npm install
+```
+
+### 2) Start development server
+
+```bash
 npm run dev
 ```
 
-打开 `http://localhost:5173`。
+Open [http://localhost:5173](http://localhost:5173).
 
-## AI（可选）
+## Available Scripts
 
-如果你要用「生成图标 / 生成草稿图」等 AI 能力，请在侧边栏对应面板里**手动填写 OpenRouter API Key**。
-该 Key 会**仅保存在你的浏览器 localStorage** 中（清除浏览器数据会丢失）。
+- `npm run dev` — start local dev server
+- `npm run build` — type-check and build production bundle
+- `npm run preview` — preview the production build locally
+- `npm run lint` — run ESLint
+- `npm run test` — run Vitest tests
 
-## 构建
+## Data Persistence
+
+Flow2Go stores working data in browser storage by default.
+
+- Project state is persisted locally in the browser.
+- Clearing browser data may remove unsaved work.
+- Export your project regularly for backup.
+
+## Assets
+
+- Supported upload formats: `SVG`, `PNG`
+- Assets can be dragged from the asset panel into the canvas.
+- Asset panel supports local management (upload/delete) and quick editing after placement.
+
+## AI Features (Optional)
+
+Flow2Go includes optional AI-powered diagram generation.
+
+- Requires an OpenRouter API key.
+- API key is stored in browser local storage on your machine.
+- Avoid sending sensitive company or personal data in prompts.
+
+## Build for Production
 
 ```bash
 npm run build
 ```
 
-产物在 `dist/`。
+Build output is generated in `dist/`.
 
-## Docker（可选）
+## Docker (Optional)
 
-### 生产模式（Nginx 静态托管）
+Use Docker to run the production build with Nginx:
 
 ```bash
 docker build -t flow2go .
 docker run --rm -p 8080:80 flow2go
 ```
 
-打开 `http://localhost:8080`。
+Open [http://localhost:8080](http://localhost:8080).
 

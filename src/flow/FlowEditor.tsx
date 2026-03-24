@@ -199,34 +199,26 @@ function Sidebar({
   assets,
   onAddAsset,
   onDeleteAsset,
-  onAddAiAsset,
   aiDiagramDraft,
   fileName,
   onRenameFile,
   onBackHome,
+  onClose,
   containerClassName,
 }: {
   assets: AssetItem[]
   onAddAsset: (files: FileList | null) => void
   onDeleteAsset: (assetId: string) => void
-  onAddAiAsset: (dataUrl: string, name: string) => void
   aiDiagramDraft: AiDiagramDraft | null
   fileName: string
   onRenameFile?: (name: string) => void
   onBackHome?: () => void
+  onClose?: () => void
   containerClassName?: string
 }) {
   const [editingTitle, setEditingTitle] = useState(false)
   const [draftTitle, setDraftTitle] = useState(fileName)
   const [menuOpen, setMenuOpen] = useState<string | null>(null) // asset id or null
-  const [assetTab, setAssetTab] = useState<'library' | 'ai'>('library')
-  const [aiPrompt, setAiPrompt] = useState('')
-  const [aiGenerating, setAiGenerating] = useState(false)
-  const [aiError, setAiError] = useState<string | null>(null)
-  const [openRouterKey, setOpenRouterKey] = useState<string>(() => {
-    return readStoredOpenRouterKey()
-  })
-  const apiKey = openRouterKey.trim()
   const [dslModalOpen, setDslModalOpen] = useState(false)
 
   const [sidebarWidth, setSidebarWidth] = useState<number>(() => {
@@ -239,10 +231,6 @@ function Sidebar({
     }
   })
   const sidebarResizeRef = useRef<{ active: boolean; startX: number; startWidth: number } | null>(null)
-
-  useEffect(() => {
-    persistOpenRouterKey(openRouterKey)
-  }, [openRouterKey])
 
   useEffect(() => {
     try {
@@ -273,72 +261,6 @@ function Sidebar({
 
   const fileInputRef = useRef<HTMLInputElement>(null)
 
-  // AI 生成图片
-  const generateAiAsset = useCallback(async () => {
-    if (!aiPrompt.trim() || aiGenerating) return
-    setAiGenerating(true)
-    setAiError(null)
-
-    // 预设配色范围
-    const allowedColors = 'blue (#3b82f6), green (#10b981), orange (#f59e0b), red (#ef4444), purple (#8b5cf6), cyan (#06b6d4), gray (#64748b), black, white'
-    
-    // 增强 prompt 以确保生成简约透明背景图
-    const enhancedPrompt = `A simple, minimalist flat icon of "${aiPrompt.trim()}". Clean design, solid colors only from: ${allowedColors}. No gradients, no shadows, no 3D effects. Centered on transparent background. PNG style, suitable for UI/diagram use. Simple geometric shapes.`
-
-    try {
-      // 使用 OpenRouter 的 DALL-E 3 模型生成图片
-      const requestBody = JSON.stringify({
-        model: 'openai/dall-e-3',
-        prompt: enhancedPrompt,
-        n: 1,
-        size: '1024x1024',
-        response_format: 'b64_json',
-      })
-      const response = await fetch('https://openrouter.ai/api/v1/images/generations', {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          Authorization: `Bearer ${apiKey.trim()}`,
-          'HTTP-Referer': window.location.origin,
-          'X-Title': 'Flow2Go',
-        },
-        body: requestBody,
-      })
-
-      if (!response.ok) {
-        const err = await response.text()
-        throw new Error(`API Error: ${response.status} - ${err}`)
-      }
-
-      const data = await response.json()
-      
-      // 从响应中提取 base64 图片数据
-      const b64Data = data.data?.[0]?.b64_json
-      if (b64Data) {
-        const dataUrl = `data:image/png;base64,${b64Data}`
-        onAddAiAsset(dataUrl, `ai-${Date.now()}.png`)
-        setAiPrompt('')
-      } else if (data.data?.[0]?.url) {
-        // 如果返回的是 URL，则下载图片
-        const imgResponse = await fetch(data.data[0].url)
-        const blob = await imgResponse.blob()
-        const reader = new FileReader()
-        reader.onload = () => {
-          const dataUrl = reader.result as string
-          onAddAiAsset(dataUrl, `ai-${Date.now()}.png`)
-          setAiPrompt('')
-        }
-        reader.readAsDataURL(blob)
-      } else {
-        throw new Error('未能从响应中获取图片')
-      }
-    } catch (err) {
-      setAiError(err instanceof Error ? err.message : '生成失败')
-    } finally {
-      setAiGenerating(false)
-    }
-  }, [aiPrompt, aiGenerating, onAddAiAsset, apiKey])
-
   return (
     <aside
       className={`${styles.sidebar} ${containerClassName ?? ''}`}
@@ -357,7 +279,8 @@ function Sidebar({
         onPointerMove={(e) => {
           const ref = sidebarResizeRef.current
           if (!ref?.active) return
-          const delta = e.clientX - ref.startX
+          // 左侧拖拽手柄：向左拖应变宽，向右拖应变窄
+          const delta = ref.startX - e.clientX
           const next = Math.max(240, Math.min(520, ref.startWidth + delta))
           setSidebarWidth(next)
         }}
@@ -371,28 +294,13 @@ function Sidebar({
         style={{
           position: 'absolute',
           top: 0,
-          right: 0,
+          left: 0,
           bottom: 0,
           width: 10,
           cursor: 'ew-resize',
-          // 放在容器内部，避免被 overflow:hidden 裁剪
-          background: 'linear-gradient(to left, rgba(148,163,184,0.20), rgba(148,163,184,0.00))',
+          background: 'transparent',
           zIndex: 999,
           pointerEvents: 'auto',
-        }}
-      />
-      <div
-        aria-hidden="true"
-        style={{
-          position: 'absolute',
-          top: 12,
-          right: 3,
-          bottom: 12,
-          width: 2,
-          borderRadius: 2,
-          background: 'rgba(148, 163, 184, 0.22)',
-          zIndex: 998,
-          pointerEvents: 'none',
         }}
       />
       <div className={styles.sidebarInner}>
@@ -434,30 +342,17 @@ function Sidebar({
               {fileName}
             </div>
           )}
+          {onClose && (
+            <button type="button" className={styles.popupCloseBtn} onClick={onClose} aria-label="关闭素材面板">
+              <X size={14} />
+            </button>
+          )}
           </div>
         </div>
 
         <div className={styles.sidebarScroll}>
       <div className={styles.section}>
         <div className={styles.sectionTitle}>素材</div>
-        <div className={styles.assetTabRow}>
-          <button
-            type="button"
-            className={`${styles.assetTabBtn} ${assetTab === 'library' ? styles.assetTabBtnActive : ''}`}
-            onClick={() => setAssetTab('library')}
-          >
-            素材库
-          </button>
-          <button
-            type="button"
-            className={`${styles.assetTabBtn} ${assetTab === 'ai' ? styles.assetTabBtnActive : ''}`}
-            onClick={() => setAssetTab('ai')}
-          >
-            AI生成
-          </button>
-        </div>
-
-        {assetTab === 'library' && (
           <>
             <input
               ref={fileInputRef}
@@ -524,46 +419,6 @@ function Sidebar({
               <div className={styles.assetEmpty}>上传后拖拽到画布使用</div>
             )}
           </>
-        )}
-
-        {assetTab === 'ai' && (
-          <div className={styles.aiSection}>
-            <div className={styles.aiNote}>
-              输入描述，AI 将生成简约风格的透明背景图标
-            </div>
-            <div className={styles.aiApiKeySection}>
-              <div className={styles.aiNote}>OpenRouter API Key（仅保存在本地浏览器）</div>
-              <input
-                className={styles.aiApiKeyInput}
-                type="password"
-                value={openRouterKey}
-                onChange={(e) => setOpenRouterKey(e.target.value)}
-                placeholder="sk-or-..."
-              />
-              <div className={styles.aiHint}>
-                {apiKey ? '✓ 已配置（localStorage）' : '未配置：需要先填写才能使用 AI'}
-              </div>
-            </div>
-            <textarea
-              className={styles.aiPromptInput}
-              placeholder="描述你想要的图标，例如：一个蓝色的用户头像图标"
-              value={aiPrompt}
-              onChange={(e) => setAiPrompt(e.target.value)}
-              rows={3}
-            />
-            <button
-              type="button"
-              className={styles.aiGenerateBtn}
-              disabled={aiGenerating || !aiPrompt.trim()}
-              onClick={generateAiAsset}
-            >
-              {aiGenerating ? '生成中...' : '生成图标'}
-            </button>
-            {aiError && (
-              <div className={styles.aiError}>{aiError}</div>
-            )}
-          </div>
-        )}
 
         {/* AI图入口已移除：改为顶栏全屏模态 */}
       </div>
@@ -1999,22 +1854,6 @@ function EditorInner({ onBackHome, source, previewSnapshot, readOnly: _readOnly 
     setAssets((prev) => prev.filter((a) => a.id !== assetId))
   }, [])
 
-  const onAddAiAsset = useCallback((dataUrl: string, name: string) => {
-    const img = new Image()
-    img.onload = () => {
-      const newAsset: AssetItem = {
-        id: `ai-${Date.now()}`,
-        name,
-        type: 'png',
-        dataUrl,
-        width: img.naturalWidth || 64,
-        height: img.naturalHeight || 64,
-      }
-      setAssets((prev) => [...prev, newAsset])
-    }
-    img.src = dataUrl
-  }, [])
-
   /** 在画布指定位置添加节点（由右键菜单「添加节点/添加文本」调用）；尽量选不重叠位置，减少框选误选 */
   const addNodeAtPosition = useCallback(
     (nodeType: 'quad' | 'text', flowPos: { x: number; y: number }) => {
@@ -3030,11 +2869,11 @@ function EditorInner({ onBackHome, source, previewSnapshot, readOnly: _readOnly 
           assets={assets}
           onAddAsset={onAddAsset}
           onDeleteAsset={onDeleteAsset}
-          onAddAiAsset={onAddAiAsset}
           aiDiagramDraft={aiDiagramDraft}
           fileName={fileName}
           onRenameFile={onRenameFile}
           onBackHome={onBackHome ? handleBackHome : undefined}
+          onClose={() => setAssetsPopupOpen(false)}
           containerClassName={styles.assetsPopup}
         />
       )}

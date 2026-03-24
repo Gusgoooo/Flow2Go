@@ -538,12 +538,31 @@
 
 .assetsPopup {
   position: fixed;
-  top: 52px;
+  top: 58px;
   right: 12px;
   left: auto;
   bottom: 12px;
   width: 280px;
   z-index: 40;
+}
+
+.popupCloseBtn {
+  margin-left: auto;
+  border: 1px solid #e5e7eb;
+  background: #ffffff;
+  color: #64748b;
+  width: 24px;
+  height: 24px;
+  border-radius: 999px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+}
+
+.popupCloseBtn:hover {
+  background: #f1f5f9;
+  color: #0f172a;
 }
 
 .btnDanger {
