@@ -5,7 +5,6 @@
  */
 import type { Edge, Node } from '@xyflow/react'
 import type { FlowDirection } from './mermaid/types'
-import { rerouteSwimlaneEdges } from './layout/routing/rerouteSwimlaneEdges'
 
 const LANE_HEADER_SIZE = 44
 const LANE_GAP = 24
@@ -205,7 +204,6 @@ export function autoLayoutSwimlane(args: {
     }
   }
 
-  // ── Phase C: 泳道路由修正（crossLane corridor + exclusion + 普通节点左右句柄） ──
-  const updatedEdges = rerouteSwimlaneEdges(nodes, edges)
-  return { nodes, edges: updatedEdges }
+  // 注意：禁止“二次修正”。自动布局只负责放置节点/泳道，不再改写已存在边。
+  return { nodes, edges }
 }
