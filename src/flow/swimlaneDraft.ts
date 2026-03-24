@@ -376,12 +376,16 @@ export async function generateSwimlaneDraftWithLLM(
         signal: controller.signal,
       })
     }
+    if ((res.status === 404 || res.status === 405) && !apiKey.trim()) {
+      throw new Error('OpenRouter 代理不可用（404/405），且当前未提供可用 API Key')
+    }
     const text = await res.text()
-    if (!res.ok) throw new Error(`OpenRouter 请求失败: ${res.status}`)
+    if (!res.ok) throw new Error(`OpenRouter 请求失败: ${res.status} ${text}`)
     const json = safeJsonParse(JSON.parse(text).choices?.[0]?.message?.content ?? '')
     return validateSwimlaneDraft(json)
   } catch (e) {
-    if (controller.signal.aborted) throw new Error('生成泳道图超时或被取消')
+    if (signal?.aborted) throw new Error('已取消本次泳道图生成')
+    if (controller.signal.aborted) throw new Error(`生成泳道图请求超时（>${Math.round(timeoutMs / 1000)}s）`)
     throw e
   } finally {
     clearTimeout(timer)
