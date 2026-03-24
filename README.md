@@ -16,6 +16,7 @@ This makes generated diagrams more predictable, easier to revise, and safer to u
 ## Demo
 
 https://flow2go-nine.vercel.app/
+![Flow2Go Screenshot](docs/assets/%E6%88%AA%E5%B1%8F2026-03-24%2020.04.35.png)
 
 ## Key Features
 
@@ -32,7 +33,6 @@ https://flow2go-nine.vercel.app/
 - AI operates on structure, planning, and constraints
 - Stable, controllable, extensible generation pipeline
 - Deterministic post-processing before canvas materialization
-
 
 ## Use cases
 
