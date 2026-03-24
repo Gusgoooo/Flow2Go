@@ -21,6 +21,36 @@ const DEFAULT_NODE_SIZES: Record<string, { w: number; h: number }> = {
   circle: { w: 64, h: 64 },
   diamond: { w: 96, h: 64 },
 }
+
+function getAbsolutePosition(node: Node<any>, byId: Map<string, Node<any>>): { x: number; y: number } {
+  let x = node.position?.x ?? 0
+  let y = node.position?.y ?? 0
+  let cur = node
+  const seen = new Set<string>()
+  while (cur.parentId) {
+    if (seen.has(cur.id)) break
+    seen.add(cur.id)
+    const p = byId.get(cur.parentId)
+    if (!p) break
+    x += p.position?.x ?? 0
+    y += p.position?.y ?? 0
+    cur = p
+  }
+  return { x, y }
+}
+
+function getHandlePoint(
+  node: Node<any>,
+  handle: string,
+  byId: Map<string, Node<any>>,
+): { x: number; y: number } {
+  const abs = getAbsolutePosition(node, byId)
+  const size = estimateNodeSize(node)
+  if (handle.endsWith('-top')) return { x: abs.x + size.w / 2, y: abs.y }
+  if (handle.endsWith('-bottom')) return { x: abs.x + size.w / 2, y: abs.y + size.h }
+  if (handle.endsWith('-left')) return { x: abs.x, y: abs.y + size.h / 2 }
+  return { x: abs.x + size.w, y: abs.y + size.h / 2 }
+}
 function getNodeSize(n: Node<any>): { w: number; h: number } {
   const w = n.measured?.width ?? n.width ?? (typeof (n.style as any)?.width === 'number' ? (n.style as any).width : undefined) ?? 160
   const h = n.measured?.height ?? n.height ?? (typeof (n.style as any)?.height === 'number' ? (n.style as any).height : undefined) ?? 44
@@ -204,6 +234,65 @@ export function autoLayoutSwimlane(args: {
     }
   }
 
-  // 注意：禁止“二次修正”。自动布局只负责放置节点/泳道，不再改写已存在边。
-  return { nodes, edges }
+  // ── Phase C: crossLane 一次性路由修正（仅自动布局时） ──
+  const byId = new Map(nodes.map((n) => [n.id, n]))
+  const laneIndexById = new Map(lanes.map((l, i) => [l.id, i]))
+  const laneOrderCounter = new Map<string, number>()
+  const routedEdges = edges.map((e) => {
+    const srcNode = byId.get(e.source)
+    const tgtNode = byId.get(e.target)
+    if (!srcNode || !tgtNode) return e
+    const srcLaneId = (srcNode.data as any)?.laneId ?? srcNode.parentId
+    const tgtLaneId = (tgtNode.data as any)?.laneId ?? tgtNode.parentId
+    const isCrossLane = Boolean(srcLaneId && tgtLaneId && srcLaneId !== tgtLaneId)
+    if (!isCrossLane || !srcLaneId || !tgtLaneId) return e
+    const srcLane = byId.get(srcLaneId)
+    const tgtLane = byId.get(tgtLaneId)
+    if (!srcLane || !tgtLane) return e
+    const srcIdx = laneIndexById.get(srcLaneId) ?? 0
+    const tgtIdx = laneIndexById.get(tgtLaneId) ?? 0
+    const sourceHandle = tgtIdx > srcIdx ? 's-bottom' : 's-top'
+    const targetHandle = tgtIdx > srcIdx ? 't-top' : 't-bottom'
+    const sp = getHandlePoint(srcNode, sourceHandle, byId)
+    const tp = getHandlePoint(tgtNode, targetHandle, byId)
+    const srcLaneAbs = getAbsolutePosition(srcLane, byId)
+    const tgtLaneAbs = getAbsolutePosition(tgtLane, byId)
+    const srcLaneRight = srcLaneAbs.x + estimateNodeSize(srcLane).w
+    const tgtLaneRight = tgtLaneAbs.x + estimateNodeSize(tgtLane).w
+    const pairKey = `${srcLaneId}->${tgtLaneId}`
+    const order = laneOrderCounter.get(pairKey) ?? 0
+    laneOrderCounter.set(pairKey, order + 1)
+    const signed = order % 2 === 0 ? order / 2 : -((order + 1) / 2)
+    const corridorX = Math.max(srcLaneRight, tgtLaneRight) + 40 + Math.abs(signed) * 24
+    const lift = 18 + Math.abs(signed) * 8
+    const waypoints =
+      sourceHandle === 's-bottom'
+        ? [
+            { x: sp.x, y: sp.y + lift },
+            { x: corridorX, y: sp.y + lift },
+            { x: corridorX, y: tp.y - lift },
+            { x: tp.x, y: tp.y - lift },
+          ]
+        : [
+            { x: sp.x, y: sp.y - lift },
+            { x: corridorX, y: sp.y - lift },
+            { x: corridorX, y: tp.y + lift },
+            { x: tp.x, y: tp.y + lift },
+          ]
+    return {
+      ...e,
+      type: 'smoothstep',
+      sourceHandle,
+      targetHandle,
+      data: {
+        ...(e.data as any),
+        semanticType: 'crossLane',
+        sourceLaneId: srcLaneId,
+        targetLaneId: tgtLaneId,
+        waypoints,
+        autoOffset: 0,
+      },
+    }
+  })
+  return { nodes, edges: routedEdges }
 }

@@ -59,6 +59,7 @@ function parseDirectionDecl(line: string): FlowDirection | null {
 function splitLabelAndSubtitle(labelRaw: string): { label: string; subtitle?: string } {
   const t = labelRaw.trim()
   if (!t) return { label: t }
+  const clampSubtitle = (s: string) => s.trim().slice(0, 10)
   // Allow encoding subtitle inside node label for v2:
   // - "主标题\n副标题"
   // - "主标题\\n副标题" (escaped newline inside [])
@@ -68,19 +69,19 @@ function splitLabelAndSubtitle(labelRaw: string): { label: string; subtitle?: st
   if (escapedIdx >= 0) {
     const head = normalized.slice(0, escapedIdx).trim()
     const tail = normalized.slice(escapedIdx + 2).trim()
-    return tail ? { label: head || t, subtitle: tail } : { label: head || t }
+    return tail ? { label: head || t, subtitle: clampSubtitle(tail) } : { label: head || t }
   }
   const firstNewline = normalized.indexOf('\n')
   if (firstNewline >= 0) {
     const head = normalized.slice(0, firstNewline).trim()
     const tail = normalized.slice(firstNewline + 1).trim()
-    return tail ? { label: head || t, subtitle: tail } : { label: head || t }
+    return tail ? { label: head || t, subtitle: clampSubtitle(tail) } : { label: head || t }
   }
   const pipeMatch = normalized.split(/[|｜]/g).map((s) => s.trim()).filter(Boolean)
   if (pipeMatch.length >= 2) {
     const [head, ...rest] = pipeMatch
     const tail = rest.join(' ')
-    return tail ? { label: head, subtitle: tail } : { label: head }
+    return tail ? { label: head, subtitle: clampSubtitle(tail) } : { label: head }
   }
   return { label: t }
 }
