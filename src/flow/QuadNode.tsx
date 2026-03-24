@@ -1,9 +1,19 @@
-import { useCallback, useEffect, useRef, useState } from 'react'
+import {
+  useCallback,
+  useEffect,
+  useRef,
+  useState,
+  type CSSProperties,
+  type KeyboardEvent,
+  type MouseEvent,
+} from 'react'
 import { Handle, NodeResizer, Position, useReactFlow, type NodeProps } from '@xyflow/react'
 import styles from './quadNode.module.css'
 import { QuickTextStyleToolbar, QUICK_TOOLBAR_DATA_ATTR } from './QuickTextStyleToolbar'
 
 export type QuadShape = 'rect' | 'circle' | 'diamond'
+
+export type QuadSemanticType = 'start' | 'task' | 'decision' | 'end' | 'data'
 
 type QuadNodeData = {
   label?: string
@@ -13,16 +23,38 @@ type QuadNodeData = {
   labelFontSize?: number
   labelFontWeight?: string
   labelColor?: string
-  /** 副标题字号（独立于主标题） */
+  /** 副标题：字号 / 字重 / 颜色与主标题完全独立 */
   subtitleFontSize?: number
+  subtitleFontWeight?: string
+  subtitleColor?: string
   /** 节点填充色（右侧面板「颜色」） */
   color?: string
   /** 节点描边颜色 */
   stroke?: string
   /** 节点描边粗细 */
   strokeWidth?: number
+  /**
+   * 思维导图模式：只保留左右句柄，隐藏上下句柄。
+   * 其它模式默认渲染全部句柄。
+   */
+  handleMode?: 'leftRight' | 'all'
   /** 节点形状（点击节点弹出工具栏可切换） */
   shape?: QuadShape
+
+  semanticType?: QuadSemanticType
+  laneId?: string
+  phaseIndex?: number
+  nodeOrder?: number
+}
+
+const DEFAULT_TITLE_FS = 12
+const DEFAULT_SUBTITLE_FS = 11
+const QUAD_MIN_W = 80
+const QUAD_MIN_H = 44
+
+/** 行高 = 字号 + 8px（与主副标题各自字号同步） */
+function lineHeightForFontSizePx(fs: number) {
+  return `${Math.round(fs) + 8}px`
 }
 
 export function QuadNode(props: NodeProps) {
@@ -105,14 +137,14 @@ export function QuadNode(props: NodeProps) {
     setEditingSubtitle(false)
   }, [draftSubtitle, props.id, rf])
 
-  const onDoubleClick = useCallback((e: React.MouseEvent) => {
+  const onDoubleClick = useCallback((e: MouseEvent) => {
     e.stopPropagation()
     window.dispatchEvent(new CustomEvent('flow2go:close-popups-for-text'))
     setEditingTitle(true)
   }, [])
 
   const onKeyDown = useCallback(
-    (e: React.KeyboardEvent<HTMLTextAreaElement>) => {
+    (e: KeyboardEvent<HTMLTextAreaElement>) => {
       // Shift+Enter or Cmd/Ctrl+Enter to commit, plain Enter for newline
       if (e.key === 'Enter' && (e.shiftKey || e.metaKey || e.ctrlKey)) {
         e.preventDefault()
@@ -132,23 +164,45 @@ export function QuadNode(props: NodeProps) {
 
   const title = data.title ?? data.label ?? ''
   const subtitle = data.subtitle ?? ''
-  const showSubtitle = !!data.showSubtitle
-  const labelStyle = {
-    fontSize: data.labelFontSize ?? 12,
+  const showSubtitle = !!data.showSubtitle || !!subtitle
+  const titleFs = data.labelFontSize ?? DEFAULT_TITLE_FS
+  const subtitleFs = data.subtitleFontSize ?? DEFAULT_SUBTITLE_FS
+  const labelStyle: CSSProperties = {
+    fontSize: titleFs,
     fontWeight: data.labelFontWeight ?? '700',
     color: data.labelColor ?? 'rgba(0,0,0,0.8)',
+    lineHeight: lineHeightForFontSizePx(titleFs),
   }
-  const subtitleStyle = {
-    fontSize: data.subtitleFontSize ?? Math.max(10, (data.labelFontSize ?? 12) - 1),
-    fontWeight: data.labelFontWeight ?? '400',
-    color: data.labelColor ?? 'rgba(0,0,0,0.8)',
+  const subtitleStyle: CSSProperties = {
+    fontSize: subtitleFs,
+    fontWeight: data.subtitleFontWeight ?? '400',
+    color: data.subtitleColor ?? '#64748b',
+    lineHeight: lineHeightForFontSizePx(subtitleFs),
   }
 
   const nodeColor = data.color
   const strokeColor = data.stroke
   const strokeWidth = data.strokeWidth
-  const shape = data.shape ?? 'rect'
-  const nodeStyle: React.CSSProperties = {}
+  const semanticType = data.semanticType
+  const shapeHint = data.shape
+  const isSwimlaneNode = Boolean(data.laneId)
+  const isDecisionNode = semanticType === 'decision' || shapeHint === 'diamond'
+  const isOrdinarySwimlaneNode = isSwimlaneNode && !isDecisionNode && (
+    (semanticType != null && ['start', 'task', 'end', 'data'].includes(semanticType)) ||
+    (shapeHint != null && (shapeHint === 'rect' || shapeHint === 'circle')) ||
+    (semanticType == null && shapeHint == null)
+  )
+  const effectiveHandleMode = isOrdinarySwimlaneNode
+    ? 'leftRight'
+    : (data.handleMode ?? (isDecisionNode ? 'all' : undefined))
+  const showLeftRightHandles = effectiveHandleMode === 'leftRight'
+  const inferredShape: QuadShape = semanticType && !data.shape
+    ? (semanticType === 'start' || semanticType === 'end' ? 'circle'
+      : semanticType === 'decision' ? 'diamond'
+      : 'rect')
+    : (data.shape ?? 'rect')
+  const shape = inferredShape
+  const nodeStyle: CSSProperties = {}
 
   // 形状：圆形 / 菱形；描边贴合图形
   if (shape === 'circle') {
@@ -185,8 +239,9 @@ export function QuadNode(props: NodeProps) {
       onDoubleClick={onDoubleClick}
     >
       <NodeResizer
-        minWidth={80}
-        minHeight={44}
+        // 允许 quad 节点继续收缩，避免最小宽度过大影响排版。
+        minWidth={QUAD_MIN_W}
+        minHeight={QUAD_MIN_H}
         handleStyle={{ width: 12, height: 12, borderRadius: 9999 }}
         isVisible={Boolean((props as any).selected)}
         keepAspectRatio={shape === 'circle'}
@@ -201,7 +256,7 @@ export function QuadNode(props: NodeProps) {
               anchorRef={titleInputRef}
               visible={true}
               onRequestClose={commitTitle}
-              fontSize={data.labelFontSize ?? 12}
+              fontSize={titleFs}
               fontWeight={data.labelFontWeight ?? '700'}
               textColor={data.labelColor ?? 'rgba(0,0,0,0.8)'}
               onFontSizeChange={(v) =>
@@ -259,9 +314,9 @@ export function QuadNode(props: NodeProps) {
               anchorRef={subtitleInputRef}
               visible={true}
               onRequestClose={commitSubtitle}
-              fontSize={data.subtitleFontSize ?? Math.max(10, (data.labelFontSize ?? 12) - 1)}
-              fontWeight={data.labelFontWeight ?? '400'}
-              textColor={data.labelColor ?? 'rgba(0,0,0,0.8)'}
+              fontSize={subtitleFs}
+              fontWeight={data.subtitleFontWeight ?? '400'}
+              textColor={data.subtitleColor ?? '#64748b'}
               onFontSizeChange={(v) =>
                 rf.setNodes((nds) =>
                   nds.map((n) =>
@@ -275,7 +330,7 @@ export function QuadNode(props: NodeProps) {
                 rf.setNodes((nds) =>
                   nds.map((n) =>
                     n.id === props.id
-                      ? { ...n, data: { ...(n.data ?? {}), labelFontWeight: v } }
+                      ? { ...n, data: { ...(n.data ?? {}), subtitleFontWeight: v } }
                       : n,
                   ),
                 )
@@ -284,7 +339,7 @@ export function QuadNode(props: NodeProps) {
                 rf.setNodes((nds) =>
                   nds.map((n) =>
                     n.id === props.id
-                      ? { ...n, data: { ...(n.data ?? {}), labelColor: v } }
+                      ? { ...n, data: { ...(n.data ?? {}), subtitleColor: v } }
                       : n,
                   ),
                 )
@@ -337,16 +392,34 @@ export function QuadNode(props: NodeProps) {
       </div>
 
       {/* target handles - 与 nodeInner 平级，不被 clip-path 裁剪 */}
-      <Handle className={styles.handle} type="target" position={Position.Top} id="t-top" />
-      <Handle className={styles.handle} type="target" position={Position.Right} id="t-right" />
-      <Handle className={styles.handle} type="target" position={Position.Bottom} id="t-bottom" />
-      <Handle className={styles.handle} type="target" position={Position.Left} id="t-left" />
+      {showLeftRightHandles ? (
+        <>
+          <Handle className={styles.handle} type="target" position={Position.Right} id="t-right" />
+          <Handle className={styles.handle} type="target" position={Position.Left} id="t-left" />
+        </>
+      ) : (
+        <>
+          <Handle className={styles.handle} type="target" position={Position.Top} id="t-top" />
+          <Handle className={styles.handle} type="target" position={Position.Right} id="t-right" />
+          <Handle className={styles.handle} type="target" position={Position.Bottom} id="t-bottom" />
+          <Handle className={styles.handle} type="target" position={Position.Left} id="t-left" />
+        </>
+      )}
 
       {/* source handles */}
-      <Handle className={styles.handle} type="source" position={Position.Top} id="s-top" />
-      <Handle className={styles.handle} type="source" position={Position.Right} id="s-right" />
-      <Handle className={styles.handle} type="source" position={Position.Bottom} id="s-bottom" />
-      <Handle className={styles.handle} type="source" position={Position.Left} id="s-left" />
+      {showLeftRightHandles ? (
+        <>
+          <Handle className={styles.handle} type="source" position={Position.Right} id="s-right" />
+          <Handle className={styles.handle} type="source" position={Position.Left} id="s-left" />
+        </>
+      ) : (
+        <>
+          <Handle className={styles.handle} type="source" position={Position.Top} id="s-top" />
+          <Handle className={styles.handle} type="source" position={Position.Right} id="s-right" />
+          <Handle className={styles.handle} type="source" position={Position.Bottom} id="s-bottom" />
+          <Handle className={styles.handle} type="source" position={Position.Left} id="s-left" />
+        </>
+      )}
     </div>
   )
 }

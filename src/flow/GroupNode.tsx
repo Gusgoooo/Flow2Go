@@ -3,6 +3,21 @@ import { Handle, NodeResizer, Position, useReactFlow, type NodeProps } from '@xy
 import styles from './groupNode.module.css'
 import { QuickTextStyleToolbar, QUICK_TOOLBAR_DATA_ATTR } from './QuickTextStyleToolbar'
 
+export type LaneMeta = {
+  laneId: string
+  laneIndex: number
+  laneAxis: 'row' | 'column'
+  headerSize?: number
+  padding?: {
+    top: number
+    right: number
+    bottom: number
+    left: number
+  }
+  minLaneWidth?: number
+  minLaneHeight?: number
+}
+
 export type GroupNodeData = {
   title?: string
   subtitle?: string
@@ -14,8 +29,20 @@ export type GroupNodeData = {
   titleFontSize?: number
   titleFontWeight?: string
   titleColor?: string
-  /** 副标题字号（独立于主标题） */
+  /** 副标题：字号 / 字重 / 颜色与标题完全独立 */
   subtitleFontSize?: number
+  subtitleFontWeight?: string
+  subtitleColor?: string
+
+  role?: 'frame' | 'lane'
+  laneMeta?: LaneMeta
+}
+
+const DEFAULT_GROUP_TITLE_FS = 13
+const DEFAULT_GROUP_SUBTITLE_FS = 11
+
+function groupLineHeightPx(fs: number) {
+  return `${Math.round(fs) + 8}px`
 }
 
 export function GroupNode(props: NodeProps) {
@@ -43,15 +70,19 @@ export function GroupNode(props: NodeProps) {
   const [draft, setDraft] = useState(data.title ?? '')
   const [draftSubtitle, setDraftSubtitle] = useState(data.subtitle ?? '')
   const subtitleInputRef = useRef<HTMLTextAreaElement>(null)
+  const titleFs = data.titleFontSize ?? DEFAULT_GROUP_TITLE_FS
+  const subtitleFs = data.subtitleFontSize ?? DEFAULT_GROUP_SUBTITLE_FS
   const titleStyle = {
-    fontSize: data.titleFontSize ?? 13,
+    fontSize: titleFs,
     fontWeight: data.titleFontWeight ?? '800',
-    color: data.titleColor ?? undefined,
+    color: data.titleColor ?? '#1e3a8a',
+    lineHeight: groupLineHeightPx(titleFs),
   }
   const subtitleStyle = {
-    fontSize: data.subtitleFontSize ?? Math.max(10, (data.titleFontSize ?? 13) - 2),
-    fontWeight: '400',
-    color: data.titleColor ?? undefined,
+    fontSize: subtitleFs,
+    fontWeight: data.subtitleFontWeight ?? '400',
+    color: data.subtitleColor ?? '#64748b',
+    lineHeight: groupLineHeightPx(subtitleFs),
   }
   const titlePosition = data.titlePosition ?? 'top-center'
   const isLeftCenter = titlePosition === 'left-center'
@@ -116,6 +147,73 @@ export function GroupNode(props: NodeProps) {
     setEditing(true)
   }, [])
 
+  const isLane = data.role === 'lane'
+
+  if (isLane) {
+    const laneHeaderH = data.laneMeta?.headerSize ?? 44
+    return (
+      <div
+        className={`${styles.group} ${styles.laneNode}`}
+        style={groupStyle}
+        onDoubleClick={onDoubleClick}
+      >
+        <NodeResizer
+          minWidth={200}
+          minHeight={laneHeaderH + 40}
+          handleStyle={{ width: 12, height: 12, borderRadius: 9999 }}
+          isVisible={Boolean((props as any).selected)}
+        />
+        <div className={styles.laneHeader} style={{ height: laneHeaderH }}>
+          {editing ? (
+            <textarea
+              ref={inputRef}
+              className={`${styles.laneHeaderInput} nodrag`}
+              autoFocus
+              value={draft}
+              placeholder="泳道名称"
+              style={{ ...titleStyle, height: 'auto' }}
+              rows={1}
+              onChange={(e) => {
+                setDraft(e.target.value)
+                e.target.style.height = 'auto'
+                e.target.style.height = e.target.scrollHeight + 'px'
+              }}
+              onBlur={(e) => {
+                if ((e.relatedTarget as HTMLElement)?.closest?.(`[${QUICK_TOOLBAR_DATA_ATTR}]`)) return
+                commit()
+              }}
+              onKeyDown={(e) => {
+                if (e.key === 'Enter' && (e.shiftKey || e.metaKey || e.ctrlKey)) {
+                  e.preventDefault()
+                  commit()
+                }
+                if (e.key === 'Escape') {
+                  e.preventDefault()
+                  setEditing(false)
+                  setDraft(data.title ?? '')
+                }
+              }}
+            />
+          ) : (
+            <div className={styles.laneHeaderTitle} style={titleStyle}>
+              {data.title ?? ''}
+            </div>
+          )}
+        </div>
+        <div className={styles.laneBody} />
+
+        <Handle className={styles.handle} type="target" position={Position.Top} id="t-top" />
+        <Handle className={styles.handle} type="target" position={Position.Right} id="t-right" />
+        <Handle className={styles.handle} type="target" position={Position.Bottom} id="t-bottom" />
+        <Handle className={styles.handle} type="target" position={Position.Left} id="t-left" />
+        <Handle className={styles.handle} type="source" position={Position.Top} id="s-top" />
+        <Handle className={styles.handle} type="source" position={Position.Right} id="s-right" />
+        <Handle className={styles.handle} type="source" position={Position.Bottom} id="s-bottom" />
+        <Handle className={styles.handle} type="source" position={Position.Left} id="s-left" />
+      </div>
+    )
+  }
+
   return (
     <div
       className={styles.group}
@@ -123,7 +221,8 @@ export function GroupNode(props: NodeProps) {
       onDoubleClick={onDoubleClick}
     >
       <NodeResizer
-        minWidth={160}
+        // 允许 group/subgroup 容器继续收缩，避免最小宽度过大影响排版。
+        minWidth={36}
         minHeight={120}
         handleStyle={{ width: 12, height: 12, borderRadius: 9999 }}
         isVisible={Boolean((props as any).selected)}
@@ -136,7 +235,7 @@ export function GroupNode(props: NodeProps) {
                 anchorRef={inputRef}
                 visible={editing}
                 onRequestClose={commit}
-                fontSize={data.titleFontSize ?? 13}
+                fontSize={titleFs}
                 fontWeight={data.titleFontWeight ?? '800'}
                 textColor={data.titleColor ?? '#1e3a8a'}
                 onFontSizeChange={(v) =>
@@ -209,9 +308,9 @@ export function GroupNode(props: NodeProps) {
                   anchorRef={subtitleInputRef}
                   visible={true}
                   onRequestClose={commitSubtitle}
-                fontSize={data.subtitleFontSize ?? Math.max(10, (data.titleFontSize ?? 13) - 2)}
-                  fontWeight="400"
-                  textColor={data.titleColor ?? '#64748b'}
+                  fontSize={subtitleFs}
+                  fontWeight={data.subtitleFontWeight ?? '400'}
+                  textColor={data.subtitleColor ?? '#64748b'}
                   onFontSizeChange={(v) =>
                     rf.setNodes((nds) =>
                       nds.map((n) =>
@@ -221,12 +320,20 @@ export function GroupNode(props: NodeProps) {
                       ),
                     )
                   }
-                  onFontWeightChange={() => {}}
+                  onFontWeightChange={(v) =>
+                    rf.setNodes((nds) =>
+                      nds.map((n) =>
+                        n.id === props.id
+                          ? { ...n, data: { ...(n.data ?? {}), subtitleFontWeight: v } }
+                          : n,
+                      ),
+                    )
+                  }
                   onTextColorChange={(v) =>
                     rf.setNodes((nds) =>
                       nds.map((n) =>
                         n.id === props.id
-                          ? { ...n, data: { ...(n.data ?? {}), titleColor: v } }
+                          ? { ...n, data: { ...(n.data ?? {}), subtitleColor: v } }
                           : n,
                       ),
                     )
@@ -276,14 +383,14 @@ export function GroupNode(props: NodeProps) {
             ))}
         </div>
       ) : (
-        <>
+        <div className={styles.titleStackTop}>
           {editing ? (
             <>
               <QuickTextStyleToolbar
                 anchorRef={inputRef}
                 visible={editing}
                 onRequestClose={commit}
-                fontSize={data.titleFontSize ?? 13}
+                fontSize={titleFs}
                 fontWeight={data.titleFontWeight ?? '800'}
                 textColor={data.titleColor ?? '#1e3a8a'}
                 onFontSizeChange={(v) =>
@@ -356,9 +463,9 @@ export function GroupNode(props: NodeProps) {
                   anchorRef={subtitleInputRef}
                   visible={true}
                   onRequestClose={commitSubtitle}
-                fontSize={data.subtitleFontSize ?? Math.max(10, (data.titleFontSize ?? 13) - 2)}
-                  fontWeight="400"
-                  textColor={data.titleColor ?? '#64748b'}
+                  fontSize={subtitleFs}
+                  fontWeight={data.subtitleFontWeight ?? '400'}
+                  textColor={data.subtitleColor ?? '#64748b'}
                   onFontSizeChange={(v) =>
                     rf.setNodes((nds) =>
                       nds.map((n) =>
@@ -368,12 +475,20 @@ export function GroupNode(props: NodeProps) {
                       ),
                     )
                   }
-                  onFontWeightChange={() => {}}
+                  onFontWeightChange={(v) =>
+                    rf.setNodes((nds) =>
+                      nds.map((n) =>
+                        n.id === props.id
+                          ? { ...n, data: { ...(n.data ?? {}), subtitleFontWeight: v } }
+                          : n,
+                      ),
+                    )
+                  }
                   onTextColorChange={(v) =>
                     rf.setNodes((nds) =>
                       nds.map((n) =>
                         n.id === props.id
-                          ? { ...n, data: { ...(n.data ?? {}), titleColor: v } }
+                          ? { ...n, data: { ...(n.data ?? {}), subtitleColor: v } }
                           : n,
                       ),
                     )
@@ -421,7 +536,7 @@ export function GroupNode(props: NodeProps) {
                 {data.subtitle || '双击编辑副标题'}
               </div>
             ))}
-        </>
+        </div>
       )}
 
       {/* group 四边可拉线 */}

@@ -6,6 +6,7 @@ import {
   useRef,
   useState,
   type ChangeEvent,
+  type CSSProperties,
   type DragEvent,
 } from 'react'
 import {
@@ -24,7 +25,6 @@ import {
   applyEdgeChanges,
   applyNodeChanges,
   MarkerType,
-  BezierEdge,
   type Connection,
   type Edge,
   type Node,
@@ -35,19 +35,27 @@ import {
 import JSZip from 'jszip'
 import {
   AlignHorizontalDistributeCenter,
+  KeyRound,
   InspectionPanel,
+  Settings2,
   SquareDashedKanban,
   Square,
   Type,
+  X,
 } from 'lucide-react'
 // import { clearPersistedState } from './persistence'  // 已移除清空功能
 import defaultExample from './defaultExample.json'
 import { getProject, saveProject } from './projectStorage'
 import styles from './flowEditor.module.css'
 import { GroupNode, type GroupNodeData } from './GroupNode'
-import { autoLayout, type LayoutDirection } from './layout'
+import { autoLayout as autoLayoutElk, type LayoutDirection } from './layout'
+import { autoLayoutDagre } from './dagreLayout'
+import { rerouteSwimlaneEdges } from './layout/routing/rerouteSwimlaneEdges'
 import { QuadNode } from './QuadNode'
 import { EditableSmoothStepEdge } from './EditableSmoothStepEdge'
+import { EditableBezierEdge } from './EditableBezierEdge'
+import { EdgeLabelLayoutProvider } from './edgeLabels/SmartEdgeLabel'
+import type { EdgeLabelLayoutConfig } from './edgeLabels/types'
 import { AssetNode } from './AssetNode'
 import { TextNode } from './TextNode'
 import { InlineInspector } from './InlineInspector'
@@ -56,6 +64,15 @@ import { NodeEditPopup } from './NodeEditPopup'
 import { GroupEditPopup } from './GroupEditPopup'
 import { EdgeEditPopup } from './EdgeEditPopup'
 import { AssetEditPopup } from './AssetEditPopup'
+import {
+  openRouterGenerateDiagram,
+  normalizeAiDiagramToSnapshot,
+  type AiDiagramDraft,
+  type AiDiagramSceneHint,
+  type AiGenerateProgressInfo,
+} from './aiDiagram'
+import { AI_SCENE_CAPSULE_PRESETS } from './aiPromptPresets'
+import { AiSceneCapsules } from './AiSceneCapsules'
 // overview 示例入口已移除
 
 export type AssetItem = {
@@ -97,9 +114,11 @@ type NodeData = {
 
 type FlowNode = Node<NodeData>
 type ArrowStyle = 'none' | 'end' | 'start' | 'both'
+type AiFlowLayoutRoute = 'dagre-default' | 'elk-test'
 type EdgeLabelStyle = { fontSize?: number; fontWeight?: string; color?: string }
 type FlowEdge = Edge<{
   arrowStyle?: ArrowStyle
+  labelLayout?: EdgeLabelLayoutConfig
 }> & { labelStyle?: EdgeLabelStyle }
 
 const DND_MIME = 'application/flow2go-node'
@@ -139,6 +158,7 @@ function Sidebar({
   onAddAsset,
   onDeleteAsset,
   onAddAiAsset,
+  aiDiagramDraft,
   fileName,
   onRenameFile,
   onBackHome,
@@ -148,6 +168,7 @@ function Sidebar({
   onAddAsset: (files: FileList | null) => void
   onDeleteAsset: (assetId: string) => void
   onAddAiAsset: (dataUrl: string, name: string) => void
+  aiDiagramDraft: AiDiagramDraft | null
   fileName: string
   onRenameFile?: (name: string) => void
   onBackHome?: () => void
@@ -160,8 +181,38 @@ function Sidebar({
   const [aiPrompt, setAiPrompt] = useState('')
   const [aiGenerating, setAiGenerating] = useState(false)
   const [aiError, setAiError] = useState<string | null>(null)
-  // 使用环境变量中的 API Key
-  const apiKey = import.meta.env.VITE_OPENROUTER_API_KEY || ''
+  const [openRouterKey, setOpenRouterKey] = useState<string>(() => {
+    try {
+      return localStorage.getItem('flow2go-openrouter-key') || ''
+    } catch {
+      return ''
+    }
+  })
+  const apiKey = openRouterKey.trim()
+  const [dslModalOpen, setDslModalOpen] = useState(false)
+
+  const [sidebarWidth, setSidebarWidth] = useState<number>(() => {
+    try {
+      const raw = localStorage.getItem('flow2go:sidebarWidth')
+      const n = raw ? Number(raw) : NaN
+      return Number.isFinite(n) ? n : 280
+    } catch {
+      return 280
+    }
+  })
+  const sidebarResizeRef = useRef<{ active: boolean; startX: number; startWidth: number } | null>(null)
+
+  useEffect(() => {
+    try {
+      localStorage.setItem('flow2go-openrouter-key', openRouterKey)
+    } catch {}
+  }, [openRouterKey])
+
+  useEffect(() => {
+    try {
+      localStorage.setItem('flow2go:sidebarWidth', String(sidebarWidth))
+    } catch {}
+  }, [sidebarWidth])
 
   useEffect(() => {
     if (!editingTitle) setDraftTitle(fileName)
@@ -204,7 +255,7 @@ function Sidebar({
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
-          'Authorization': `Bearer ${apiKey}`,
+          'Authorization': `Bearer ${apiKey.trim()}`,
           'HTTP-Referer': window.location.origin,
           'X-Title': 'Flow2Go',
         },
@@ -252,7 +303,61 @@ function Sidebar({
   }, [aiPrompt, aiGenerating, onAddAiAsset, apiKey])
 
   return (
-    <aside className={`${styles.sidebar} ${containerClassName ?? ''}`}>
+    <aside
+      className={`${styles.sidebar} ${containerClassName ?? ''}`}
+      style={{ width: Math.max(240, Math.min(520, sidebarWidth)) }}
+    >
+      <div
+        role="separator"
+        aria-orientation="vertical"
+        title="拖动调整侧边栏宽度"
+        onPointerDown={(e) => {
+          e.preventDefault()
+          e.stopPropagation()
+          ;(e.currentTarget as HTMLElement).setPointerCapture?.(e.pointerId)
+          sidebarResizeRef.current = { active: true, startX: e.clientX, startWidth: sidebarWidth }
+        }}
+        onPointerMove={(e) => {
+          const ref = sidebarResizeRef.current
+          if (!ref?.active) return
+          const delta = e.clientX - ref.startX
+          const next = Math.max(240, Math.min(520, ref.startWidth + delta))
+          setSidebarWidth(next)
+        }}
+        onPointerUp={(e) => {
+          e.preventDefault()
+          e.stopPropagation()
+          const ref = sidebarResizeRef.current
+          if (ref) ref.active = false
+          ;(e.currentTarget as HTMLElement).releasePointerCapture?.(e.pointerId)
+        }}
+        style={{
+          position: 'absolute',
+          top: 0,
+          right: 0,
+          bottom: 0,
+          width: 10,
+          cursor: 'ew-resize',
+          // 放在容器内部，避免被 overflow:hidden 裁剪
+          background: 'linear-gradient(to left, rgba(148,163,184,0.20), rgba(148,163,184,0.00))',
+          zIndex: 999,
+          pointerEvents: 'auto',
+        }}
+      />
+      <div
+        aria-hidden="true"
+        style={{
+          position: 'absolute',
+          top: 12,
+          right: 3,
+          bottom: 12,
+          width: 2,
+          borderRadius: 2,
+          background: 'rgba(148, 163, 184, 0.22)',
+          zIndex: 998,
+          pointerEvents: 'none',
+        }}
+      />
       <div className={styles.sidebarInner}>
         <div className={styles.sidebarHeader}>
           <div className={styles.titleRow}>
@@ -389,6 +494,18 @@ function Sidebar({
             <div className={styles.aiNote}>
               输入描述，AI 将生成简约风格的透明背景图标
             </div>
+            <div className={styles.aiApiKeySection}>
+              <div className={styles.aiNote}>OpenRouter API Key（仅保存在本地浏览器）</div>
+              <input
+                className={styles.aiApiKeyInput}
+                value={openRouterKey}
+                onChange={(e) => setOpenRouterKey(e.target.value)}
+                placeholder="sk-or-..."
+              />
+              <div className={styles.aiHint}>
+                {apiKey ? '✓ 已配置（localStorage）' : '未配置：需要先填写才能使用 AI'}
+              </div>
+            </div>
             <textarea
               className={styles.aiPromptInput}
               placeholder="描述你想要的图标，例如：一个蓝色的用户头像图标"
@@ -407,12 +524,76 @@ function Sidebar({
             {aiError && (
               <div className={styles.aiError}>{aiError}</div>
             )}
-            {apiKey && (
-              <div className={styles.aiHint}>✓ API Key 已配置</div>
-            )}
           </div>
         )}
+
+        {/* AI图入口已移除：改为顶栏全屏模态 */}
       </div>
+
+      {dslModalOpen && aiDiagramDraft && (
+        <div
+          role="dialog"
+          aria-modal="true"
+          onClick={() => setDslModalOpen(false)}
+          style={{
+            position: 'fixed',
+            inset: 0,
+            background: 'rgba(2, 6, 23, 0.55)',
+            zIndex: 9999,
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'center',
+            padding: 16,
+          }}
+        >
+          <div
+            onClick={(e) => e.stopPropagation()}
+            style={{
+              width: 'min(860px, 96vw)',
+              maxHeight: '86vh',
+              background: '#0b1220',
+              border: '1px solid rgba(148, 163, 184, 0.25)',
+              borderRadius: 12,
+              padding: 12,
+              color: '#e2e8f0',
+              boxShadow: '0 24px 80px rgba(0,0,0,0.45)',
+              display: 'flex',
+              flexDirection: 'column',
+              gap: 10,
+            }}
+          >
+            <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 8 }}>
+              <div style={{ fontSize: 14, fontWeight: 600 }}>自然语言 → Mermaid DSL</div>
+              <div style={{ display: 'flex', gap: 8 }}>
+                <button
+                  type="button"
+                  className={styles.btnSecondary}
+                  onClick={async () => {
+                    try {
+                      await navigator.clipboard.writeText(aiDiagramDraft.rawText || '')
+                    } catch {}
+                  }}
+                >
+                  复制
+                </button>
+                <button type="button" className={styles.btnSecondary} onClick={() => setDslModalOpen(false)}>
+                  关闭
+                </button>
+              </div>
+            </div>
+            <textarea
+              className={styles.aiPromptInput}
+              readOnly
+              rows={18}
+              value={aiDiagramDraft.rawText}
+              style={{ flex: 1, minHeight: 280 }}
+            />
+            <div className={styles.aiNote} style={{ opacity: 0.9 }}>
+              提示：这里展示的是模型输出的 Mermaid DSL 原文（已用于本地映射 nodes/edges）。
+            </div>
+          </div>
+        </div>
+      )}
 
         </div>
         <div className={styles.sidebarFooter}>
@@ -446,6 +627,32 @@ function EditorInner({ onBackHome, source, previewSnapshot, readOnly: _readOnly 
   const projectId = source.projectId
   const isPreview = !!previewSnapshot || !!_readOnly
   const [assetsPopupOpen, setAssetsPopupOpen] = useState(false)
+  const [aiModalOpen, setAiModalOpen] = useState(false)
+  const [aiModalPrompt, setAiModalPrompt] = useState('')
+  /** 与胶囊绑定：生成时传入 diagramScene；点 ✕ 取消高亮并清空输入框 */
+  const [aiModalScene, setAiModalScene] = useState<AiDiagramSceneHint | null>(null)
+  const [aiFlowLayoutRoute, setAiFlowLayoutRoute] = useState<AiFlowLayoutRoute>('dagre-default')
+  const [aiConfigOpen, setAiConfigOpen] = useState(false)
+  const [aiModalGenerating, setAiModalGenerating] = useState(false)
+  /** 生成阶段文案（与控制台 [Flow2Go AI] 日志对应，用于区分慢 / 卡在某一步 / 失败） */
+  const [aiModalProgress, setAiModalProgress] = useState<{ phase: string; detail?: string } | null>(null)
+  const [aiGenElapsedSec, setAiGenElapsedSec] = useState(0)
+  const [aiModalError, setAiModalError] = useState<string | null>(null)
+  const aiModalAbortRef = useRef<AbortController | null>(null)
+  const [aiModalModel, setAiModalModel] = useState<string>(() => {
+    try {
+      return localStorage.getItem('flow2go-openrouter-model') || 'openai/gpt-5.4-nano'
+    } catch {
+      return 'openai/gpt-5.4-nano'
+    }
+  })
+  const [aiModalKey, setAiModalKey] = useState<string>(() => {
+    try {
+      return localStorage.getItem('flow2go-openrouter-key') || ''
+    } catch {
+      return ''
+    }
+  })
 
   const [inlineInspector, setInlineInspector] = useState<{
     kind: 'node' | 'group' | 'edge' | null
@@ -488,12 +695,44 @@ function EditorInner({ onBackHome, source, previewSnapshot, readOnly: _readOnly 
     return () => window.removeEventListener('flow2go:text-editing', handler as any)
   }, [])
 
+  /** 生成中每秒刷新，便于判断「仍在跑」还是界面卡死 */
+  useEffect(() => {
+    if (!aiModalGenerating) {
+      setAiGenElapsedSec(0)
+      return
+    }
+    const start = Date.now()
+    setAiGenElapsedSec(0)
+    const id = window.setInterval(() => {
+      setAiGenElapsedSec(Math.floor((Date.now() - start) / 1000))
+    }, 500)
+    return () => window.clearInterval(id)
+  }, [aiModalGenerating])
+
+  useEffect(() => {
+    if ((aiModalScene === 'mind-map' || aiModalScene === 'swimlane') && aiFlowLayoutRoute === 'elk-test') {
+      setAiFlowLayoutRoute('dagre-default')
+    }
+  }, [aiFlowLayoutRoute, aiModalScene])
+
   const initial = useMemo(() => {
+    const normalizeSwimlaneSnapshot = (nodes: FlowNode[], edges: FlowEdge[]) => {
+      const hasSwimlane =
+        nodes.some((n) => (n.data as any)?.role === 'lane') ||
+        nodes.some((n) => (n.data as any)?.laneId || n.parentId)
+      if (!hasSwimlane || edges.length === 0) return { nodes, edges }
+      const rerouted = rerouteSwimlaneEdges(nodes as unknown as Node<any>[], edges as unknown as Edge<any>[])
+      return { nodes, edges: rerouted as FlowEdge[] }
+    }
+
     // 预览模式：使用 previewSnapshot
     if (previewSnapshot) {
+      const nodes = (previewSnapshot.nodes as FlowNode[]) ?? []
+      const edges = (previewSnapshot.edges as FlowEdge[]) ?? []
+      const normalized = normalizeSwimlaneSnapshot(nodes, edges)
       return {
-        nodes: (previewSnapshot.nodes as FlowNode[]) ?? [],
-        edges: (previewSnapshot.edges as FlowEdge[]) ?? [],
+        nodes: normalized.nodes,
+        edges: normalized.edges,
         viewport: previewSnapshot.viewport ?? { x: 0, y: 0, zoom: 1 },
         name: '模板预览',
         isDefaultExample: false,
@@ -508,18 +747,24 @@ function EditorInner({ onBackHome, source, previewSnapshot, readOnly: _readOnly 
       (snap.nodes.length > 0 || snap.edges.length > 0)
     if (!hasValidSnapshot) {
       // 用户第一次打开产品：使用默认示例并居中展示
+      const nodes = (defaultExample.nodes as FlowNode[]) ?? []
+      const edges = (defaultExample.edges as FlowEdge[]) ?? []
+      const normalized = normalizeSwimlaneSnapshot(nodes, edges)
       return {
-        nodes: (defaultExample.nodes as FlowNode[]) ?? [],
-        edges: (defaultExample.edges as FlowEdge[]) ?? [],
+        nodes: normalized.nodes,
+        edges: normalized.edges,
         viewport: (defaultExample as any).viewport ?? { x: 0, y: 0, zoom: 1 },
         name: 'untitled',
         isDefaultExample: true,
       }
     }
     const snap2 = (proj as any).snapshot
+    const nodes = (snap2.nodes as FlowNode[]) ?? []
+    const edges = (snap2.edges as FlowEdge[]) ?? []
+    const normalized = normalizeSwimlaneSnapshot(nodes, edges)
     return {
-      nodes: (snap2.nodes as FlowNode[]) ?? [],
-      edges: (snap2.edges as FlowEdge[]) ?? [],
+      nodes: normalized.nodes,
+      edges: normalized.edges,
       viewport: snap2.viewport ?? { x: 0, y: 0, zoom: 1 },
       name: proj?.name ?? 'untitled',
       isDefaultExample: false,
@@ -530,6 +775,9 @@ function EditorInner({ onBackHome, source, previewSnapshot, readOnly: _readOnly 
   const [edges, setEdges] = useState<FlowEdge[]>(initial.edges)
   const nodesEdgesRef = useRef({ nodes: initial.nodes, edges: initial.edges })
   nodesEdgesRef.current = { nodes, edges }
+
+  // ---------- AI：生成整张图（草稿 -> 应用） ----------
+  const [aiDiagramDraft, setAiDiagramDraft] = useState<AiDiagramDraft | null>(null)
 
   // 传给 React Flow 的节点列表：为群组补全有效宽高，避免 0/undefined 导致框选时 nodeToRect 得到 0×0 矩形被误判为在选区内的“点”
   const nodesForFlow = useMemo(() => {
@@ -629,6 +877,7 @@ function EditorInner({ onBackHome, source, previewSnapshot, readOnly: _readOnly 
     }
     proj.updatedAt = Date.now()
     saveProject(proj)
+    setHasUnsavedChanges(false)
   }, [projectId, rf])
 
   // 项目：防抖自动保存（约 1s）
@@ -673,6 +922,71 @@ function EditorInner({ onBackHome, source, previewSnapshot, readOnly: _readOnly 
       lastPushRef.current = { at: now, sig }
     },
     [rf, snapshotSig],
+  )
+
+  const relayoutGraphByEngine = useCallback(
+    async (
+      inputNodes: FlowNode[],
+      inputEdges: FlowEdge[],
+      direction: LayoutDirection,
+      engine: 'dagre' | 'elk',
+    ): Promise<FlowNode[]> => {
+      const groups = new Map<string, FlowNode[]>()
+      for (const n of inputNodes) {
+        if (n.hidden) continue
+        if (n.type === 'group') continue
+        const key = n.parentId ?? '__root__'
+        const arr = groups.get(key) ?? []
+        arr.push(n)
+        groups.set(key, arr)
+      }
+
+      const nextPosById = new Map<string, { x: number; y: number }>()
+      for (const bucket of groups.values()) {
+        if (bucket.length < 2) continue
+        const ids = new Set(bucket.map((n) => n.id))
+        const subEdges = inputEdges.filter((e) => !e.hidden && ids.has(e.source) && ids.has(e.target))
+        if (subEdges.length === 0) continue
+        const laid =
+          engine === 'elk'
+            ? await autoLayoutElk(bucket as Array<Node<any>>, subEdges as Array<Edge>, direction)
+            : await autoLayoutDagre(bucket as Array<Node<any>>, subEdges as Array<Edge>, direction)
+        for (const ln of laid) {
+          nextPosById.set(ln.id, { x: ln.position.x, y: ln.position.y })
+        }
+      }
+
+      if (nextPosById.size === 0) return inputNodes
+      return inputNodes.map((n) => {
+        const p = nextPosById.get(n.id)
+        if (!p) return n
+        return { ...n, position: { x: p.x, y: p.y }, positionAbsolute: undefined }
+      })
+    },
+    [],
+  )
+
+  const applyAiDraftDirect = useCallback(
+    async (
+      draft: AiDiagramDraft,
+      opts?: {
+        flowLayoutRoute?: AiFlowLayoutRoute
+        onProgress?: (phase: string, detail?: string) => void
+      },
+    ) => {
+      const snap = normalizeAiDiagramToSnapshot(draft)
+      let nextNodes = (snap.nodes ?? []) as FlowNode[]
+      const nextEdges = (snap.edges ?? []) as FlowEdge[]
+      if (opts?.flowLayoutRoute === 'elk-test') {
+        opts.onProgress?.('ELK 布局步骤', '流程图物化后，追加 ELK layered 测试重排…')
+        nextNodes = await relayoutGraphByEngine(nextNodes, nextEdges, 'LR', 'elk')
+      }
+      setNodes(nextNodes)
+      setEdges(nextEdges)
+      pushHistory(nextNodes, nextEdges, 'ai-apply')
+      if (snap.viewport) rf.setViewport(snap.viewport, { duration: 0 })
+    },
+    [pushHistory, relayoutGraphByEngine, rf],
   )
 
   // const _canUndo = historyRef.current.past.length > 0
@@ -798,13 +1112,72 @@ function EditorInner({ onBackHome, source, previewSnapshot, readOnly: _readOnly 
   const onConnect = useCallback(
     (conn: Connection) =>
       setEdges((eds) => {
+        const srcNode = nodes.find((n) => n.id === conn.source)
+        const tgtNode = nodes.find((n) => n.id === conn.target)
+        const srcLaneId = ((srcNode?.data as any)?.laneId ?? srcNode?.parentId) as string | undefined
+        const tgtLaneId = ((tgtNode?.data as any)?.laneId ?? tgtNode?.parentId) as string | undefined
+        const inSwimlane = Boolean(srcLaneId || tgtLaneId)
+        const isCrossLane = Boolean(srcLaneId && tgtLaneId && srcLaneId !== tgtLaneId)
+        let defaultSourceHandle: string = 's-right'
+        let defaultTargetHandle: string = 't-left'
+
+        if (isCrossLane && srcLaneId && tgtLaneId) {
+          const srcLane = nodes.find((n) => n.id === srcLaneId)
+          const tgtLane = nodes.find((n) => n.id === tgtLaneId)
+
+          if (srcLane && tgtLane) {
+            const nodeSize = (n: FlowNode) => {
+              const style = (n.style ?? {}) as any
+              const width = n.measured?.width ?? n.width ?? (typeof style?.width === 'number' ? style.width : 140)
+              const height = n.measured?.height ?? n.height ?? (typeof style?.height === 'number' ? style.height : 56)
+              return { width, height }
+            }
+            const center = (n: FlowNode) => {
+              const s = nodeSize(n)
+              return { x: (n.position?.x ?? 0) + s.width / 2, y: (n.position?.y ?? 0) + s.height / 2 }
+            }
+            const explicitAxis = ((srcLane.data as any)?.laneMeta?.laneAxis ?? (tgtLane.data as any)?.laneMeta?.laneAxis) as
+              | 'row'
+              | 'column'
+              | undefined
+            const srcCenter = center(srcLane)
+            const tgtCenter = center(tgtLane)
+            const inferredAxis = Math.abs(srcCenter.y - tgtCenter.y) >= Math.abs(srcCenter.x - tgtCenter.x) ? 'row' : 'column'
+            const laneAxis = explicitAxis ?? inferredAxis
+
+            if (laneAxis === 'row') {
+              const downward = tgtCenter.y >= srcCenter.y
+              defaultSourceHandle = downward ? 's-bottom' : 's-top'
+              defaultTargetHandle = downward ? 't-top' : 't-bottom'
+            } else {
+              const rightward = tgtCenter.x >= srcCenter.x
+              defaultSourceHandle = rightward ? 's-right' : 's-left'
+              defaultTargetHandle = rightward ? 't-left' : 't-right'
+            }
+          }
+        }
         const next = addEdge(
           {
             ...conn,
-            type: 'smoothstep',
-            style: { stroke: DEFAULT_EDGE_COLOR, strokeWidth: 3 },
+            ...(inSwimlane
+              ? {
+                  sourceHandle: conn.sourceHandle ?? defaultSourceHandle,
+                  targetHandle: conn.targetHandle ?? defaultTargetHandle,
+                }
+              : {}),
+            type: inSwimlane ? (isCrossLane ? 'smoothstep' : 'bezier') : 'bezier',
+            style: { stroke: DEFAULT_EDGE_COLOR, strokeWidth: 2 },
             markerEnd: { type: MarkerType.ArrowClosed, color: DEFAULT_EDGE_COLOR },
-            data: { arrowStyle: 'end' },
+            data: {
+              arrowStyle: 'end',
+              ...(inSwimlane
+                ? {
+                    semanticType: isCrossLane ? 'crossLane' : 'normal',
+                    sourceLaneId: srcLaneId,
+                    targetLaneId: tgtLaneId,
+                  }
+                : {}),
+            },
           },
           eds,
         )
@@ -1501,6 +1874,21 @@ function EditorInner({ onBackHome, source, previewSnapshot, readOnly: _readOnly 
           })
 
           if (changedIn) {
+            // Swimlane: 同步 laneId（拖入 lane 时写入 data.laneId，拖入非 lane frame 时清除）
+            nextIn = nextIn.map((nd) => {
+              if (!nd.parentId) return nd
+              const parent = byId.get(nd.parentId) ?? nextIn.find((n) => n.id === nd.parentId)
+              if (!parent) return nd
+              const isLane = (parent.data as any)?.role === 'lane'
+              if (isLane && (nd.data as any)?.laneId !== nd.parentId) {
+                return { ...nd, data: { ...(nd.data ?? {}), laneId: nd.parentId } }
+              }
+              if (!isLane && (nd.data as any)?.laneId) {
+                const { laneId: _, ...restData } = nd.data as any
+                return { ...nd, data: restData }
+              }
+              return nd
+            })
             nextIn = sortNodesParentFirst(nextIn)
             nextIn = assignZIndex(nextIn)
             pushHistory(nextIn, edges, movedTopSet.size > 1 ? 'drag-in-multi' : 'drag-in')
@@ -1649,14 +2037,21 @@ function EditorInner({ onBackHome, source, previewSnapshot, readOnly: _readOnly 
   const addNodeAtPosition = useCallback(
     (nodeType: 'quad' | 'text', flowPos: { x: number; y: number }) => {
       const id = nowId('n')
-      const defaultSize = nodeType === 'quad' ? { w: 160, h: 44 } : { w: 120, h: 40 }
+      const defaultSize = nodeType === 'quad' ? { w: 160, h: 44 } : { w: 60, h: 28 }
       const currentNodes = nodesEdgesRef.current.nodes
       const position = findNonOverlappingPosition(flowPos, currentNodes, defaultSize.w, defaultSize.h)
       const base: FlowNode = {
         id,
         type: nodeType,
         position,
-        data: { label: nodeType === 'quad' ? `节点 ${id.slice(-4)}` : `文本 ${id.slice(-4)}` },
+        // Set initial size explicitly.
+        // Otherwise QuadNode/ReactFlow will fall back to DOM min-width (currently 80px),
+        // which makes newly created nodes start at 80px instead of the intended 160px.
+        width: defaultSize.w,
+        height: defaultSize.h,
+        style: { width: defaultSize.w, height: defaultSize.h },
+        // 文本节点空标签：立即进入编辑态，并由 TextNode 按内容自适应宽高（类 Figma）
+        data: { label: nodeType === 'quad' ? `节点 ${id.slice(-4)}` : '' },
       }
       setNodes((nds) => {
         const next = nds.concat(base)
@@ -1743,7 +2138,16 @@ function EditorInner({ onBackHome, source, previewSnapshot, readOnly: _readOnly 
         id,
         type: nodeType === 'quad' ? 'quad' : (nodeType as FlowNode['type']),
         position,
-        data: { label: `${nodeType} ${id.slice(-4)}` },
+        // Explicit default sizing for consistent initial width.
+        width: nodeType === 'quad' ? 160 : nodeType === 'text' ? 60 : undefined,
+        height: nodeType === 'quad' ? 44 : nodeType === 'text' ? 28 : undefined,
+        style:
+          nodeType === 'quad'
+            ? { width: 160, height: 44 }
+            : nodeType === 'text'
+              ? { width: 60, height: 28 }
+              : undefined,
+        data: { label: nodeType === 'text' ? '' : `${nodeType} ${id.slice(-4)}` },
       }
 
       setNodes((nds) => {
@@ -1916,7 +2320,7 @@ function EditorInner({ onBackHome, source, previewSnapshot, readOnly: _readOnly 
 
         // 先还原边和节点
         const nextNodes = parsed.nodes
-        const nextEdges = parsed.edges.map((e) => ({ ...e, type: 'smoothstep' as const }))
+        const nextEdges = parsed.edges.map((e) => ({ ...e, type: (e.type ?? 'bezier') as any }))
         setNodes(nextNodes)
         setEdges(nextEdges)
         if (parsed.viewport) rf.setViewport(parsed.viewport, { duration: 0 })
@@ -2016,6 +2420,19 @@ function EditorInner({ onBackHome, source, previewSnapshot, readOnly: _readOnly 
     }
   }, [])
 
+  // AI 弹窗：不按遮罩关闭（避免误触）；生成中也不响应 Esc，防止半途中断
+  useEffect(() => {
+    if (!aiModalOpen) return
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key === 'Escape' && !aiModalGenerating) {
+        e.preventDefault()
+        setAiModalOpen(false)
+      }
+    }
+    window.addEventListener('keydown', onKey)
+    return () => window.removeEventListener('keydown', onKey)
+  }, [aiModalOpen, aiModalGenerating])
+
   // ---------- Helpers: grouping ----------
 
   const groupSelection = useCallback(() => {
@@ -2114,7 +2531,7 @@ function EditorInner({ onBackHome, source, previewSnapshot, readOnly: _readOnly 
         bounds.maxY = Math.max(bounds.maxY, p.y)
       }
     }
-    // 默认正交线会有 24px 外扩（EditableSmoothStepEdge），给一个安全 padding，确保未保存 waypoints 时也能包住边
+    // 正交边在端口外有 EDGE_HANDLE_GAP_PX 间隙 + 路由外扩（EditableSmoothStepEdge 默认 24），留安全 padding 包住边
     if (relatedEdges.length > 0) {
       const pad = hasEdgeGeometry ? 24 : 32
       bounds = {
@@ -2223,57 +2640,60 @@ function EditorInner({ onBackHome, source, previewSnapshot, readOnly: _readOnly 
   const runLayout = useCallback(
     (dir: LayoutDirection) => {
       const picked = selectedNodesNow
+      const edgesNow = edges
       if (picked.length < 2) return
 
-      const pickedIds = new Set(picked.map((n) => n.id))
-      const subEdges = edges.filter((e) => pickedIds.has(e.source) && pickedIds.has(e.target))
+      void (async () => {
+        const pickedIds = new Set(picked.map((n) => n.id))
+        const subEdges = edgesNow.filter((e) => pickedIds.has(e.source) && pickedIds.has(e.target))
 
-      const oldBounds = picked.reduce(
-        (acc, n) => {
-          const w = n.measured?.width ?? n.width ?? 180
-          const h = n.measured?.height ?? n.height ?? 44
-          return {
-            minX: Math.min(acc.minX, n.position.x),
-            minY: Math.min(acc.minY, n.position.y),
-            maxX: Math.max(acc.maxX, n.position.x + w),
-            maxY: Math.max(acc.maxY, n.position.y + h),
-          }
-        },
-        { minX: Infinity, minY: Infinity, maxX: -Infinity, maxY: -Infinity },
-      )
-      const oldCx = (oldBounds.minX + oldBounds.maxX) / 2
-      const oldCy = (oldBounds.minY + oldBounds.maxY) / 2
+        const oldBounds = picked.reduce(
+          (acc, n) => {
+            const w = n.measured?.width ?? n.width ?? 180
+            const h = n.measured?.height ?? n.height ?? 44
+            return {
+              minX: Math.min(acc.minX, n.position.x),
+              minY: Math.min(acc.minY, n.position.y),
+              maxX: Math.max(acc.maxX, n.position.x + w),
+              maxY: Math.max(acc.maxY, n.position.y + h),
+            }
+          },
+          { minX: Infinity, minY: Infinity, maxX: -Infinity, maxY: -Infinity },
+        )
+        const oldCx = (oldBounds.minX + oldBounds.maxX) / 2
+        const oldCy = (oldBounds.minY + oldBounds.maxY) / 2
 
-      const laid = autoLayout(picked, subEdges, dir)
-      const newBounds = laid.reduce(
-        (acc, n) => {
-          const w = n.measured?.width ?? n.width ?? 180
-          const h = n.measured?.height ?? n.height ?? 44
-          return {
-            minX: Math.min(acc.minX, n.position.x),
-            minY: Math.min(acc.minY, n.position.y),
-            maxX: Math.max(acc.maxX, n.position.x + w),
-            maxY: Math.max(acc.maxY, n.position.y + h),
-          }
-        },
-        { minX: Infinity, minY: Infinity, maxX: -Infinity, maxY: -Infinity },
-      )
-      const newCx = (newBounds.minX + newBounds.maxX) / 2
-      const newCy = (newBounds.minY + newBounds.maxY) / 2
-      const dx = oldCx - newCx
-      const dy = oldCy - newCy
+        const laid = await autoLayoutDagre(picked as Array<Node<any>>, subEdges as Array<Edge>, dir)
+        const newBounds = laid.reduce(
+          (acc, n) => {
+            const w = n.measured?.width ?? n.width ?? 180
+            const h = n.measured?.height ?? n.height ?? 44
+            return {
+              minX: Math.min(acc.minX, n.position.x),
+              minY: Math.min(acc.minY, n.position.y),
+              maxX: Math.max(acc.maxX, n.position.x + w),
+              maxY: Math.max(acc.maxY, n.position.y + h),
+            }
+          },
+          { minX: Infinity, minY: Infinity, maxX: -Infinity, maxY: -Infinity },
+        )
+        const newCx = (newBounds.minX + newBounds.maxX) / 2
+        const newCy = (newBounds.minY + newBounds.maxY) / 2
+        const dx = oldCx - newCx
+        const dy = oldCy - newCy
 
-      const laidById = new Map(laid.map((n) => [n.id, n]))
+        const laidById = new Map(laid.map((n) => [n.id, n]))
 
-      setNodes((nds) => {
-        const next = nds.map((n) => {
-          const ln = laidById.get(n.id)
-          if (!ln) return n
-          return { ...n, position: snapPos({ x: ln.position.x + dx, y: ln.position.y + dy }) }
+        setNodes((nds) => {
+          const next = nds.map((n) => {
+            const ln = laidById.get(n.id)
+            if (!ln) return n
+            return { ...n, position: snapPos({ x: ln.position.x + dx, y: ln.position.y + dy }) }
+          })
+          pushHistory(next, edgesNow, `layout:${dir}`)
+          return next
         })
-        pushHistory(next, edges, `layout:${dir}`)
-        return next
-      })
+      })()
     },
     [edges, pushHistory, selectedNodesNow, snapPos],
   )
@@ -2532,12 +2952,18 @@ function EditorInner({ onBackHome, source, previewSnapshot, readOnly: _readOnly 
   )
 
   const edgeTypes = useMemo(
-    () => ({ smoothstep: EditableSmoothStepEdge, bezier: BezierEdge }),
+    () => ({ smoothstep: EditableSmoothStepEdge, bezier: EditableBezierEdge }),
     [],
   )
 
   // ---------- Shortcuts（放在所有动作定义之后，避免 TDZ） ----------
   useEffect(() => {
+    const hasTextSelectionToCopy = () => {
+      const sel = window.getSelection()
+      if (!sel || sel.rangeCount === 0) return false
+      return sel.toString().length > 0
+    }
+
     const onKeyDown = (e: KeyboardEvent) => {
       const target = e.target as HTMLElement | null
       const tag = target?.tagName?.toLowerCase()
@@ -2575,6 +3001,8 @@ function EditorInner({ onBackHome, source, previewSnapshot, readOnly: _readOnly 
         return
       }
       if (mod && e.key.toLowerCase() === 'c') {
+        // 画布上划选了节点标题等文本时，应走系统复制，不要被「复制选中节点」劫持
+        if (hasTextSelectionToCopy()) return
         e.preventDefault()
         copySelection()
         return
@@ -2621,6 +3049,7 @@ function EditorInner({ onBackHome, source, previewSnapshot, readOnly: _readOnly 
           onAddAsset={onAddAsset}
           onDeleteAsset={onDeleteAsset}
           onAddAiAsset={onAddAiAsset}
+          aiDiagramDraft={aiDiagramDraft}
           fileName={fileName}
           onRenameFile={onRenameFile}
           onBackHome={onBackHome ? handleBackHome : undefined}
@@ -2660,7 +3089,11 @@ function EditorInner({ onBackHome, source, previewSnapshot, readOnly: _readOnly 
           selectionMode={SelectionMode.Full}
           multiSelectionKeyCode={isPreview ? [] : 'Shift'}
           panOnScroll
-          zoomOnScroll={false}
+          // 触摸板/滚轮体验：
+          // - 开启 preventScrolling 避免页面滚动/浏览器手势抢事件
+          // - 开启 zoomOnScroll：Mac 触摸板 pinch 往往以 wheel+ctrlKey 形式触发；只开 zoomOnPinch 在部分环境会失效
+          preventScrolling
+          zoomOnScroll
           zoomOnPinch
           snapToGrid={!isPreview}
           snapGrid={GRID}
@@ -2670,18 +3103,32 @@ function EditorInner({ onBackHome, source, previewSnapshot, readOnly: _readOnly 
           nodesConnectable={isPreview ? false : !spacePressed}
           elementsSelectable={isPreview ? false : !spacePressed}
           defaultEdgeOptions={{
-            type: 'smoothstep',
-            style: { stroke: DEFAULT_EDGE_COLOR, strokeWidth: 3 },
+            type: 'bezier',
+            style: { stroke: DEFAULT_EDGE_COLOR, strokeWidth: 2 },
             markerEnd: { ...DEFAULT_MARKER_END },
           }}
           proOptions={{ hideAttribution: true }}
         >
-          <Background variant={BackgroundVariant.Dots} gap={18} size={1} />
-          <MiniMap zoomable pannable />
-          <Controls />
+          <EdgeLabelLayoutProvider>
+            <Background variant={BackgroundVariant.Dots} gap={18} size={1} />
+            <MiniMap zoomable pannable />
+            <Controls />
 
-          {!isPreview && (
+            {!isPreview && (
             <Panel position="top-right" className={styles.topPanel}>
+              <button
+                className={styles.assetsBtn}
+                type="button"
+                onClick={() => {
+                  setAiModalError(null)
+                  setAiConfigOpen(false)
+                  setAiModalPrompt('')
+                  setAiModalScene(null)
+                  setAiModalOpen(true)
+                }}
+              >
+                AI生成
+              </button>
               <button
                 className={styles.assetsBtn}
                 type="button"
@@ -2699,22 +3146,287 @@ function EditorInner({ onBackHome, source, previewSnapshot, readOnly: _readOnly 
               <button
                 className={styles.assetsBtn}
                 type="button"
-                onClick={() => {
-                  // 模板库：后续在前端补充模板数据
-                }}
-              >
-                模板库
-              </button>
-              <button
-                className={styles.saveBar}
-                type="button"
                 onClick={openSaveModal}
+                title="导出 zip（project.json + assets）"
               >
                 保存
               </button>
             </Panel>
-          )}
+            )}
+          </EdgeLabelLayoutProvider>
         </ReactFlow>
+
+        {aiModalOpen && (
+          <div
+            role="dialog"
+            aria-modal="true"
+            style={{
+              position: 'fixed',
+              inset: 0,
+              background: 'rgba(203, 203, 203, 0.5)',
+              backdropFilter: 'blur(10px)',
+              WebkitBackdropFilter: 'blur(10px)',
+              zIndex: 30000,
+              display: 'flex',
+              alignItems: 'center',
+              justifyContent: 'center',
+              padding: 16,
+            }}
+          >
+            <div
+              onClick={(e) => e.stopPropagation()}
+              style={{
+                maxHeight: '90vh',
+                width: 'min(760px, 94vw)',
+                background: '#ffffff',
+                border: '1px solid #e2e8f0',
+                borderRadius: 14,
+                boxShadow: '0 24px 60px rgba(15,23,42,0.18)',
+                color: '#0f172a',
+                display: 'flex',
+                flexDirection: 'column',
+                overflow: 'hidden',
+              }}
+            >
+              <div style={{ padding: '12px 14px', display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 10, borderBottom: '1px solid #e2e8f0' }}>
+                <div style={{ fontSize: 14, fontWeight: 800 }}>AI 生成</div>
+                <div style={{ display: 'flex', gap: 8 }}>
+                  <button
+                    type="button"
+                    className={styles.aiConfigIconBtn}
+                    title="OpenRouter 配置"
+                    onClick={() => setAiConfigOpen((v) => !v)}
+                  >
+                    <Settings2 size={16} />
+                  </button>
+                  <button type="button" className={styles.aiCloseIconBtn} title="关闭" onClick={() => setAiModalOpen(false)}>
+                    <X size={16} />
+                  </button>
+                </div>
+              </div>
+
+              <div className={styles.aiModalLayout}>
+                {aiConfigOpen && (
+                  <div className={styles.aiConfigPanel}>
+                    <div className={styles.aiConfigTitle}>OpenRouter 配置</div>
+                    <input
+                      className={styles.aiApiKeyInput}
+                      value={aiModalKey}
+                      onChange={(e) => {
+                        setAiModalKey(e.target.value)
+                        try { localStorage.setItem('flow2go-openrouter-key', e.target.value) } catch {}
+                      }}
+                      placeholder="sk-or-..."
+                    />
+                    <input
+                      className={styles.aiApiKeyInput}
+                      value={aiModalModel}
+                      onChange={(e) => {
+                        setAiModalModel(e.target.value)
+                        try { localStorage.setItem('flow2go-openrouter-model', e.target.value) } catch {}
+                      }}
+                      placeholder="openai/gpt-5.4-nano"
+                    />
+                    <div className={styles.aiNote} style={{ opacity: 0.9 }}>
+                      配置只保存在本地浏览器。未配置 Key 时，无法发起生成。
+                    </div>
+                  </div>
+                )}
+
+                <div className={styles.aiPromptColumn}>
+                  <div className={styles.aiPromptHeader}>
+                    <div style={{ fontSize: 12, fontWeight: 800, color: '#334155' }}>Prompt</div>
+                    {!aiModalKey.trim() && (
+                      <button type="button" className={styles.aiNeedConfigTag} onClick={() => setAiConfigOpen(true)}>
+                        <KeyRound size={14} />
+                        需先配置 API Key
+                      </button>
+                    )}
+                  </div>
+                  <div className={styles.aiChatInputWrap}>
+                    <textarea
+                      value={aiModalPrompt}
+                      onChange={(e) => setAiModalPrompt(e.target.value)}
+                      rows={10}
+                      placeholder="输入你的需求，支持多层级描述…"
+                      className={styles.aiChatInput}
+                    />
+                  </div>
+                  <AiSceneCapsules
+                    presets={AI_SCENE_CAPSULE_PRESETS}
+                    selectedScene={aiModalScene}
+                    disabled={aiModalGenerating}
+                    onSelect={(preset) => {
+                      setAiModalScene(preset.scene)
+                      // 已有输入时只锁定生图场景，不覆盖用户文案；空内容时才预填模板
+                      setAiModalPrompt((prev) => (prev.trim() ? prev : preset.prompt))
+                    }}
+                    onClearScene={() => {
+                      setAiModalScene(null)
+                      setAiModalPrompt('')
+                    }}
+                  />
+                  <div className={styles.aiLayoutRouteRow}>
+                    <div className={styles.aiLayoutRouteLabel}>布局链路</div>
+                    <div className={styles.aiSceneCapsules} role="group" aria-label="布局链路切换">
+                      <div
+                        className={`${styles.aiSceneCapsule} ${aiFlowLayoutRoute === 'dagre-default' ? styles.aiSceneCapsule_active : ''}`}
+                        style={
+                          aiFlowLayoutRoute === 'dagre-default'
+                            ? ({
+                                '--ai-capsule-accent': '#0f766e',
+                              } as CSSProperties)
+                            : undefined
+                        }
+                      >
+                        <button
+                          type="button"
+                          className={styles.aiSceneCapsuleMain}
+                          disabled={aiModalGenerating}
+                          aria-pressed={aiFlowLayoutRoute === 'dagre-default'}
+                          onClick={() => setAiFlowLayoutRoute('dagre-default')}
+                        >
+                          Dagre 默认
+                        </button>
+                      </div>
+                      <div
+                        className={`${styles.aiSceneCapsule} ${aiFlowLayoutRoute === 'elk-test' ? styles.aiSceneCapsule_active : ''}`}
+                        style={
+                          aiFlowLayoutRoute === 'elk-test'
+                            ? ({
+                                '--ai-capsule-accent': '#0369a1',
+                              } as CSSProperties)
+                            : undefined
+                        }
+                      >
+                        <button
+                          type="button"
+                          className={styles.aiSceneCapsuleMain}
+                          disabled={aiModalGenerating || aiModalScene === 'mind-map' || aiModalScene === 'swimlane'}
+                          aria-pressed={aiFlowLayoutRoute === 'elk-test'}
+                          onClick={() => setAiFlowLayoutRoute('elk-test')}
+                        >
+                          ELK 测试链路
+                        </button>
+                      </div>
+                    </div>
+                    <div className={styles.aiNote}>
+                      流程图默认走 Dagre。若选择 ELK 测试链路，会在流程图物化后额外加入一步 ELK layered 重排。
+                    </div>
+                  </div>
+                  {aiModalError && <div className={styles.aiError}>{aiModalError}</div>}
+
+                  <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
+                    <button
+                      type="button"
+                      className={styles.aiGenerateBtn}
+                      disabled={aiModalGenerating || !aiModalPrompt.trim()}
+                      onClick={async () => {
+                        const p = aiModalPrompt.trim()
+                        if (!p) return
+                        if (!aiModalKey.trim()) {
+                          setAiModalError('请先填写 OpenRouter API Key')
+                          setAiConfigOpen(true)
+                          return
+                        }
+                        setAiModalGenerating(true)
+                        setAiModalError(null)
+                        setAiModalProgress({ phase: '已提交', detail: '等待 OpenRouter…' })
+                        try {
+                          const ac = new AbortController()
+                          aiModalAbortRef.current = ac
+                          // Swimlane 独立链路：先走 LLM 结构化 Draft，再物化为图
+                          if (aiModalScene === 'swimlane') {
+                            setAiModalProgress({ phase: '生成泳道图', detail: 'LLM 结构化中…' })
+                            const { generateSwimlaneDraftWithLLM, swimlaneDraftToGraphBatchPayload } = await import('./swimlaneDraft')
+                            const { materializeGraphBatchPayloadToSnapshot } = await import('./mermaid/apply')
+                            const draftFromPrompt = await generateSwimlaneDraftWithLLM({
+                              apiKey: aiModalKey.trim(),
+                              model: aiModalModel.trim() || 'openai/gpt-5.4-nano',
+                              prompt: p,
+                              signal: ac.signal,
+                            })
+                            setAiModalProgress({ phase: '生成泳道图', detail: '物化布局中…' })
+                            const payload = swimlaneDraftToGraphBatchPayload(draftFromPrompt)
+                            const snap = await materializeGraphBatchPayloadToSnapshot(payload)
+                            const nextNodes = (snap.nodes ?? []) as FlowNode[]
+                            const nextEdges = (snap.edges ?? []) as FlowEdge[]
+                            setNodes(nextNodes)
+                            setEdges(nextEdges)
+                            pushHistory(nextNodes, nextEdges, 'ai-swimlane')
+                            setAiModalOpen(false)
+                            setAiModalGenerating(false)
+                            setAiModalProgress(null)
+                            return
+                          }
+                          const draft = await openRouterGenerateDiagram({
+                            apiKey: aiModalKey.trim(),
+                            model: aiModalModel.trim() || 'openai/gpt-5.4-nano',
+                            prompt: p,
+                            signal: ac.signal,
+                            diagramScene: aiModalScene ?? undefined,
+                            onProgress: (info: AiGenerateProgressInfo) => {
+                              setAiModalProgress({ phase: info.phase, detail: info.detail })
+                            },
+                          })
+                          setAiDiagramDraft(draft)
+                          await applyAiDraftDirect(draft, {
+                            flowLayoutRoute: aiFlowLayoutRoute,
+                            onProgress: (phase, detail) => {
+                              setAiModalProgress({ phase, detail })
+                            },
+                          })
+                          setAiModalOpen(false)
+                        } catch (e) {
+                          const msg = e instanceof Error ? e.message : '生成失败'
+                          if (msg.includes('用户已取消')) {
+                            setAiModalError('已取消本次生成')
+                          } else if (msg.includes('请求超时')) {
+                            setAiModalError(`${msg}。系统已做超时兜底重试，建议减少描述冗余后再试。`)
+                          } else {
+                            setAiModalError(msg)
+                          }
+                        } finally {
+                          aiModalAbortRef.current = null
+                          setAiModalGenerating(false)
+                          setAiModalProgress(null)
+                        }
+                      }}
+                    >
+                      {aiModalGenerating ? '生成中…' : '生成并应用'}
+                    </button>
+                  </div>
+
+                  {aiModalGenerating && (
+                    <div className={styles.aiGenProgress}>
+                      <div className={styles.aiGenProgressHead}>
+                        <div className={styles.aiGenProgressPhase}>{aiModalProgress?.phase ?? '准备中…'}</div>
+                        {String(aiModalProgress?.phase ?? '').includes('大模型生成 Mermaid') ? (
+                          <button
+                            type="button"
+                            className={styles.aiCancelBtn}
+                            onClick={() => {
+                              aiModalAbortRef.current?.abort()
+                            }}
+                          >
+                            取消生成
+                          </button>
+                        ) : null}
+                      </div>
+                      {aiModalProgress?.detail ? (
+                        <div className={styles.aiGenProgressDetail}>{aiModalProgress.detail}</div>
+                      ) : null}
+                      <div className={styles.aiGenProgressHint}>
+                        已等待 {aiGenElapsedSec}s · 按 F12 打开开发者工具，在 Console 中搜索{' '}
+                        <code>[Flow2Go AI]</code> 可查看每步耗时。若某一步长时间不变，多为 API 慢或排队，不是页面卡死。
+                      </div>
+                    </div>
+                  )}
+                </div>
+              </div>
+            </div>
+          </div>
+        )}
 
         {menu.open && (
           <div
@@ -3080,7 +3792,7 @@ function EditorInner({ onBackHome, source, previewSnapshot, readOnly: _readOnly 
                 }
               }}
             />
-            <div className={styles.modalHint}>文件将保存为 {exportFileName || 'Flow2Go'}.json</div>
+            <div className={styles.modalHint}>文件将保存为 {exportFileName || 'Flow2Go'}.zip</div>
             <div className={styles.modalFooter}>
               <button className={styles.btn} type="button" onClick={() => setSaveModalOpen(false)}>
                 取消
@@ -3110,4 +3822,3 @@ export function FlowEditor(props: FlowEditorProps) {
 }
 
 export default FlowEditor
-

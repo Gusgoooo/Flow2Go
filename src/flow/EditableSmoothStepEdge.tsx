@@ -1,55 +1,80 @@
-import { useCallback, useEffect, useRef, useState } from 'react'
-import {
-  BaseEdge,
-  EdgeLabelRenderer,
-  Position,
-  type EdgeProps,
-  useReactFlow,
-} from '@xyflow/react'
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
+import { BaseEdge, EdgeLabelRenderer, MarkerType, Position, type EdgeProps, useReactFlow } from '@xyflow/react'
+import { getPolylineLabelAnchors } from './edgeLabels/edgeLabelPosition'
+import { SmartEdgeLabel } from './edgeLabels/SmartEdgeLabel'
+import type { EdgeLabelLayoutConfig, EdgeLabelStyle } from './edgeLabels/types'
 import { QuickTextStyleToolbar, QUICK_TOOLBAR_DATA_ATTR } from './QuickTextStyleToolbar'
+import { padEdgeEndpoints } from './edgeEndpointPad'
 
-type EdgeLabelStyle = { fontSize?: number; fontWeight?: string; color?: string }
+type SwimlaneEdgeSemanticType = 'normal' | 'crossLane' | 'returnFlow' | 'conditional'
+
+type EdgeData = {
+  waypoints?: Point[]
+  autoOffset?: number
+  editingLabel?: boolean
+  labelStyle?: EdgeLabelStyle
+  labelLayout?: EdgeLabelLayoutConfig
+  arrowStyle?: 'none' | 'end' | 'start' | 'both'
+  semanticType?: SwimlaneEdgeSemanticType
+  sourceLaneId?: string
+  targetLaneId?: string
+  labelTextOnly?: boolean
+}
 type Point = { x: number; y: number }
 
+function markerColorFrom(style: EdgeProps['style'], marker: unknown): string {
+  const mk = (marker ?? {}) as { color?: string }
+  const s = (style ?? {}) as { stroke?: string; ['--xy-edge-stroke']?: string }
+  return s['--xy-edge-stroke'] ?? s.stroke ?? mk.color ?? '#94a3b8'
+}
+
+function markerKindFrom(marker: unknown): 'closed' | 'open' | null {
+  if (!marker || typeof marker !== 'object') return null
+  const t = (marker as { type?: unknown }).type
+  if (t === MarkerType.ArrowClosed || t === 'arrowclosed') return 'closed'
+  if (t === MarkerType.Arrow || t === 'arrow') return 'open'
+  return null
+}
+
 /**
- * 生成圆角折线路径
+ * 生成圆角正交折线路径（几何上保持 90 度拐弯方向）
  */
 function createRoundedPath(points: Point[], radius: number): string {
   if (points.length < 2) return ''
-  
+
   let path = `M ${points[0].x} ${points[0].y}`
-  
+
   for (let i = 1; i < points.length - 1; i++) {
     const prev = points[i - 1]
     const curr = points[i]
     const next = points[i + 1]
-    
+
     const dx1 = curr.x - prev.x
     const dy1 = curr.y - prev.y
     const dx2 = next.x - curr.x
     const dy2 = next.y - curr.y
-    
+
     const len1 = Math.sqrt(dx1 * dx1 + dy1 * dy1)
     const len2 = Math.sqrt(dx2 * dx2 + dy2 * dy2)
-    
+
     if (len1 === 0 || len2 === 0) {
       path += ` L ${curr.x} ${curr.y}`
       continue
     }
-    
+
     const r = Math.min(radius, len1 / 2, len2 / 2)
-    
+
     const startX = curr.x - (dx1 / len1) * r
     const startY = curr.y - (dy1 / len1) * r
     const endX = curr.x + (dx2 / len2) * r
     const endY = curr.y + (dy2 / len2) * r
-    
+
     path += ` L ${startX} ${startY}`
     path += ` Q ${curr.x} ${curr.y} ${endX} ${endY}`
   }
-  
+
   path += ` L ${points[points.length - 1].x} ${points[points.length - 1].y}`
-  
+
   return path
 }
 
@@ -64,6 +89,7 @@ function getDefaultOrthogonalPoints(
   sourcePosition: Position,
   targetPosition: Position,
   offset: number = 24,
+  autoOffset: number = 0,
 ): Point[] {
   const isHorizontalSource = sourcePosition === Position.Left || sourcePosition === Position.Right
   const isHorizontalTarget = targetPosition === Position.Left || targetPosition === Position.Right
@@ -76,9 +102,9 @@ function getDefaultOrthogonalPoints(
     if (isCShape) {
       // C 字型 (Right→Right or Left→Left)
       const isRight = sourcePosition === Position.Right
-      const outerX = isRight 
-        ? Math.max(sourceX, targetX) + offset 
-        : Math.min(sourceX, targetX) - offset
+      const outerX = isRight
+        ? Math.max(sourceX, targetX) + offset + autoOffset
+        : Math.min(sourceX, targetX) - offset + autoOffset
       return [
         source,
         { x: outerX, y: sourceY },
@@ -87,7 +113,7 @@ function getDefaultOrthogonalPoints(
       ]
     } else {
       // Z 字型 (Right→Left or Left→Right)
-      const midX = (sourceX + targetX) / 2
+      const midX = (sourceX + targetX) / 2 + autoOffset
       return [
         source,
         { x: midX, y: sourceY },
@@ -99,9 +125,9 @@ function getDefaultOrthogonalPoints(
     if (isCShape) {
       // C 字型 (Bottom→Bottom or Top→Top)
       const isBottom = sourcePosition === Position.Bottom
-      const outerY = isBottom 
-        ? Math.max(sourceY, targetY) + offset 
-        : Math.min(sourceY, targetY) - offset
+      const outerY = isBottom
+        ? Math.max(sourceY, targetY) + offset + autoOffset
+        : Math.min(sourceY, targetY) - offset + autoOffset
       return [
         source,
         { x: sourceX, y: outerY },
@@ -110,7 +136,7 @@ function getDefaultOrthogonalPoints(
       ]
     } else {
       // Z 字型 (Bottom→Top or Top→Bottom)
-      const midY = (sourceY + targetY) / 2
+      const midY = (sourceY + targetY) / 2 + autoOffset
       return [
         source,
         { x: sourceX, y: midY },
@@ -124,14 +150,14 @@ function getDefaultOrthogonalPoints(
       // 水平出发，垂直到达：先水平再垂直
       return [
         source,
-        { x: targetX, y: sourceY },
+        { x: targetX, y: sourceY + autoOffset },
         target,
       ]
     } else {
       // 垂直出发，水平到达：先垂直再水平
       return [
         source,
-        { x: sourceX, y: targetY },
+        { x: sourceX + autoOffset, y: targetY },
         target,
       ]
     }
@@ -241,9 +267,9 @@ export function EditableSmoothStepEdge(props: EdgeProps) {
     selected,
   } = props
 
-  const labelStyleObj = ((data as { labelStyle?: EdgeLabelStyle })?.labelStyle ??
-    (props as { labelStyle?: EdgeLabelStyle }).labelStyle) ?? {}
-  const labelFontSize = labelStyleObj.fontSize ?? 12
+  const dataTyped = (data ?? {}) as EdgeData
+  const labelStyleObj = (dataTyped.labelStyle ?? (props as { labelStyle?: EdgeLabelStyle }).labelStyle) ?? {}
+  const labelFontSize = labelStyleObj.fontSize ?? 10
   const labelFontWeight = labelStyleObj.fontWeight ?? '400'
   const labelColor = labelStyleObj.color ?? 'rgba(0,0,0,0.8)'
 
@@ -251,46 +277,70 @@ export function EditableSmoothStepEdge(props: EdgeProps) {
 
   const srcPos = sourcePosition ?? Position.Right
   const tgtPos = targetPosition ?? Position.Left
-  
-  // 从 data 中获取保存的路径点，或生成默认路径
-  const dataAny = (data ?? {}) as any
-  const savedWaypoints: Point[] | undefined = dataAny.waypoints
-  
-  // 生成完整的路径点（包含源和目标）
-  const defaultPoints = getDefaultOrthogonalPoints(
-    sourceX, sourceY, targetX, targetY, srcPos, tgtPos, 24
-  )
-  
-  // 如果有保存的 waypoints，使用它们（中间点），加上当前的源和目标
-  let points: Point[]
-  if (savedWaypoints && savedWaypoints.length > 0) {
-    const rawPoints = [
-      { x: sourceX, y: sourceY },
-      ...savedWaypoints,
-      { x: targetX, y: targetY },
-    ]
-    // 保证出入节点的线段与端口方向平行
-    points = snapEndpointsToPorts(rawPoints, srcPos, tgtPos)
-  } else {
-    points = defaultPoints
+
+  const semanticType = dataTyped.semanticType
+  const semanticStyle: React.CSSProperties = {}
+  if (semanticType === 'returnFlow') {
+    semanticStyle.strokeDasharray = '6 3'
+    semanticStyle.opacity = 0.7
   }
-  
+
+  const padded = useMemo(
+    () =>
+      padEdgeEndpoints({
+        sourceX,
+        sourceY,
+        targetX,
+        targetY,
+        sourcePosition: srcPos,
+        targetPosition: tgtPos,
+      }),
+    [sourceX, sourceY, targetX, targetY, srcPos, tgtPos],
+  )
+
+  // 从 data 中获取保存的路径点，或生成默认路径
+  const savedWaypoints: Point[] | undefined = dataTyped.waypoints
+  const autoOffset: number =
+    typeof dataTyped.autoOffset === 'number' && Number.isFinite(dataTyped.autoOffset) ? dataTyped.autoOffset : 0
+
+  const points = useMemo((): Point[] => {
+    const defaultPts = getDefaultOrthogonalPoints(
+      padded.sourceX,
+      padded.sourceY,
+      padded.targetX,
+      padded.targetY,
+      srcPos,
+      tgtPos,
+      24,
+      autoOffset,
+    )
+    if (savedWaypoints && savedWaypoints.length > 0) {
+      const rawPoints = [
+        { x: padded.sourceX, y: padded.sourceY },
+        ...savedWaypoints,
+        { x: padded.targetX, y: padded.targetY },
+      ]
+      return snapEndpointsToPorts(rawPoints, srcPos, tgtPos)
+    }
+    return defaultPts
+  }, [padded, srcPos, tgtPos, autoOffset, savedWaypoints])
+
+  /** 与 points 中「无自定义 waypoints」时的折线一致，供拖拽逻辑初始化 */
+  const defaultPointsForDrag = useMemo(
+    () =>
+      getDefaultOrthogonalPoints(padded.sourceX, padded.sourceY, padded.targetX, padded.targetY, srcPos, tgtPos, 24, autoOffset),
+    [padded, srcPos, tgtPos, autoOffset],
+  )
+
   // 生成圆角路径
   const edgePath = createRoundedPath(points, 12)
   
   // 获取所有线段信息
   const segments = getSegments(points)
-  
-  // 计算标签位置（路径中点）
-  const midIndex = Math.floor(points.length / 2)
-  const labelX = points.length % 2 === 0 
-    ? (points[midIndex - 1].x + points[midIndex].x) / 2
-    : points[midIndex].x
-  const labelY = points.length % 2 === 0
-    ? (points[midIndex - 1].y + points[midIndex].y) / 2
-    : points[midIndex].y
 
-  const editing = Boolean((data as any)?.editingLabel)
+  const anchors = useMemo(() => getPolylineLabelAnchors(points), [points])
+
+  const editing = Boolean(dataTyped.editingLabel)
   const [hoveredSegment, setHoveredSegment] = useState<number | null>(null)
 
   const inputRef = useRef<HTMLTextAreaElement>(null)
@@ -322,7 +372,7 @@ export function EditableSmoothStepEdge(props: EdgeProps) {
       // 获取当前的中间点（不包含源和目标）
       const currentWaypoints: Point[] = savedWaypoints 
         ? [...savedWaypoints] 
-        : defaultPoints.slice(1, -1).map(p => ({ ...p }))
+        : defaultPointsForDrag.slice(1, -1).map((p: Point) => ({ ...p }))
       
       // segIndex 是 points 数组中的索引，对应 waypoints 的索引是 segIndex-1 和 segIndex
       // 但线段连接的是 points[segIndex] 和 points[segIndex+1]
@@ -377,7 +427,7 @@ export function EditableSmoothStepEdge(props: EdgeProps) {
       window.addEventListener('mousemove', handleMove)
       window.addEventListener('mouseup', handleUp)
     },
-    [id, rf, savedWaypoints, defaultPoints],
+    [id, rf, savedWaypoints, defaultPointsForDrag],
   )
 
   const handleLabelDrag = useCallback(
@@ -388,7 +438,7 @@ export function EditableSmoothStepEdge(props: EdgeProps) {
       const startY = e.clientY
       const currentWaypoints: Point[] = savedWaypoints 
         ? [...savedWaypoints] 
-        : defaultPoints.slice(1, -1).map(p => ({ ...p }))
+        : defaultPointsForDrag.slice(1, -1).map((p: Point) => ({ ...p }))
 
       const handleMove = (evt: MouseEvent) => {
         const cur = rf.screenToFlowPosition({ x: evt.clientX, y: evt.clientY })
@@ -419,7 +469,7 @@ export function EditableSmoothStepEdge(props: EdgeProps) {
       window.addEventListener('mousemove', handleMove)
       window.addEventListener('mouseup', handleUp)
     },
-    [id, rf, editing, savedWaypoints, defaultPoints, labelX, labelY],
+    [id, rf, editing, savedWaypoints, defaultPointsForDrag],
   )
 
   const commit = (next: string) => {
@@ -439,16 +489,89 @@ export function EditableSmoothStepEdge(props: EdgeProps) {
 
   const markerKey =
     `${id}-${JSON.stringify(markerStart ?? null)}-${JSON.stringify(markerEnd ?? null)}`
+  const arrowStyle = dataTyped.arrowStyle ?? 'end'
+  const hasStartArrow = arrowStyle === 'start' || arrowStyle === 'both' || (arrowStyle == null && Boolean(markerStart))
+  const hasEndArrow = arrowStyle === 'end' || arrowStyle === 'both' || (arrowStyle == null && Boolean(markerEnd))
+  const startKind = hasStartArrow ? markerKindFrom(markerStart) ?? 'closed' : null
+  const endKind = hasEndArrow ? markerKindFrom(markerEnd) ?? 'closed' : null
+  const startMarkerId = `${id}-start-marker`
+  const endMarkerId = `${id}-end-marker`
+  const startMarkerUrl = startKind ? `url(#${startMarkerId})` : undefined
+  const endMarkerUrl = endKind ? `url(#${endMarkerId})` : undefined
 
   return (
     <>
+      {(startKind || endKind) && (
+        <defs>
+          {startKind && (
+            <marker
+              id={startMarkerId}
+              markerWidth={6}
+              markerHeight={12}
+              viewBox="0 0 10 10"
+              preserveAspectRatio="none"
+              refX={2}
+              refY={5}
+              orient="auto-start-reverse"
+              markerUnits="userSpaceOnUse"
+            >
+              {startKind === 'closed' ? (
+                <path
+                  d="M 0 0 L 10 5 L 0 10 z"
+                  fill={markerColorFrom(style, markerStart)}
+                  stroke={markerColorFrom(style, markerStart)}
+                  strokeWidth={0.35}
+                  strokeLinejoin="round"
+                />
+              ) : (
+                <path
+                  d="M 0 0 L 10 5 L 0 10"
+                  fill="none"
+                  stroke={markerColorFrom(style, markerStart)}
+                  strokeWidth={1.5}
+                />
+              )}
+            </marker>
+          )}
+          {endKind && (
+            <marker
+              id={endMarkerId}
+              markerWidth={6}
+              markerHeight={12}
+              viewBox="0 0 10 10"
+              preserveAspectRatio="none"
+              refX={2}
+              refY={5}
+              orient="auto"
+              markerUnits="userSpaceOnUse"
+            >
+              {endKind === 'closed' ? (
+                <path
+                  d="M 0 0 L 10 5 L 0 10 z"
+                  fill={markerColorFrom(style, markerEnd)}
+                  stroke={markerColorFrom(style, markerEnd)}
+                  strokeWidth={0.35}
+                  strokeLinejoin="round"
+                />
+              ) : (
+                <path
+                  d="M 0 0 L 10 5 L 0 10"
+                  fill="none"
+                  stroke={markerColorFrom(style, markerEnd)}
+                  strokeWidth={1.5}
+                />
+              )}
+            </marker>
+          )}
+        </defs>
+      )}
       <BaseEdge
         key={markerKey}
         id={id}
         path={edgePath}
-        markerStart={markerStart}
-        markerEnd={markerEnd}
-        style={style}
+        markerStart={startMarkerUrl}
+        markerEnd={endMarkerUrl}
+        style={{ ...style, ...semanticStyle } as any}
         interactionWidth={interactionWidth ?? 24}
       />
 
@@ -499,33 +622,30 @@ export function EditableSmoothStepEdge(props: EdgeProps) {
         )
       })}
 
-      {/* 标签区域 */}
-      <EdgeLabelRenderer>
-        <div
-          style={{
-            position: 'absolute',
-            transform: `translate(-50%, -50%) translate(${labelX}px, ${labelY}px)`,
-            pointerEvents: 'all',
-            fontSize: labelFontSize,
-            fontWeight: labelFontWeight,
-            zIndex: 1000,
-          }}
-          onMouseDown={handleLabelDrag}
-          onDoubleClick={(e) => {
-            e.stopPropagation()
-            if (!editing)
-              rf.setEdges((eds) =>
-                eds.map((edge) =>
-                  edge.id === id
-                    ? { ...edge, data: { ...(edge.data ?? {}), editingLabel: true } }
-                    : { ...edge, data: { ...(edge.data ?? {}), editingLabel: false } },
-                ),
-              )
-          }}
-        >
-          {editing ? (
-            <>
-              <QuickTextStyleToolbar
+      <SmartEdgeLabel
+        edgeId={id}
+        anchors={anchors}
+        labelLayout={dataTyped.labelLayout}
+        labelStyle={labelStyleObj}
+        text={typeof label === 'string' ? label : ''}
+        editing={editing}
+        textOnly={Boolean(dataTyped.semanticType) || Boolean(dataTyped.labelTextOnly)}
+        onPointerDown={handleLabelDrag}
+        onDoubleClick={(e) => {
+          e.stopPropagation()
+          if (!editing) {
+            rf.setEdges((eds) =>
+              eds.map((edge) =>
+                edge.id === id
+                  ? { ...edge, data: { ...(edge.data ?? {}), editingLabel: true } }
+                  : { ...edge, data: { ...(edge.data ?? {}), editingLabel: false } },
+              ),
+            )
+          }
+        }}
+        editChildren={
+          <>
+            <QuickTextStyleToolbar
                 anchorRef={inputRef}
                 visible={editing}
                 onRequestClose={() => {
@@ -637,24 +757,9 @@ export function EditableSmoothStepEdge(props: EdgeProps) {
                   }
                 }}
               />
-            </>
-          ) : label ? (
-            <span
-              style={{
-                padding: '2px 4px',
-                borderRadius: 12,
-                background: '#f8fafc',
-                border: '1px solid #e5e7eb',
-                fontSize: labelFontSize,
-                fontWeight: labelFontWeight,
-                color: labelColor,
-              }}
-            >
-              {label as string}
-            </span>
-          ) : null}
-        </div>
-      </EdgeLabelRenderer>
+          </>
+        }
+      />
     </>
   )
 }

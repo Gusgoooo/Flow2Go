@@ -24,6 +24,14 @@ export const PRESET_COLORS = [
   '#7dd3fc',
 ] as const
 
+/** AI 场景胶囊高亮用色：取预设色板前 4 个，与节点配色器一致 */
+export const AI_SCENE_CAPSULE_ACCENT_COLORS: readonly [string, string, string, string] = [
+  PRESET_COLORS[0],
+  PRESET_COLORS[1],
+  PRESET_COLORS[2],
+  PRESET_COLORS[3],
+]
+
 /** 最近使用数量 = 预设颜色数量，超出则按时间只保留最新 */
 export const RECENT_COLORS_MAX = PRESET_COLORS.length
 

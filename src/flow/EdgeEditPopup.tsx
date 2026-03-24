@@ -79,7 +79,7 @@ export function EdgeEditPopup({ edge, anchor, onUpdate, onClose }: Props) {
         <span className={styles.itemLabel}>类型</span>
         <select
           className={styles.select}
-          value={(edge.type as string) ?? 'smoothstep'}
+          value={(edge.type as string) ?? 'bezier'}
           onChange={(e) => onUpdate({ type: e.target.value as any })}
         >
           <option value="smoothstep">平滑步进</option>

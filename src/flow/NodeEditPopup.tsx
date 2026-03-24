@@ -14,6 +14,7 @@ type QuadNodeData = {
   stroke?: string
   strokeWidth?: number
   labelColor?: string
+  subtitleColor?: string
   [key: string]: unknown
 }
 
@@ -121,11 +122,25 @@ export function NodeEditPopup({ node, anchor, onUpdate, onClose }: Props) {
       </label>
 
       <label className={styles.item}>
-        <span className={styles.itemLabel}>字色</span>
+        <span className={styles.itemLabel}>主标题字色</span>
         <ColorEditor
           value={(data.labelColor ?? 'rgba(0,0,0,0.8)') as string}
           onChange={(v) => onUpdate({ labelColor: v })}
           placeholder="rgba(0,0,0,0.8)"
+          showAlpha={true}
+          showPicker={true}
+          compact={true}
+          portalPicker={true}
+          focusRetainDataAttr="data-node-edit-popup"
+        />
+      </label>
+
+      <label className={styles.item}>
+        <span className={styles.itemLabel}>副标题字色</span>
+        <ColorEditor
+          value={(data.subtitleColor ?? '#64748b') as string}
+          onChange={(v) => onUpdate({ subtitleColor: v })}
+          placeholder="#64748b"
           showAlpha={true}
           showPicker={true}
           compact={true}
