@@ -48,7 +48,7 @@ type QuadNodeData = {
 }
 
 const DEFAULT_TITLE_FS = 12
-const DEFAULT_SUBTITLE_FS = 11
+const DEFAULT_SUBTITLE_FS = 10
 const QUAD_MIN_W = 80
 const QUAD_MIN_H = 44
 
@@ -176,12 +176,14 @@ export function QuadNode(props: NodeProps) {
     fontWeight: data.labelFontWeight ?? '700',
     color: data.labelColor ?? 'rgba(0,0,0,0.8)',
     lineHeight: lineHeightForFontSizePx(titleFs),
+    letterSpacing: '0px',
   }
   const subtitleStyle: CSSProperties = {
     fontSize: subtitleFs,
     fontWeight: data.subtitleFontWeight ?? '400',
     color: data.subtitleColor ?? '#64748b',
     lineHeight: subtitleLineHeightForFontSizePx(subtitleFs),
+    letterSpacing: '0px',
   }
 
   const nodeColor = data.color

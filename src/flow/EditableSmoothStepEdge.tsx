@@ -1,10 +1,20 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
-import { BaseEdge, EdgeLabelRenderer, MarkerType, Position, type EdgeProps, useReactFlow } from '@xyflow/react'
+import {
+  BaseEdge,
+  EdgeLabelRenderer,
+  MarkerType,
+  Position,
+  type EdgeProps,
+  useReactFlow,
+  useStore,
+} from '@xyflow/react'
 import { getPolylineLabelAnchors } from './edgeLabels/edgeLabelPosition'
 import { SmartEdgeLabel } from './edgeLabels/SmartEdgeLabel'
 import type { EdgeLabelLayoutConfig, EdgeLabelStyle } from './edgeLabels/types'
 import { QuickTextStyleToolbar, QUICK_TOOLBAR_DATA_ATTR } from './QuickTextStyleToolbar'
 import { padEdgeEndpoints } from './edgeEndpointPad'
+import { doesPolylineIntersectAnyExclusionBox, getNodeExclusionBoxes } from './layout/routing/exclusion'
+import { resolveOrthogonalPathAvoidingObstacles } from './layout/routing/orthogonalObstacleDetour'
 
 type SwimlaneEdgeSemanticType = 'normal' | 'crossLane' | 'returnFlow' | 'conditional'
 
@@ -85,92 +95,6 @@ function createRoundedPath(points: Point[], radius: number): string {
 }
 
 /**
- * 根据源和目标位置生成默认的正交路径点
- */
-function getDefaultOrthogonalPoints(
-  sourceX: number,
-  sourceY: number,
-  targetX: number,
-  targetY: number,
-  sourcePosition: Position,
-  targetPosition: Position,
-  offset: number = 24,
-  autoOffset: number = 0,
-): Point[] {
-  const isHorizontalSource = sourcePosition === Position.Left || sourcePosition === Position.Right
-  const isHorizontalTarget = targetPosition === Position.Left || targetPosition === Position.Right
-  const isCShape = sourcePosition === targetPosition
-  
-  const source = { x: sourceX, y: sourceY }
-  const target = { x: targetX, y: targetY }
-  
-  if (isHorizontalSource && isHorizontalTarget) {
-    if (isCShape) {
-      // C 字型 (Right→Right or Left→Left)
-      const isRight = sourcePosition === Position.Right
-      const outerX = isRight
-        ? Math.max(sourceX, targetX) + offset + autoOffset
-        : Math.min(sourceX, targetX) - offset + autoOffset
-      return [
-        source,
-        { x: outerX, y: sourceY },
-        { x: outerX, y: targetY },
-        target,
-      ]
-    } else {
-      // Z 字型 (Right→Left or Left→Right)
-      const midX = (sourceX + targetX) / 2 + autoOffset
-      return [
-        source,
-        { x: midX, y: sourceY },
-        { x: midX, y: targetY },
-        target,
-      ]
-    }
-  } else if (!isHorizontalSource && !isHorizontalTarget) {
-    if (isCShape) {
-      // C 字型 (Bottom→Bottom or Top→Top)
-      const isBottom = sourcePosition === Position.Bottom
-      const outerY = isBottom
-        ? Math.max(sourceY, targetY) + offset + autoOffset
-        : Math.min(sourceY, targetY) - offset + autoOffset
-      return [
-        source,
-        { x: sourceX, y: outerY },
-        { x: targetX, y: outerY },
-        target,
-      ]
-    } else {
-      // Z 字型 (Bottom→Top or Top→Bottom)
-      const midY = (sourceY + targetY) / 2 + autoOffset
-      return [
-        source,
-        { x: sourceX, y: midY },
-        { x: targetX, y: midY },
-        target,
-      ]
-    }
-  } else {
-    // L 字型 (混合方向)
-    if (isHorizontalSource) {
-      // 水平出发，垂直到达：先水平再垂直
-      return [
-        source,
-        { x: targetX, y: sourceY + autoOffset },
-        target,
-      ]
-    } else {
-      // 垂直出发，水平到达：先垂直再水平
-      return [
-        source,
-        { x: sourceX + autoOffset, y: targetY },
-        target,
-      ]
-    }
-  }
-}
-
-/**
  * 计算每个线段的信息，用于渲染拖拽手柄
  */
 function getSegments(points: Point[]): Array<{
@@ -235,9 +159,15 @@ function snapEndpointsToPorts(
   if (sourcePosition === Position.Left || sourcePosition === Position.Right) {
     // 水平出发：和源节点保持同一条水平线
     first.y = src.y
+    // 保证第一拐点后续仍为垂直：第二段应与 first 的 x 对齐
+    const next = snapped[2]
+    if (next) next.x = first.x
   } else {
     // 垂直出发：和源节点保持同一条竖线
     first.x = src.x
+    // 保证第一拐点后续仍为水平：第二段应与 first 的 y 对齐
+    const next = snapped[2]
+    if (next) next.y = first.y
   }
 
   // 最后一段：最后一个中间点 → 目标节点
@@ -247,9 +177,15 @@ function snapEndpointsToPorts(
   if (targetPosition === Position.Left || targetPosition === Position.Right) {
     // 水平进入：和目标节点保持同一条水平线
     last.y = tgt.y
+    // 保证最后一个拐点前后仍为正交：倒数第二段需与 last 的 x 对齐
+    const prev = snapped[lastIdx - 1]
+    if (prev) prev.x = last.x
   } else {
     // 垂直进入：和目标节点保持同一条竖线
     last.x = tgt.x
+    // 保证最后一个拐点前后仍为正交：倒数第二段需与 last 的 y 对齐
+    const prev = snapped[lastIdx - 1]
+    if (prev) prev.y = last.y
   }
 
   return snapped
@@ -323,6 +259,8 @@ function adaptWaypointsByRouteRef(
 export function EditableSmoothStepEdge(props: EdgeProps) {
   const {
     id,
+    source,
+    target,
     sourceX,
     sourceY,
     targetX,
@@ -345,6 +283,8 @@ export function EditableSmoothStepEdge(props: EdgeProps) {
   const labelColor = labelStyleObj.color ?? 'rgba(0,0,0,0.8)'
 
   const rf = useReactFlow()
+
+  const obstacleBoxes = useStore((state) => getNodeExclusionBoxes(state.nodes))
 
   const srcPos = sourcePosition ?? Position.Right
   const tgtPos = targetPosition ?? Position.Left
@@ -389,35 +329,45 @@ export function EditableSmoothStepEdge(props: EdgeProps) {
     const adapted = adaptWaypointsByRouteRef(savedWaypoints, dataTyped.routeRef, endpointSnapshot)
     return normalizeOrthogonalWaypoints(sourcePoint, targetPoint, adapted, srcPos, tgtPos)
   }, [savedWaypoints, dataTyped.routeRef, endpointSnapshot, sourcePoint, targetPoint, srcPos, tgtPos])
+  const endpointMovedSinceRouteRef = useMemo(() => {
+    const ref = dataTyped.routeRef
+    if (!ref) return true
+    const eps = 1e-3
+    return (
+      Math.abs(ref.sourceX - endpointSnapshot.sourceX) > eps ||
+      Math.abs(ref.sourceY - endpointSnapshot.sourceY) > eps ||
+      Math.abs(ref.targetX - endpointSnapshot.targetX) > eps ||
+      Math.abs(ref.targetY - endpointSnapshot.targetY) > eps
+    )
+  }, [dataTyped.routeRef, endpointSnapshot])
 
   const points = useMemo((): Point[] => {
-    const defaultPts = getDefaultOrthogonalPoints(
-      padded.sourceX,
-      padded.sourceY,
-      padded.targetX,
-      padded.targetY,
-      srcPos,
-      tgtPos,
-      24,
-      autoOffset,
-    )
-    if (effectiveWaypoints && effectiveWaypoints.length > 0) {
+    if (!endpointMovedSinceRouteRef && effectiveWaypoints && effectiveWaypoints.length > 0) {
       const rawPoints = [
         { x: padded.sourceX, y: padded.sourceY },
         ...effectiveWaypoints,
         { x: padded.targetX, y: padded.targetY },
       ]
-      return snapEndpointsToPorts(rawPoints, srcPos, tgtPos)
+      const snapped = snapEndpointsToPorts(rawPoints, srcPos, tgtPos)
+      const intersects = doesPolylineIntersectAnyExclusionBox(snapped, obstacleBoxes, [String(source), String(target)])
+      // 用户手动调过路径后，若后续节点移动导致该路径穿过其它节点，则回退到自动避障路由。
+      if (!intersects) return snapped
     }
-    return defaultPts
-  }, [padded, srcPos, tgtPos, autoOffset, effectiveWaypoints])
-
-  /** 与 points 中「无自定义 waypoints」时的折线一致，供拖拽逻辑初始化 */
-  const defaultPointsForDrag = useMemo(
-    () =>
-      getDefaultOrthogonalPoints(padded.sourceX, padded.sourceY, padded.targetX, padded.targetY, srcPos, tgtPos, 24, autoOffset),
-    [padded, srcPos, tgtPos, autoOffset],
-  )
+    const routed = resolveOrthogonalPathAvoidingObstacles({
+      sourceX: padded.sourceX,
+      sourceY: padded.sourceY,
+      targetX: padded.targetX,
+      targetY: padded.targetY,
+      sourcePosition: srcPos,
+      targetPosition: tgtPos,
+      offset: 16,
+      autoOffset,
+      obstacleBoxes,
+      sourceNodeId: String(source),
+      targetNodeId: String(target),
+    })
+    return snapEndpointsToPorts(routed, srcPos, tgtPos)
+  }, [padded, srcPos, tgtPos, autoOffset, effectiveWaypoints, obstacleBoxes, source, target, endpointMovedSinceRouteRef])
 
   // 生成圆角路径
   const edgePath = createRoundedPath(points, 12)
@@ -480,7 +430,7 @@ export function EditableSmoothStepEdge(props: EdgeProps) {
       // 获取当前的中间点（不包含源和目标）
       const currentWaypoints: Point[] = effectiveWaypoints
         ? effectiveWaypoints.map((p) => ({ ...p }))
-        : defaultPointsForDrag.slice(1, -1).map((p: Point) => ({ ...p }))
+        : points.slice(1, -1).map((p: Point) => ({ ...p }))
       
       // segIndex 是 points 数组中的索引，对应 waypoints 的索引是 segIndex-1 和 segIndex
       // 但线段连接的是 points[segIndex] 和 points[segIndex+1]
@@ -543,7 +493,7 @@ export function EditableSmoothStepEdge(props: EdgeProps) {
       window.addEventListener('mousemove', handleMove)
       window.addEventListener('mouseup', handleUp)
     },
-    [id, rf, effectiveWaypoints, defaultPointsForDrag, sourcePoint, targetPoint, srcPos, tgtPos, endpointSnapshot],
+    [id, rf, effectiveWaypoints, points, sourcePoint, targetPoint, srcPos, tgtPos, endpointSnapshot],
   )
 
   const handleLabelDrag = useCallback(
@@ -554,7 +504,7 @@ export function EditableSmoothStepEdge(props: EdgeProps) {
       const startY = e.clientY
       const currentWaypoints: Point[] = effectiveWaypoints
         ? effectiveWaypoints.map((p) => ({ ...p }))
-        : defaultPointsForDrag.slice(1, -1).map((p: Point) => ({ ...p }))
+        : points.slice(1, -1).map((p: Point) => ({ ...p }))
 
       const handleMove = (evt: MouseEvent) => {
         const cur = rf.screenToFlowPosition({ x: evt.clientX, y: evt.clientY })
@@ -593,7 +543,7 @@ export function EditableSmoothStepEdge(props: EdgeProps) {
       window.addEventListener('mousemove', handleMove)
       window.addEventListener('mouseup', handleUp)
     },
-    [id, rf, editing, effectiveWaypoints, defaultPointsForDrag, sourcePoint, targetPoint, srcPos, tgtPos, endpointSnapshot],
+    [id, rf, editing, effectiveWaypoints, points, sourcePoint, targetPoint, srcPos, tgtPos, endpointSnapshot],
   )
 
   const commit = (next: string) => {
@@ -708,8 +658,8 @@ export function EditableSmoothStepEdge(props: EdgeProps) {
         const middleIdx = Math.floor(segments.length / 2)
         const isMiddleSeg = idx === middleIdx
 
-        // 仅在较复杂路径（>=5段）显示可调手柄
-        if (segments.length < 5) return null
+        // 至少 3 段才有「非首尾」中间段；常见手动连线为 Z/C 型 3 段，此前误用 >=5 导致手柄永远不出现
+        if (segments.length < 3) return null
         // 跳过第一段和最后一段（连接到源/目标节点的段）
         if (idx === 0 || idx === segments.length - 1) return null
         // 仅允许“垂直于 in/out 段方向”的中段出现手柄

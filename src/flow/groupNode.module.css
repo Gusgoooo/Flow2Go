@@ -44,6 +44,7 @@
   user-select: none;
   white-space: pre-wrap;
   word-break: break-word;
+  letter-spacing: 0;
 }
 
 .titleInput {
@@ -59,18 +60,20 @@
   font-family: inherit;
   height: auto;
   overflow: hidden;
+  letter-spacing: 0;
 }
 
 .subtitle {
   width: 100%;
   text-align: center;
-  font-size: 11px;
+  font-size: 10px;
   font-weight: 400;
   color: #64748b;
   user-select: none;
   white-space: pre-wrap;
   word-break: break-word;
   cursor: text;
+  letter-spacing: 0;
 }
 
 .subtitleInput {
@@ -79,13 +82,14 @@
   outline: none;
   background: transparent;
   text-align: center;
-  font-size: 11px;
+  font-size: 10px;
   font-weight: 400;
   color: #64748b;
   resize: none;
   font-family: inherit;
   height: auto;
   overflow: hidden;
+  letter-spacing: 0;
 }
 
 /* Left-center: 标题+副标题整体垂直居中，副标题在标题下、左对齐 */
@@ -109,6 +113,7 @@
   white-space: pre-wrap;
   word-break: break-word;
   text-align: left;
+  letter-spacing: 0;
 }
 
 .titleInputLeft {
@@ -125,10 +130,11 @@
   text-align: left;
   width: 100%;
   align-self: stretch;
+  letter-spacing: 0;
 }
 
 .subtitleLeft {
-  font-size: 11px;
+  font-size: 10px;
   font-weight: 400;
   color: #64748b;
   user-select: none;
@@ -136,13 +142,14 @@
   word-break: break-word;
   cursor: text;
   text-align: left;
+  letter-spacing: 0;
 }
 
 .subtitleInputLeft {
   border: none;
   outline: none;
   background: transparent;
-  font-size: 11px;
+  font-size: 10px;
   font-weight: 400;
   color: #64748b;
   resize: none;
@@ -152,6 +159,7 @@
   text-align: left;
   width: 100%;
   align-self: stretch;
+  letter-spacing: 0;
 }
 
 /* ─── Lane (swimlane) 专用样式 ─── */

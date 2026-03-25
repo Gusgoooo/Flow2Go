@@ -1,6 +1,9 @@
 import { Position } from '@xyflow/react'
 
-/** 连线在源/目标端口处与节点轮廓的间隙（像素），首尾一致 */
+/**
+ * 连线端点相对 handle 中心沿端口朝外平移距离（像素）。
+ * 设为 0 时，线端点紧贴节点 handle；避让由中段正交路由负责。
+ */
 export const EDGE_HANDLE_GAP_PX = 0
 
 function outwardDelta(pos: Position, pad: number): { dx: number; dy: number } {

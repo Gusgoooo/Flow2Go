@@ -43,14 +43,6 @@ function noopUnregister(id: string) {
 }
 function noopBump() {}
 
-function defaultPlacementForEdge(edgeId: string): Exclude<EdgeLabelPlacement, 'manual' | 'center'> {
-  let h = 0
-  for (let i = 0; i < edgeId.length; i += 1) {
-    h = (h * 31 + edgeId.charCodeAt(i)) | 0
-  }
-  return (h & 1) === 0 ? 'head' : 'tail'
-}
-
 function numericOr(fallback: number, ...vals: Array<unknown>): number {
   for (const v of vals) {
     if (typeof v === 'number' && Number.isFinite(v)) return v
@@ -278,7 +270,8 @@ export function SmartEdgeLabel(props: SmartEdgeLabelProps) {
 
   const { getResolved, register, unregister, bumpLayout } = useEdgeLabelLayout()
 
-  const preferred: EdgeLabelPlacement = labelLayout?.placement ?? defaultPlacementForEdge(edgeId)
+  /** 默认沿路径中点；重叠时由 edgeLabelCollision 切换 head/tail 或 nudge */
+  const preferred: EdgeLabelPlacement = labelLayout?.placement ?? 'center'
   const manual = useMemo(
     () => ({ x: labelLayout?.offsetX ?? 0, y: labelLayout?.offsetY ?? 0 }),
     [labelLayout?.offsetX, labelLayout?.offsetY],

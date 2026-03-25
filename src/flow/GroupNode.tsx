@@ -39,7 +39,7 @@ export type GroupNodeData = {
 }
 
 const DEFAULT_GROUP_TITLE_FS = 13
-const DEFAULT_GROUP_SUBTITLE_FS = 11
+const DEFAULT_GROUP_SUBTITLE_FS = 10
 
 function groupLineHeightPx(fs: number) {
   return `${Math.round(fs) + 8}px`
@@ -77,12 +77,14 @@ export function GroupNode(props: NodeProps) {
     fontWeight: data.titleFontWeight ?? '800',
     color: data.titleColor ?? '#1e3a8a',
     lineHeight: groupLineHeightPx(titleFs),
+    letterSpacing: '0px' as const,
   }
   const subtitleStyle = {
     fontSize: subtitleFs,
     fontWeight: data.subtitleFontWeight ?? '400',
     color: data.subtitleColor ?? '#64748b',
     lineHeight: groupLineHeightPx(subtitleFs),
+    letterSpacing: '0px' as const,
   }
   const titlePosition = data.titlePosition ?? 'top-center'
   const isLeftCenter = titlePosition === 'left-center'
