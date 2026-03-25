@@ -634,9 +634,6 @@ function Sidebar({
       )}
 
         </div>
-        <div className={styles.sidebarFooter}>
-          所有记录都储存在本地，保证您的数据安全
-        </div>
       </div>
     </aside>
   )
