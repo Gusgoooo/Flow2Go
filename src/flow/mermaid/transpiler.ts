@@ -53,6 +53,17 @@ function buildReadableFallbackTitle(idx: number): string {
   return `步骤${idx}`
 }
 
+function isDecisionLikeTitle(title: string): boolean {
+  const t = String(title ?? '').trim()
+  if (!t) return false
+  // 常见判断语义：是否/判断/能否/需不需要/…？
+  if (/[?？]/.test(t)) return true
+  if (/(是否|判断|能否|可否|需不需要|需要吗|通过吗|成功吗|失败吗)/.test(t)) return true
+  // 一些常见英文 yes/no 决策
+  if (/\b(yes\/no|yes|no)\b/i.test(t)) return true
+  return false
+}
+
 export function transpileMermaidFlowIR(
   ir: MermaidFlowIR,
   rawMermaid?: string,
@@ -90,13 +101,14 @@ export function transpileMermaidFlowIR(
     const title = isIdLikeTitle(node.id, node.label)
       ? buildReadableFallbackTitle(fallbackTitleCounter++)
       : node.label
+    const inferredShape = isDecisionLikeTitle(title) ? 'diamond' : node.shape
     nodeOps.push({
       op: 'graph.createNodeQuad',
       params: {
         id: node.id,
         title,
         ...(node.subtitle ? { subtitle: node.subtitle } : {}),
-        shape: node.shape,
+        shape: inferredShape,
         ...(parentId ? { parentId } : {}),
       },
     })
@@ -138,7 +150,8 @@ export function transpileMermaidFlowIR(
         source: edge.source,
         target: edge.target,
         ...(edge.label ? { label: edge.label } : {}),
-        type: 'bezier',
+        // 默认使用 smoothstep，交给后续正交避障与 handle 规范化提升可读性
+        type: 'smoothstep',
         arrowStyle: 'end',
       },
     })

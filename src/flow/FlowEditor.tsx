@@ -36,6 +36,7 @@ import {
   AlignHorizontalDistributeCenter,
   KeyRound,
   InspectionPanel,
+  MessageCircleQuestion,
   Settings2,
   SquareDashedKanban,
   Square,
@@ -532,6 +533,7 @@ function EditorInner({ onBackHome, source, previewSnapshot, readOnly: _readOnly 
   const [aiGenElapsedSec, setAiGenElapsedSec] = useState(0)
   const [aiModalError, setAiModalError] = useState<string | null>(null)
   const aiModalAbortRef = useRef<AbortController | null>(null)
+  const [handleLimitNotices, setHandleLimitNotices] = useState<Array<{ id: string; message: string }>>([])
   const [aiModalModel, setAiModalModel] = useState<string>(() => {
     try {
       return localStorage.getItem('flow2go-openrouter-model') || 'qwen/qwen3-max-thinking'
@@ -975,6 +977,54 @@ function EditorInner({ onBackHome, source, previewSnapshot, readOnly: _readOnly 
             }
           }
         }
+        const parseSideFromHandle = (handleId: unknown): 'top' | 'right' | 'bottom' | 'left' | null => {
+          if (typeof handleId !== 'string') return null
+          if (handleId.endsWith('-top')) return 'top'
+          if (handleId.endsWith('-right')) return 'right'
+          if (handleId.endsWith('-bottom')) return 'bottom'
+          if (handleId.endsWith('-left')) return 'left'
+          return null
+        }
+
+        const countEdgesOnNodeSide = (nodeId: string, side: 'top' | 'right' | 'bottom' | 'left'): number => {
+          let c = 0
+          for (const e of eds) {
+            if ((e as any).source === nodeId) {
+              const s = parseSideFromHandle((e as any).sourceHandle)
+              if (s === side) c += 1
+            }
+            if ((e as any).target === nodeId) {
+              const t = parseSideFromHandle((e as any).targetHandle)
+              if (t === side) c += 1
+            }
+          }
+          return c
+        }
+
+        const effectiveSourceHandle = conn.sourceHandle ?? defaultSourceHandle
+        const effectiveTargetHandle = conn.targetHandle ?? defaultTargetHandle
+        const srcSide = parseSideFromHandle(effectiveSourceHandle)
+        const tgtSide = parseSideFromHandle(effectiveTargetHandle)
+
+        const MAX_USER_EDGES_PER_HANDLE = 5
+        if (inSwimlane && srcSide && tgtSide) {
+          const srcCount = countEdgesOnNodeSide(String(conn.source), srcSide)
+          const tgtCount = countEdgesOnNodeSide(String(conn.target), tgtSide)
+          if (srcCount >= MAX_USER_EDGES_PER_HANDLE || tgtCount >= MAX_USER_EDGES_PER_HANDLE) {
+            const sideLabel = `${srcSide}/${tgtSide}`
+            const most = Math.max(srcCount, tgtCount)
+            const id = `${Date.now()}-${Math.random().toString(16).slice(2)}`
+            setHandleLimitNotices((prev) => {
+              const nextNotices = [...prev, { id, message: `该 handle 最多允许 ${MAX_USER_EDGES_PER_HANDLE} 条边（已达 ${most}，${sideLabel}），无法再连接` }]
+              return nextNotices.slice(-5)
+            })
+            window.setTimeout(() => {
+              setHandleLimitNotices((prev) => prev.filter((n) => n.id !== id))
+            }, 3500)
+            return eds
+          }
+        }
+
         const next = addEdge(
           {
             ...conn,
@@ -984,8 +1034,9 @@ function EditorInner({ onBackHome, source, previewSnapshot, readOnly: _readOnly 
                   targetHandle: conn.targetHandle ?? defaultTargetHandle,
                 }
               : {}),
-            type: inSwimlane ? (isCrossLane ? 'smoothstep' : 'bezier') : 'bezier',
-            style: { stroke: DEFAULT_EDGE_COLOR, strokeWidth: 2 },
+            // 默认使用正交 smoothstep，交给避障与多弯折提升可读性
+            type: 'smoothstep',
+            style: { stroke: DEFAULT_EDGE_COLOR, strokeWidth: 1 },
             markerEnd: { type: MarkerType.ArrowClosed, color: DEFAULT_EDGE_COLOR },
             data: {
               arrowStyle: 'end',
@@ -2924,8 +2975,9 @@ function EditorInner({ onBackHome, source, previewSnapshot, readOnly: _readOnly 
           nodesConnectable={isPreview ? false : !spacePressed}
           elementsSelectable={isPreview ? false : !spacePressed}
           defaultEdgeOptions={{
-            type: 'bezier',
-            style: { stroke: DEFAULT_EDGE_COLOR, strokeWidth: 2 },
+            // 流程图默认使用正交 smoothstep，避免直线/弧线穿过节点导致不可读。
+            type: 'smoothstep',
+            style: { stroke: DEFAULT_EDGE_COLOR, strokeWidth: 1 },
             markerEnd: { ...DEFAULT_MARKER_END },
           }}
           proOptions={{ hideAttribution: true }}
@@ -2934,6 +2986,23 @@ function EditorInner({ onBackHome, source, previewSnapshot, readOnly: _readOnly 
             <Background variant={BackgroundVariant.Dots} gap={18} size={1} />
             <MiniMap zoomable pannable />
             <Controls />
+            {!isPreview && (
+              <Panel position="bottom-right" className={styles.bottomHelpPanel}>
+                <div className={styles.bottomHelpHint} title="有疑问请钉钉咨询顾硕（寺宽）">
+                  <MessageCircleQuestion size={14} />
+                  <span>有疑问请钉钉咨询顾硕（寺宽）</span>
+                </div>
+              </Panel>
+            )}
+            {!isPreview && handleLimitNotices.length > 0 && (
+              <Panel position="top-center" className={styles.handleLimitNoticePanel} aria-live="polite">
+                {handleLimitNotices.map((n) => (
+                  <div key={n.id} className={styles.handleLimitNotice}>
+                    {n.message}
+                  </div>
+                ))}
+              </Panel>
+            )}
 
             {!isPreview && (
             <Panel position="top-right" className={styles.topPanel}>

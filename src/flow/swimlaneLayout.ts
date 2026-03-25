@@ -296,7 +296,9 @@ export function autoLayoutSwimlane(args: {
     }
     return {
       ...e,
-      type: found ? 'smoothstep' : 'bezier',
+      // 泳道图禁用贝塞尔：跨泳道也统一走正交多弯折（smoothstep）。
+      // 即使当前 try 未找到完全无碰撞路径，也保留“最优尝试”的 waypoints，保证可读性与一致性。
+      type: 'smoothstep',
       sourceHandle,
       targetHandle,
       data: {
@@ -304,8 +306,7 @@ export function autoLayoutSwimlane(args: {
         semanticType: 'crossLane',
         sourceLaneId: srcLaneId,
         targetLaneId: tgtLaneId,
-        ...(found ? { waypoints: bestWaypoints } : {}),
-        autoOffset: 0,
+        waypoints: bestWaypoints,
       },
     }
   })

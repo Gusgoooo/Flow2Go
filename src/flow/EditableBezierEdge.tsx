@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useRef, useState } from 'react'
-import { BaseEdge, MarkerType, Position, getBezierPath, type EdgeProps, useReactFlow } from '@xyflow/react'
+import { BaseEdge, MarkerType, Position, getBezierPath, type EdgeProps, useReactFlow, useStore } from '@xyflow/react'
 import { getBezierLabelAnchors } from './edgeLabels/edgeLabelPosition'
 import { SmartEdgeLabel } from './edgeLabels/SmartEdgeLabel'
 import type { EdgeLabelLayoutConfig, EdgeLabelStyle } from './edgeLabels/types'
@@ -37,10 +37,14 @@ function markerKindFrom(marker: unknown): 'closed' | 'open' | null {
 export function EditableBezierEdge(props: EdgeProps) {
   const {
     id,
+    source,
+    target,
     sourceX,
     sourceY,
     targetX,
     targetY,
+    sourceHandle,
+    targetHandle,
     sourcePosition,
     targetPosition,
     markerStart,
@@ -55,13 +59,99 @@ export function EditableBezierEdge(props: EdgeProps) {
   const dataTyped = (data ?? {}) as EdgeData
   const semanticType = dataTyped.semanticType
   const shouldApplyAutoOffset = semanticType != null
-  const autoOffset: number =
-    shouldApplyAutoOffset && typeof dataTyped.autoOffset === 'number' && Number.isFinite(dataTyped.autoOffset)
-      ? dataTyped.autoOffset
-      : 0
+
+  const allEdges = useStore((state) => state.edges as any[])
+  const hasFiniteAutoOffset = shouldApplyAutoOffset && typeof dataTyped.autoOffset === 'number' && Number.isFinite(dataTyped.autoOffset)
+  const baseAutoOffset = hasFiniteAutoOffset ? (dataTyped.autoOffset as number) : 0
 
   const srcPos = sourcePosition ?? Position.Right
   const tgtPos = targetPosition ?? Position.Left
+
+  const positionToSide = (p: Position | undefined): 'top' | 'right' | 'bottom' | 'left' | null => {
+    if (p === Position.Top) return 'top'
+    if (p === Position.Right) return 'right'
+    if (p === Position.Bottom) return 'bottom'
+    if (p === Position.Left) return 'left'
+    return null
+  }
+
+  const sideFromHandleId = (handleId: unknown): 'top' | 'right' | 'bottom' | 'left' | null => {
+    if (typeof handleId !== 'string') return null
+    if (handleId.endsWith('-top')) return 'top'
+    if (handleId.endsWith('-right')) return 'right'
+    if (handleId.endsWith('-bottom')) return 'bottom'
+    if (handleId.endsWith('-left')) return 'left'
+    return null
+  }
+
+  const autoOffset = useMemo(() => {
+    if (hasFiniteAutoOffset) return baseAutoOffset
+
+    const srcSide = sideFromHandleId(sourceHandle) ?? positionToSide(srcPos)
+    const tgtSide = sideFromHandleId(targetHandle) ?? positionToSide(tgtPos)
+    if (!srcSide || !tgtSide) return baseAutoOffset
+
+    let srcOutgoing = 0
+    let srcIncoming = 0
+    let tgtOutgoing = 0
+    let tgtIncoming = 0
+    for (const e of allEdges) {
+      const s = sideFromHandleId((e as any).sourceHandle)
+      const t = sideFromHandleId((e as any).targetHandle)
+      if ((e as any).source === props.source && s === srcSide) srcOutgoing += 1
+      if ((e as any).target === props.source && t === srcSide) srcIncoming += 1
+      if ((e as any).source === props.target && s === tgtSide) tgtOutgoing += 1
+      if ((e as any).target === props.target && t === tgtSide) tgtIncoming += 1
+    }
+
+    const mixedAtSource = srcOutgoing > 0 && srcIncoming > 0
+    const mixedAtTarget = tgtOutgoing > 0 && tgtIncoming > 0
+    const halfUnit = 12 // 1/2 of LAYOUT_UNIT(24)
+    if (mixedAtSource || mixedAtTarget) {
+      const extra = halfUnit * (mixedAtSource ? 1 : 0) - halfUnit * (mixedAtTarget ? 1 : 0)
+      return baseAutoOffset + Math.max(-halfUnit, Math.min(halfUnit, extra))
+    }
+
+    // Fallback: multiple edges sharing the same handle side should still be separated slightly.
+    const laneToSigned = (lane: number) => {
+      if (lane <= 0) return 0
+      const k = Math.ceil(lane / 2)
+      return lane % 2 === 1 ? k : -k
+    }
+
+    const sameSourceSide = allEdges
+      .filter((e) => (e as any).source === props.source && (sideFromHandleId((e as any).sourceHandle) ?? null) === srcSide)
+      .map((e) => String((e as any).id ?? ''))
+      .sort()
+    const sameTargetSide = allEdges
+      .filter((e) => (e as any).target === props.target && (sideFromHandleId((e as any).targetHandle) ?? null) === tgtSide)
+      .map((e) => String((e as any).id ?? ''))
+      .sort()
+
+    const myId = String(id ?? '')
+    const idxOut = sameSourceSide.indexOf(myId)
+    const idxIn = sameTargetSide.indexOf(myId)
+    const idx = Math.max(idxOut, idxIn)
+    const groupSize = Math.max(sameSourceSide.length, sameTargetSide.length)
+    if (groupSize > 1 && idx >= 0) {
+      const extra = laneToSigned(idx) * halfUnit
+      return baseAutoOffset + Math.max(-halfUnit, Math.min(halfUnit, extra))
+    }
+
+    return baseAutoOffset
+  }, [
+    allEdges,
+    baseAutoOffset,
+    hasFiniteAutoOffset,
+    positionToSide,
+    sideFromHandleId,
+    srcPos,
+    sourceHandle,
+    tgtPos,
+    targetHandle,
+    props.source,
+    props.target,
+  ])
 
   const semanticStyle: React.CSSProperties = {}
   if (semanticType === 'returnFlow') {
@@ -147,7 +237,15 @@ export function EditableBezierEdge(props: EdgeProps) {
 
   const labelText = typeof label === 'string' ? label : ''
   const arrowStyle = dataTyped.arrowStyle ?? 'end'
-  const hasStartArrow = arrowStyle === 'start' || arrowStyle === 'both' || (arrowStyle == null && Boolean(markerStart))
+  const hasReverseEdge = useMemo(
+    () => allEdges.some((e) => (e as any).source === target && (e as any).target === source),
+    [allEdges, source, target],
+  )
+  const hasStartArrow =
+    arrowStyle === 'start' ||
+    arrowStyle === 'both' ||
+    (arrowStyle === 'end' && hasReverseEdge) ||
+    (arrowStyle == null && Boolean(markerStart))
   const hasEndArrow = arrowStyle === 'end' || arrowStyle === 'both' || (arrowStyle == null && Boolean(markerEnd))
   const startKind = hasStartArrow ? markerKindFrom(markerStart) ?? 'closed' : null
   const endKind = hasEndArrow ? markerKindFrom(markerEnd) ?? 'closed' : null

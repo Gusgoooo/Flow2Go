@@ -63,6 +63,35 @@ function uniquePaths(paths: OrthogonalPoint[][]): OrthogonalPoint[][] {
   return out
 }
 
+function countTurns(points: OrthogonalPoint[]): number {
+  if (points.length < 3) return 0
+  let turns = 0
+  // direction is encoded by whether segment is horizontal or vertical
+  let prevDir: 'h' | 'v' | null = null
+  for (let i = 0; i < points.length - 1; i += 1) {
+    const a = points[i]
+    const b = points[i + 1]
+    const dx = Math.abs(b.x - a.x)
+    const dy = Math.abs(b.y - a.y)
+    // If any diagonal segment sneaks in, treat it as "very bad" so it will never win.
+    if (dx > 1e-6 && dy > 1e-6) return Number.POSITIVE_INFINITY
+    const dir: 'h' | 'v' = dx > dy ? 'h' : 'v'
+    if (prevDir && dir !== prevDir) turns += 1
+    prevDir = dir
+  }
+  return turns
+}
+
+function polylineLength(points: OrthogonalPoint[]): number {
+  let len = 0
+  for (let i = 0; i < points.length - 1; i += 1) {
+    const a = points[i]
+    const b = points[i + 1]
+    len += Math.abs(b.x - a.x) + Math.abs(b.y - a.y)
+  }
+  return len
+}
+
 function simplifyOrthogonal(points: OrthogonalPoint[]): OrthogonalPoint[] {
   if (points.length <= 2) return points
   const dedup: OrthogonalPoint[] = [points[0]]
@@ -93,13 +122,14 @@ function enforceTargetInward(
   lead: number = TERMINAL_LEAD,
 ): OrthogonalPoint[] {
   if (points.length < 2) return points
+  const effLead = Math.max(8, lead)
   const tgt = points[points.length - 1]
   const prev = points[points.length - 2]
   const prefix = points.slice(0, -2)
   const out: OrthogonalPoint[] = [...prefix, prev]
 
   if (targetPosition === Position.Left || targetPosition === Position.Right) {
-    const desiredX = targetPosition === Position.Left ? tgt.x - lead : tgt.x + lead
+    const desiredX = targetPosition === Position.Left ? tgt.x - effLead : tgt.x + effLead
     const tailStart = out[out.length - 1]
     if (Math.abs(tailStart.x - desiredX) > 1e-6 && Math.abs(tailStart.y - tgt.y) > 1e-6) {
       out.push({ x: desiredX, y: tailStart.y })
@@ -108,7 +138,7 @@ function enforceTargetInward(
     return simplifyOrthogonal(out)
   }
 
-  const desiredY = targetPosition === Position.Top ? tgt.y - lead : tgt.y + lead
+  const desiredY = targetPosition === Position.Top ? tgt.y - effLead : tgt.y + effLead
   const tailStart = out[out.length - 1]
   if (Math.abs(tailStart.y - desiredY) > 1e-6 && Math.abs(tailStart.x - tgt.x) > 1e-6) {
     out.push({ x: tailStart.x, y: desiredY })
@@ -123,13 +153,14 @@ function enforceSourceOutward(
   lead: number,
 ): OrthogonalPoint[] {
   if (points.length < 2) return points
+  const effLead = Math.max(8, lead)
   const src = points[0]
   const next = points[1]
   const suffix = points.slice(2)
   const out: OrthogonalPoint[] = [src]
 
   if (sourcePosition === Position.Left || sourcePosition === Position.Right) {
-    const desiredX = sourcePosition === Position.Left ? src.x - lead : src.x + lead
+    const desiredX = sourcePosition === Position.Left ? src.x - effLead : src.x + effLead
     if (Math.abs(next.x - desiredX) > 1e-6 && Math.abs(next.y - src.y) > 1e-6) {
       out.push({ x: desiredX, y: src.y })
     }
@@ -137,12 +168,70 @@ function enforceSourceOutward(
     return simplifyOrthogonal(out)
   }
 
-  const desiredY = sourcePosition === Position.Top ? src.y - lead : src.y + lead
+  const desiredY = sourcePosition === Position.Top ? src.y - effLead : src.y + effLead
   if (Math.abs(next.y - desiredY) > 1e-6 && Math.abs(next.x - src.x) > 1e-6) {
     out.push({ x: src.x, y: desiredY })
   }
   out.push({ x: next.x, y: desiredY }, ...suffix)
   return simplifyOrthogonal(out)
+}
+
+function applyTerminalAutoOffset(
+  points: OrthogonalPoint[],
+  sourcePosition: Position,
+  targetPosition: Position,
+  autoOffset: number,
+): OrthogonalPoint[] {
+  if (!Number.isFinite(autoOffset) || Math.abs(autoOffset) < 1e-6) return points
+  if (points.length < 2) return points
+
+  // Keep it tiny to preserve readability (and match swimlane offset requirements).
+  const delta = Math.max(-12, Math.min(12, autoOffset))
+  const src = points[0]
+
+  let out: OrthogonalPoint[] = [...points]
+
+  // Source: insert a short perpendicular dogleg right after leaving the port direction.
+  // This guarantees the offset is visible even when the rest of the path uses obstacle candidates
+  // that otherwise ignore autoOffset.
+  if (out.length >= 3) {
+    const p1 = out[1]
+    const p2 = out[2]
+
+    // If the first turn already makes the offset visible, don't add extra bends.
+    if (sourcePosition === Position.Left || sourcePosition === Position.Right) {
+      // Horizontal out of the source.
+      const alreadyVisible = Math.abs(p2.y - src.y) > 1e-6 || Math.abs(p1.y - src.y) > 1e-6
+      if (!alreadyVisible && Math.abs(p1.x - src.x) > 1e-6) {
+        // Build a strictly orthogonal "jog" that also keeps continuity with p2:
+        // src -> (p1.x, src.y) -> (p1.x, src.y+delta) -> (p2.x, src.y+delta) -> p2 -> ...
+        out = simplifyOrthogonal([
+          src,
+          { x: p1.x, y: src.y },
+          { x: p1.x, y: src.y + delta },
+          { x: p2.x, y: src.y + delta },
+          p2,
+          ...out.slice(3),
+        ])
+      }
+    } else {
+      // Vertical out of the source.
+      const alreadyVisible = Math.abs(p2.x - src.x) > 1e-6 || Math.abs(p1.x - src.x) > 1e-6
+      if (!alreadyVisible && Math.abs(p1.y - src.y) > 1e-6) {
+        // src -> (src.x, p1.y) -> (src.x+delta, p1.y) -> (src.x+delta, p2.y) -> p2 -> ...
+        out = simplifyOrthogonal([
+          src,
+          { x: src.x, y: p1.y },
+          { x: src.x + delta, y: p1.y },
+          { x: src.x + delta, y: p2.y },
+          p2,
+          ...out.slice(3),
+        ])
+      }
+    }
+  }
+
+  return out
 }
 
 function enforceTerminalDirections(
@@ -189,11 +278,14 @@ export function resolveOrthogonalPathAvoidingObstacles(args: {
 
   const ignore = [sourceNodeId, targetNodeId]
   let terminalLead = Math.max(offset, TERMINAL_LEAD)
+  const isCShape = sourcePosition === targetPosition
+  const MIN_TERMINAL_LEAD = 8
   // 当两个端点在对应方向上的间距不足以容纳 lead 时，不要强行维持过长 in/out；
   // 这样可以避免形态切换时出现不自然的折入/非预期几何。
+  // 但并排同侧（C 形）时，in/out 短边是可读性关键：不要被压成 0。
   if (sourcePosition === Position.Left || sourcePosition === Position.Right) {
     if (targetPosition === Position.Left || targetPosition === Position.Right) {
-      terminalLead = Math.min(terminalLead, Math.abs(targetX - sourceX) / 2)
+      if (!isCShape) terminalLead = Math.min(terminalLead, Math.abs(targetX - sourceX) / 2)
     } else if (targetPosition === Position.Top || targetPosition === Position.Bottom) {
       terminalLead = Math.min(terminalLead, Math.abs(targetY - sourceY) / 2)
     }
@@ -201,9 +293,10 @@ export function resolveOrthogonalPathAvoidingObstacles(args: {
     if (targetPosition === Position.Left || targetPosition === Position.Right) {
       terminalLead = Math.min(terminalLead, Math.abs(targetX - sourceX) / 2)
     } else if (targetPosition === Position.Top || targetPosition === Position.Bottom) {
-      terminalLead = Math.min(terminalLead, Math.abs(targetY - sourceY) / 2)
+      if (!isCShape) terminalLead = Math.min(terminalLead, Math.abs(targetY - sourceY) / 2)
     }
   }
+  terminalLead = Math.max(MIN_TERMINAL_LEAD, terminalLead)
   const defaultPts = getDefaultOrthogonalPoints(
     sourceX,
     sourceY,
@@ -216,21 +309,37 @@ export function resolveOrthogonalPathAvoidingObstacles(args: {
   )
 
   if (obstacleBoxes.length === 0) {
-    return enforceTerminalDirections(defaultPts, sourcePosition, targetPosition, terminalLead)
+    return applyTerminalAutoOffset(
+      enforceTerminalDirections(defaultPts, sourcePosition, targetPosition, terminalLead),
+      sourcePosition,
+      targetPosition,
+      autoOffset,
+    )
   }
-  if (!doesPolylineIntersectAnyExclusionBox(defaultPts, obstacleBoxes, ignore)) {
-    return enforceTerminalDirections(defaultPts, sourcePosition, targetPosition, terminalLead)
+
+  // Hard trigger: if the straight segment between endpoints intersects any obstacle,
+  // we MUST attempt a detour even if the default polyline happens not to collide.
+  const straight = [{ x: sourceX, y: sourceY }, { x: targetX, y: targetY }]
+  const straightHits = getIntersectingBoxes(straight as any, obstacleBoxes, ignore)
+
+  if (straightHits.length === 0 && !doesPolylineIntersectAnyExclusionBox(defaultPts, obstacleBoxes, ignore)) {
+    return applyTerminalAutoOffset(
+      enforceTerminalDirections(defaultPts, sourcePosition, targetPosition, terminalLead),
+      sourcePosition,
+      targetPosition,
+      autoOffset,
+    )
   }
 
   const s = defaultPts[0]
   const t = defaultPts[defaultPts.length - 1]
   const isHorizontalSource = sourcePosition === Position.Left || sourcePosition === Position.Right
   const isHorizontalTarget = targetPosition === Position.Left || targetPosition === Position.Right
-  const isCShape = sourcePosition === targetPosition
+  const isCShape2 = sourcePosition === targetPosition
 
   // 只根据「当前默认路径实际撞到的节点」确定绕行外廊，避免全局最值导致过度绕远。
   const hitBoxes = getIntersectingBoxes(defaultPts, obstacleBoxes, ignore)
-  const scopeBoxes = hitBoxes.length > 0 ? hitBoxes : obstacleBoxes
+  const scopeBoxes = (straightHits.length > 0 ? straightHits : hitBoxes).length > 0 ? (straightHits.length > 0 ? straightHits : hitBoxes) : obstacleBoxes
 
   const east = maxRight(scopeBoxes) + ROUTE_CLEAR
   const west = minLeft(scopeBoxes) - ROUTE_CLEAR
@@ -240,7 +349,7 @@ export function resolveOrthogonalPathAvoidingObstacles(args: {
   const candidates: OrthogonalPoint[][] = []
 
   // ─── 水平 Z：Right↔Left（或 Left↔Right）→ 从左右两侧「外廊」绕行，再沿底/顶横穿 ───
-  if (isHorizontalSource && isHorizontalTarget && !isCShape) {
+  if (isHorizontalSource && isHorizontalTarget && !isCShape2) {
     if (sourcePosition === Position.Right && targetPosition === Position.Left) {
       const xEast = Math.max(s.x, east)
       const xWest = Math.min(s.x, west)
@@ -263,7 +372,7 @@ export function resolveOrthogonalPathAvoidingObstacles(args: {
   }
 
   // ─── 垂直 Z：Bottom↔Top → 上下外廊 + 左右横穿 ───
-  if (!isHorizontalSource && !isHorizontalTarget && !isCShape) {
+  if (!isHorizontalSource && !isHorizontalTarget && !isCShape2) {
     // Bottom 出发先向下；Top 出发先向上，避免第一段与端口方向相反
     if (sourcePosition === Position.Bottom && targetPosition === Position.Top) {
       const ySouth = Math.max(s.y, south)
@@ -285,7 +394,7 @@ export function resolveOrthogonalPathAvoidingObstacles(args: {
   }
 
   // ─── C 型：把外廓再推远一层 ───
-  if (isCShape && isHorizontalSource) {
+  if (isCShape2 && isHorizontalSource) {
     const isRight = sourcePosition === Position.Right
     const outerFar = isRight ? maxRight(scopeBoxes) + offset + ROUTE_CLEAR : minLeft(scopeBoxes) - offset - ROUTE_CLEAR
     candidates.push(
@@ -294,7 +403,7 @@ export function resolveOrthogonalPathAvoidingObstacles(args: {
       [s, { x: outerFar, y: s.y }, { x: outerFar, y: north }, { x: t.x, y: north }, t],
     )
   }
-  if (isCShape && !isHorizontalSource) {
+  if (isCShape2 && !isHorizontalSource) {
     const isBottom = sourcePosition === Position.Bottom
     const outerFar = isBottom ? maxBottom(scopeBoxes) + offset + ROUTE_CLEAR : minTop(scopeBoxes) - offset - ROUTE_CLEAR
     candidates.push(
@@ -323,13 +432,28 @@ export function resolveOrthogonalPathAvoidingObstacles(args: {
     }
   }
 
+  let best: OrthogonalPoint[] | null = null
+  let bestTurns = Infinity
+  let bestLen = Infinity
   for (const pts of uniquePaths(candidates)) {
     if (pts.length < 3) continue
     const fixed = enforceTerminalDirections(pts, sourcePosition, targetPosition, terminalLead)
-    if (!doesPolylineIntersectAnyExclusionBox(fixed, obstacleBoxes, ignore)) {
-      return fixed
+    if (doesPolylineIntersectAnyExclusionBox(fixed, obstacleBoxes, ignore)) continue
+    const turns = countTurns(fixed)
+    const len = polylineLength(fixed)
+    if (turns < bestTurns || (turns === bestTurns && len < bestLen)) {
+      best = fixed
+      bestTurns = turns
+      bestLen = len
+      if (bestTurns <= 1) break
     }
   }
+  if (best) return applyTerminalAutoOffset(best, sourcePosition, targetPosition, autoOffset)
 
-  return enforceTerminalDirections(defaultPts, sourcePosition, targetPosition, terminalLead)
+  return applyTerminalAutoOffset(
+    enforceTerminalDirections(defaultPts, sourcePosition, targetPosition, terminalLead),
+    sourcePosition,
+    targetPosition,
+    autoOffset,
+  )
 }

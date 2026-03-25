@@ -50,15 +50,18 @@
   width: 40px;
   border: 1px solid #e5e7eb;
   border-radius: 12px;
-  padding: 4px 6px;
+  padding: 0 6px;
   font-size: 12px;
   text-align: center;
+  height: 32px;
 }
 
 .select {
   border: 1px solid #e5e7eb;
   border-radius: 12px;
-  padding: 4px 8px;
+  padding: 0 8px;
   font-size: 12px;
   min-width: 72px;
+  height: 32px;
 }
+

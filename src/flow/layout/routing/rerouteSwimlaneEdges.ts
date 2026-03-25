@@ -98,8 +98,9 @@ function chooseOrdinarySwimlaneHandles(
   const isLongReturn = orderGap >= LONG_RETURN_ORDER_GAP || xGap >= LONG_RETURN_X_GAP
 
   if (isLongReturn) {
-    // Long loops are routed as vertical C-shapes to avoid horizontal collapse near target nodes.
-    return { sourceHandle: 's-bottom', targetHandle: 't-bottom' }
+    // Long loops are routed to keep visual stability, but avoid "in/out on the same handle".
+    // Note: laneAxis=column is already handled above (returns s-bottom -> t-top), so here laneAxis is row/undefined.
+    return { sourceHandle: 's-left', targetHandle: 't-right' }
   }
 
   // For short backward edges, mirror handles so the arrow enters from the geometric travel side.
@@ -158,6 +159,32 @@ export function rerouteSwimlaneEdges(nodes: Node<any>[], edges: Edge<any>[]): Ed
       ? (ordinaryPair?.targetHandle ?? 't-left')
       : (edge.targetHandle ?? 't-left')
 
+    const sideOpposite: Record<string, string> = { left: 'right', right: 'left', top: 'bottom', bottom: 'top' }
+    const sourceSide = sourceHandle.split('-')[1]
+    const targetSide = targetHandle.split('-')[1]
+    const fixedTargetHandle =
+      sourceIsOrdinarySwimlane && targetIsOrdinarySwimlane && sourceSide && targetSide && sourceSide === targetSide
+        ? `t-${sideOpposite[targetSide] ?? targetSide}`
+        : targetHandle
+
+    const srcDecision = isDecisionNode(srcNode)
+    const tgtDecision = isDecisionNode(tgtNode)
+    const decisionInvolved = srcDecision || tgtDecision
+    // decision 节点：强制使用左右句柄，避免 yes/no 判断从上/下穿出。
+    const dx = centerX(tgtNode, nodeById) - centerX(srcNode, nodeById)
+    const forcedSourceHandle = dx >= 0 ? 's-right' : 's-left'
+    const forcedTargetHandle = dx >= 0 ? 't-left' : 't-right'
+    const sourceHandle2 = srcDecision ? forcedSourceHandle : sourceHandle
+    const targetHandle2 = tgtDecision ? forcedTargetHandle : fixedTargetHandle
+
+    const laneAxis = (sourceLane?.data as any)?.laneMeta?.laneAxis as 'row' | 'column' | undefined
+    // 同一行跨节点出线（例如 A -> C 且跳过 B）：
+    // - 让它走 smoothedge（即 smoothstep），并交给正交避障保证不会穿过中间节点。
+    const srcOrder = Number((srcNode.data as any)?.nodeOrder ?? 0)
+    const tgtOrder = Number((tgtNode.data as any)?.nodeOrder ?? 0)
+    const isRowLaneSkip =
+      semantic === 'normal' && laneAxis === 'row' && sourceIsOrdinarySwimlane && targetIsOrdinarySwimlane && Math.abs(srcOrder - tgtOrder) > 1
+
     if (semantic === 'crossLane' && isLaneNode(sourceLane) && isLaneNode(targetLane)) {
       const routed = routeCrossLaneEdge({
         edge,
@@ -175,14 +202,13 @@ export function rerouteSwimlaneEdges(nodes: Node<any>[], edges: Edge<any>[]): Ed
         sourceLaneId: sourceLane.id,
         targetLaneId: targetLane.id,
         waypoints: routed.waypoints,
-        autoOffset: 0,
       }
       const animatedPatch = applyReturnFlowAnimation(edge, 'crossLane', crossLaneData)
       return {
         ...edge,
         type: routed.type,
-        sourceHandle: routed.sourceHandle ?? sourceHandle,
-        targetHandle: routed.targetHandle ?? targetHandle,
+        sourceHandle: routed.sourceHandle ?? sourceHandle2,
+        targetHandle: routed.targetHandle ?? targetHandle2,
         animated: animatedPatch.animated,
         data: animatedPatch.data,
       }
@@ -193,20 +219,26 @@ export function rerouteSwimlaneEdges(nodes: Node<any>[], edges: Edge<any>[]): Ed
       nextStyle.strokeWidth = 1
       nextStyle.opacity = 0.95
     }
+
     const normalData = {
       ...(edge.data as any),
       semanticType: semantic,
       sourceLaneId: srcLaneId,
       targetLaneId: tgtLaneId,
-      autoOffset: 0,
     }
     const animatedPatch = applyReturnFlowAnimation(edge, semantic, normalData)
     return {
       ...edge,
-      sourceHandle,
-      targetHandle,
+      sourceHandle: sourceHandle2,
+      targetHandle: targetHandle2,
       animated: animatedPatch.animated,
-      ...(semantic === 'returnFlow' ? { type: 'smoothstep', style: nextStyle } : {}),
+      ...(semantic === 'returnFlow'
+        ? { type: 'smoothstep', style: nextStyle }
+        : decisionInvolved
+          ? { type: 'smoothstep' }
+          : isRowLaneSkip
+          ? { type: 'smoothstep' }
+          : {}),
       data: animatedPatch.data,
     }
   })

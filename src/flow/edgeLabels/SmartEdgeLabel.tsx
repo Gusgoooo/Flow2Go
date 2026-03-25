@@ -15,6 +15,7 @@ import {
   type CollisionLabelSpec,
 } from './edgeLabelCollision'
 import type { EdgeLabelAnchors, EdgeLabelCollisionState, EdgeLabelPlacement, FlowRect, SmartEdgeLabelProps } from './types'
+import { getNodeExclusionBoxes } from '../layout/routing/exclusion'
 
 type RegistryEntry = {
   id: string
@@ -43,60 +44,15 @@ function noopUnregister(id: string) {
 }
 function noopBump() {}
 
-function numericOr(fallback: number, ...vals: Array<unknown>): number {
-  for (const v of vals) {
-    if (typeof v === 'number' && Number.isFinite(v)) return v
-  }
-  return fallback
-}
-
 function buildNodeObstacles(nodes: Array<any>): FlowRect[] {
-  if (nodes.length === 0) return []
-  const byId = new Map<string, any>()
-  for (const n of nodes) byId.set(n.id, n)
-
-  const absCache = new Map<string, { x: number; y: number }>()
-  const visiting = new Set<string>()
-  const getAbs = (id: string): { x: number; y: number } => {
-    const cached = absCache.get(id)
-    if (cached) return cached
-    const n = byId.get(id)
-    if (!n) return { x: 0, y: 0 }
-    if (visiting.has(id)) {
-      const x = numericOr(0, n.positionAbsolute?.x, n.position?.x)
-      const y = numericOr(0, n.positionAbsolute?.y, n.position?.y)
-      return { x, y }
-    }
-    visiting.add(id)
-    const localX = numericOr(0, n.positionAbsolute?.x, n.position?.x)
-    const localY = numericOr(0, n.positionAbsolute?.y, n.position?.y)
-    let abs = { x: localX, y: localY }
-    const parentId = typeof n.parentId === 'string' ? n.parentId : ''
-    if (parentId) {
-      const p = getAbs(parentId)
-      abs = { x: p.x + localX, y: p.y + localY }
-    }
-    absCache.set(id, abs)
-    visiting.delete(id)
-    return abs
-  }
-
-  const out: FlowRect[] = []
-  for (const n of nodes) {
-    if (n?.hidden) continue
-    if (n?.type === 'group') continue
-    const abs = getAbs(n.id)
-    const w = numericOr(160, n?.measured?.width, n?.width, (n?.style as any)?.width)
-    const h = numericOr(44, n?.measured?.height, n?.height, (n?.style as any)?.height)
-    if (w <= 0 || h <= 0) continue
-    out.push({
-      left: abs.x,
-      top: abs.y,
-      right: abs.x + w,
-      bottom: abs.y + h,
-    })
-  }
-  return out
+  // 复用路由使用的包络盒，避免 label 避让时节点尺寸估计偏小导致“明明重叠却没避开”。
+  const boxes = getNodeExclusionBoxes(nodes)
+  return boxes.map((b) => ({
+    left: b.x,
+    top: b.y,
+    right: b.x + b.width,
+    bottom: b.y + b.height,
+  }))
 }
 
 function selectLayoutTrigger(s: ReactFlowState) {

@@ -152,6 +152,7 @@ function snapEndpointsToPorts(
   if (points.length < 3) return points
 
   const snapped = points.map((p) => ({ ...p }))
+  const MIN_INWARD_LEAD = 8
 
   // 第一段：源节点 → 第一个中间点
   const src = snapped[0]
@@ -177,12 +178,18 @@ function snapEndpointsToPorts(
   if (targetPosition === Position.Left || targetPosition === Position.Right) {
     // 水平进入：和目标节点保持同一条水平线
     last.y = tgt.y
+    // 保证「in」方向一定朝节点内侧（Right: 从右往左进入；Left: 从左往右进入）
+    if (targetPosition === Position.Left) last.x = Math.min(last.x, tgt.x - MIN_INWARD_LEAD)
+    if (targetPosition === Position.Right) last.x = Math.max(last.x, tgt.x + MIN_INWARD_LEAD)
     // 保证最后一个拐点前后仍为正交：倒数第二段需与 last 的 x 对齐
     const prev = snapped[lastIdx - 1]
     if (prev) prev.x = last.x
   } else {
     // 垂直进入：和目标节点保持同一条竖线
     last.x = tgt.x
+    // 保证「in」方向一定朝节点内侧（Bottom: 从下往上进入；Top: 从上往下进入）
+    if (targetPosition === Position.Top) last.y = Math.min(last.y, tgt.y - MIN_INWARD_LEAD)
+    if (targetPosition === Position.Bottom) last.y = Math.max(last.y, tgt.y + MIN_INWARD_LEAD)
     // 保证最后一个拐点前后仍为正交：倒数第二段需与 last 的 y 对齐
     const prev = snapped[lastIdx - 1]
     if (prev) prev.y = last.y
@@ -261,6 +268,8 @@ export function EditableSmoothStepEdge(props: EdgeProps) {
     id,
     source,
     target,
+    sourceHandle,
+    targetHandle,
     sourceX,
     sourceY,
     targetX,
@@ -285,6 +294,7 @@ export function EditableSmoothStepEdge(props: EdgeProps) {
   const rf = useReactFlow()
 
   const obstacleBoxes = useStore((state) => getNodeExclusionBoxes(state.nodes))
+  const allEdges = useStore((state) => state.edges as Array<EdgeProps>)
 
   const srcPos = sourcePosition ?? Position.Right
   const tgtPos = targetPosition ?? Position.Left
@@ -311,8 +321,98 @@ export function EditableSmoothStepEdge(props: EdgeProps) {
 
   // 从 data 中获取保存的路径点，或生成默认路径
   const savedWaypoints: Point[] | undefined = dataTyped.waypoints
-  const autoOffset: number =
-    typeof dataTyped.autoOffset === 'number' && Number.isFinite(dataTyped.autoOffset) ? dataTyped.autoOffset : 0
+  const hasFiniteAutoOffset = typeof dataTyped.autoOffset === 'number' && Number.isFinite(dataTyped.autoOffset)
+
+  const positionToSide = (p: Position | undefined): 'top' | 'right' | 'bottom' | 'left' | null => {
+    if (p === Position.Top) return 'top'
+    if (p === Position.Right) return 'right'
+    if (p === Position.Bottom) return 'bottom'
+    if (p === Position.Left) return 'left'
+    return null
+  }
+
+  const sideFromHandleId = (handleId: unknown): 'top' | 'right' | 'bottom' | 'left' | null => {
+    if (typeof handleId !== 'string') return null
+    if (handleId.endsWith('-top')) return 'top'
+    if (handleId.endsWith('-right')) return 'right'
+    if (handleId.endsWith('-bottom')) return 'bottom'
+    if (handleId.endsWith('-left')) return 'left'
+    return null
+  }
+
+  const effectiveAutoOffset = useMemo(() => {
+    const baseAutoOffset = hasFiniteAutoOffset ? (dataTyped.autoOffset as number) : 0
+    if (hasFiniteAutoOffset) return baseAutoOffset
+
+    const srcSide = sideFromHandleId(sourceHandle) ?? positionToSide(srcPos)
+    const tgtSide = sideFromHandleId(targetHandle) ?? positionToSide(tgtPos)
+    if (!srcSide || !tgtSide) return baseAutoOffset
+
+    let srcOutgoing = 0
+    let srcIncoming = 0
+    let tgtOutgoing = 0
+    let tgtIncoming = 0
+    for (const e of allEdges) {
+      const s = sideFromHandleId((e as any).sourceHandle)
+      const t = sideFromHandleId((e as any).targetHandle)
+      if ((e as any).source === source && s === srcSide) srcOutgoing += 1
+      if ((e as any).target === source && t === srcSide) srcIncoming += 1
+      if ((e as any).source === target && s === tgtSide) tgtOutgoing += 1
+      if ((e as any).target === target && t === tgtSide) tgtIncoming += 1
+    }
+
+    const mixedAtSource = srcOutgoing > 0 && srcIncoming > 0
+    const mixedAtTarget = tgtOutgoing > 0 && tgtIncoming > 0
+    const halfUnit = 12 // 1/2 of LAYOUT_UNIT(24)
+
+    // 对本边来说：source 端一定是 out，target 端一定是 in
+    if (mixedAtSource || mixedAtTarget) {
+      const extra = halfUnit * (mixedAtSource ? 1 : 0) - halfUnit * (mixedAtTarget ? 1 : 0)
+      return baseAutoOffset + Math.max(-halfUnit, Math.min(halfUnit, extra))
+    }
+
+    // Fallback: if multiple edges share the same handle side (even without in/out mix),
+    // apply a tiny deterministic offset (0, +half, -half ...) so user can visually distinguish them.
+    const laneToSigned = (lane: number) => {
+      if (lane <= 0) return 0
+      const k = Math.ceil(lane / 2)
+      return lane % 2 === 1 ? k : -k
+    }
+
+    const sameSourceSide = allEdges
+      .filter((e) => (e as any).source === source && (sideFromHandleId((e as any).sourceHandle) ?? null) === srcSide)
+      .map((e) => String((e as any).id ?? ''))
+      .sort()
+    const sameTargetSide = allEdges
+      .filter((e) => (e as any).target === target && (sideFromHandleId((e as any).targetHandle) ?? null) === tgtSide)
+      .map((e) => String((e as any).id ?? ''))
+      .sort()
+
+    const myId = String(id ?? '')
+    const idxOut = sameSourceSide.indexOf(myId)
+    const idxIn = sameTargetSide.indexOf(myId)
+    const idx = Math.max(idxOut, idxIn)
+    const groupSize = Math.max(sameSourceSide.length, sameTargetSide.length)
+    if (groupSize > 1 && idx >= 0) {
+      const extra = laneToSigned(idx) * halfUnit
+      return baseAutoOffset + Math.max(-halfUnit, Math.min(halfUnit, extra))
+    }
+
+    return baseAutoOffset
+  }, [
+    allEdges,
+    dataTyped.autoOffset,
+    hasFiniteAutoOffset,
+    id,
+    source,
+    sourceHandle,
+    srcPos,
+    target,
+    targetHandle,
+    tgtPos,
+  ])
+
+  const autoOffset = effectiveAutoOffset
   const sourcePoint = useMemo(() => ({ x: padded.sourceX, y: padded.sourceY }), [padded.sourceX, padded.sourceY])
   const targetPoint = useMemo(() => ({ x: padded.targetX, y: padded.targetY }), [padded.targetX, padded.targetY])
   const endpointSnapshot = useMemo(
@@ -374,6 +474,22 @@ export function EditableSmoothStepEdge(props: EdgeProps) {
   
   // 获取所有线段信息
   const segments = getSegments(points)
+  const primaryDragSegmentIdx = useMemo(() => {
+    if (segments.length < 3) return -1
+    // Prefer the longest non-terminal segment; terminal doglegs (short in/out leads or autoOffset nudges)
+    // should not steal the "middle handle" of a Z-path.
+    let bestIdx = -1
+    let bestLen = -Infinity
+    for (let i = 1; i < segments.length - 1; i += 1) {
+      const len = segments[i]?.length ?? 0
+      if (len > bestLen) {
+        bestLen = len
+        bestIdx = i
+      }
+    }
+    if (bestIdx >= 0) return bestIdx
+    return Math.floor(segments.length / 2)
+  }, [segments])
 
   const anchors = useMemo(() => getPolylineLabelAnchors(points), [points])
 
@@ -427,47 +543,27 @@ export function EditableSmoothStepEdge(props: EdgeProps) {
       const startX = e.clientX
       const startY = e.clientY
       
-      // 获取当前的中间点（不包含源和目标）
-      const currentWaypoints: Point[] = effectiveWaypoints
-        ? effectiveWaypoints.map((p) => ({ ...p }))
-        : points.slice(1, -1).map((p: Point) => ({ ...p }))
-      
-      // segIndex 是 points 数组中的索引，对应 waypoints 的索引是 segIndex-1 和 segIndex
-      // 但线段连接的是 points[segIndex] 和 points[segIndex+1]
-      // waypoints[i] = points[i+1]  (i = 0 to waypoints.length-1)
-      
+      // IMPORTANT:
+      // points may contain extra terminal-lead / autoOffset doglegs that are not persisted in data.waypoints.
+      // Drag should operate on the rendered polyline and then re-normalize back to orthogonal waypoints.
+      const basePoints: Point[] = points.map((p) => ({ ...p }))
+      const n = basePoints.length
+
       const handleMove = (evt: MouseEvent) => {
         const cur = rf.screenToFlowPosition({ x: evt.clientX, y: evt.clientY })
         const start = rf.screenToFlowPosition({ x: startX, y: startY })
         const dx = cur.x - start.x
         const dy = cur.y - start.y
         
-        const newWaypoints = currentWaypoints.map((wp, i) => {
-          // 该线段连接的是 waypoints[segIndex-1] 和 waypoints[segIndex]
-          // 所以我们要移动的点可能是：
-          // - 如果 segIndex === 0，移动 waypoints[0]
-          // - 如果 segIndex === segments.length-1，移动 waypoints[last]
-          // - 否则移动 waypoints[segIndex-1] 和 waypoints[segIndex]
-          
-          // 简化逻辑：对于垂直线段，只调整 x；对于水平线段，只调整 y
-          // 该线段连接 points[segIndex] 和 points[segIndex+1]
-          // 对应 waypoints 索引是 segIndex-1 和 segIndex
-          
-          const wpIndex1 = segIndex - 1  // 线段起点对应的 waypoint 索引
-          const wpIndex2 = segIndex      // 线段终点对应的 waypoint 索引
-          
-          if (i === wpIndex1 || i === wpIndex2) {
-            if (seg.isVertical) {
-              // 垂直线段，左右移动
-              return { x: wp.x + dx, y: wp.y }
-            } else {
-              // 水平线段，上下移动
-              return { x: wp.x, y: wp.y + dy }
-            }
-          }
-          return wp
-        })
+        const moved = basePoints.map((p) => ({ ...p }))
+        const affect = [segIndex, segIndex + 1]
+        for (const idx of affect) {
+          if (idx <= 0 || idx >= n - 1) continue // never move endpoints
+          if (seg.isVertical) moved[idx].x += dx
+          else moved[idx].y += dy
+        }
         
+        const newWaypoints = moved.slice(1, -1)
         const normalized = normalizeOrthogonalWaypoints(sourcePoint, targetPoint, newWaypoints, srcPos, tgtPos)
         rf.setEdges((eds) =>
           eds.map((edge) =>
@@ -493,7 +589,7 @@ export function EditableSmoothStepEdge(props: EdgeProps) {
       window.addEventListener('mousemove', handleMove)
       window.addEventListener('mouseup', handleUp)
     },
-    [id, rf, effectiveWaypoints, points, sourcePoint, targetPoint, srcPos, tgtPos, endpointSnapshot],
+    [id, rf, points, sourcePoint, targetPoint, srcPos, tgtPos, endpointSnapshot],
   )
 
   const handleLabelDrag = useCallback(
@@ -564,7 +660,15 @@ export function EditableSmoothStepEdge(props: EdgeProps) {
   const markerKey =
     `${id}-${JSON.stringify(markerStart ?? null)}-${JSON.stringify(markerEnd ?? null)}`
   const arrowStyle = dataTyped.arrowStyle ?? 'end'
-  const hasStartArrow = arrowStyle === 'start' || arrowStyle === 'both' || (arrowStyle == null && Boolean(markerStart))
+  const hasReverseEdge = useMemo(
+    () => allEdges.some((e) => (e as any).source === target && (e as any).target === source),
+    [allEdges, source, target],
+  )
+  const hasStartArrow =
+    arrowStyle === 'start' ||
+    arrowStyle === 'both' ||
+    (arrowStyle === 'end' && hasReverseEdge) ||
+    (arrowStyle == null && Boolean(markerStart))
   const hasEndArrow = arrowStyle === 'end' || arrowStyle === 'both' || (arrowStyle == null && Boolean(markerEnd))
   const startKind = hasStartArrow ? markerKindFrom(markerStart) ?? 'closed' : null
   const endKind = hasEndArrow ? markerKindFrom(markerEnd) ?? 'closed' : null
@@ -655,18 +759,17 @@ export function EditableSmoothStepEdge(props: EdgeProps) {
         const lastSeg = segments[segments.length - 1]
         const inOutSameAxis = Boolean(firstSeg && lastSeg && firstSeg.isVertical === lastSeg.isVertical)
         const handleAllowedAxis = inOutSameAxis && firstSeg ? !firstSeg.isVertical : null
-        const middleIdx = Math.floor(segments.length / 2)
-        const isMiddleSeg = idx === middleIdx
+        const isPrimarySeg = idx === primaryDragSegmentIdx
 
         // 至少 3 段才有「非首尾」中间段；常见手动连线为 Z/C 型 3 段，此前误用 >=5 导致手柄永远不出现
         if (segments.length < 3) return null
         // 跳过第一段和最后一段（连接到源/目标节点的段）
         if (idx === 0 || idx === segments.length - 1) return null
         // 仅允许“垂直于 in/out 段方向”的中段出现手柄
-        if (!isMiddleSeg && (handleAllowedAxis == null || seg.isVertical !== handleAllowedAxis)) return null
+        if (!isPrimarySeg && (handleAllowedAxis == null || seg.isVertical !== handleAllowedAxis)) return null
         
         const segLength = seg.length
-        if (!isMiddleSeg && segLength < 10) return null // 中段手柄强制保留
+        if (!isPrimarySeg && segLength < 10) return null // 主段手柄强制保留
         
         const isHovered = hoveredSegment === idx
         
