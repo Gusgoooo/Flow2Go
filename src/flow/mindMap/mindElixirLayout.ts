@@ -38,8 +38,8 @@ function readSize(n: Node<any>): { w: number; h: number } {
       : typeof sh === 'number'
         ? sh
         : typeof sh === 'string'
-          ? parseFloat(sh) || 44
-          : 44
+          ? parseFloat(sh) || 48
+          : 48
   return { w: Math.max(1, w), h: Math.max(1, h) }
 }
 
@@ -91,7 +91,7 @@ function collectSidesFromSplit(
 }
 
 function subtreeHeight(n: MeNode, sizes: Map<string, { w: number; h: number }>): number {
-  const h = sizes.get(n.id)?.h ?? 44
+  const h = sizes.get(n.id)?.h ?? 48
   const ch = n.children ?? []
   if (ch.length === 0) return h
   const sum = ch.reduce((acc, c) => acc + subtreeHeight(c, sizes), 0) + (ch.length - 1) * V_GAP
@@ -100,7 +100,7 @@ function subtreeHeight(n: MeNode, sizes: Map<string, { w: number; h: number }>):
 
 /** 右侧：子节点在父节点右侧列，父节点相对子树块垂直居中 */
 function placeRight(n: MeNode, x: number, yBlockTop: number, positions: Map<string, { x: number; y: number }>, sizes: Map<string, { w: number; h: number }>) {
-  const { w, h } = sizes.get(n.id) ?? { w: 160, h: 44 }
+  const { w, h } = sizes.get(n.id) ?? { w: 160, h: 48 }
   const ch = n.children ?? []
   if (ch.length === 0) {
     positions.set(n.id, { x, y: yBlockTop })
@@ -122,7 +122,7 @@ function placeRight(n: MeNode, x: number, yBlockTop: number, positions: Map<stri
  * 左侧：子节点在父节点左侧；attachX 为父框左边缘 x，子节点右缘与父左缘之间留 GAP。
  */
 function placeLeft(n: MeNode, attachX: number, yBlockTop: number, positions: Map<string, { x: number; y: number }>, sizes: Map<string, { w: number; h: number }>) {
-  const { w, h } = sizes.get(n.id) ?? { w: 160, h: 44 }
+  const { w, h } = sizes.get(n.id) ?? { w: 160, h: 48 }
   const xSelf = attachX - H_GAP - w
   const ch = n.children ?? []
   if (ch.length === 0) {
@@ -199,7 +199,7 @@ export function layoutMindMapMindElixirStyle(
   if (logicalRootId === '__flow2go_mind_virtual_root__') sizes.set(logicalRootId, { w: 0, h: 0 })
 
   const rootW = sizes.get(logicalRootId)?.w ?? 160
-  const rootH = sizes.get(logicalRootId)?.h ?? 44
+  const rootH = sizes.get(logicalRootId)?.h ?? 48
 
   const leftH = leftForest.reduce((acc, n) => acc + subtreeHeight(n, sizes) + V_GAP, 0) - (leftForest.length > 0 ? V_GAP : 0)
   const rightH = rightForest.reduce((acc, n) => acc + subtreeHeight(n, sizes) + V_GAP, 0) - (rightForest.length > 0 ? V_GAP : 0)

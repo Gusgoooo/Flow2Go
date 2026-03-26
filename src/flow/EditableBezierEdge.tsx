@@ -5,11 +5,12 @@ import { SmartEdgeLabel } from './edgeLabels/SmartEdgeLabel'
 import type { EdgeLabelLayoutConfig, EdgeLabelStyle } from './edgeLabels/types'
 import { QuickTextStyleToolbar, QUICK_TOOLBAR_DATA_ATTR } from './QuickTextStyleToolbar'
 import { padEdgeEndpoints } from './edgeEndpointPad'
+import { GRID_UNIT, SIZE_STEP_RATIO, snapToGrid } from './grid'
 
 type SwimlaneEdgeSemanticType = 'normal' | 'crossLane' | 'returnFlow' | 'conditional'
 
 type EdgeData = {
-  autoOffset?: number
+  layoutProfile?: string
   editingLabel?: boolean
   labelStyle?: EdgeLabelStyle
   labelLayout?: EdgeLabelLayoutConfig
@@ -18,6 +19,7 @@ type EdgeData = {
   sourceLaneId?: string
   targetLaneId?: string
   labelTextOnly?: boolean
+  labelSettingsUnlocked?: boolean
 }
 
 function markerColorFrom(style: EdgeProps['style'], marker: unknown): string {
@@ -43,8 +45,6 @@ export function EditableBezierEdge(props: EdgeProps) {
     sourceY,
     targetX,
     targetY,
-    sourceHandle,
-    targetHandle,
     sourcePosition,
     targetPosition,
     markerStart,
@@ -54,104 +54,23 @@ export function EditableBezierEdge(props: EdgeProps) {
     label,
     data,
   } = props
-
   const rf = useReactFlow()
   const dataTyped = (data ?? {}) as EdgeData
   const semanticType = dataTyped.semanticType
-  const shouldApplyAutoOffset = semanticType != null
-
   const allEdges = useStore((state) => state.edges as any[])
-  const hasFiniteAutoOffset = shouldApplyAutoOffset && typeof dataTyped.autoOffset === 'number' && Number.isFinite(dataTyped.autoOffset)
-  const baseAutoOffset = hasFiniteAutoOffset ? (dataTyped.autoOffset as number) : 0
+
+  const allNodes = useStore((state) => state.nodes as any[])
+  const isMindMapEdge = useMemo(() => {
+    if (dataTyped.layoutProfile === 'mind-map') return true
+    const srcNode = allNodes.find((n) => String(n.id) === String(source))
+    const tgtNode = allNodes.find((n) => String(n.id) === String(target))
+    const srcSide = (srcNode?.data as any)?.mindMapSide
+    const tgtSide = (tgtNode?.data as any)?.mindMapSide
+    return Boolean(srcSide || tgtSide)
+  }, [allNodes, dataTyped.layoutProfile, source, target])
 
   const srcPos = sourcePosition ?? Position.Right
   const tgtPos = targetPosition ?? Position.Left
-
-  const positionToSide = (p: Position | undefined): 'top' | 'right' | 'bottom' | 'left' | null => {
-    if (p === Position.Top) return 'top'
-    if (p === Position.Right) return 'right'
-    if (p === Position.Bottom) return 'bottom'
-    if (p === Position.Left) return 'left'
-    return null
-  }
-
-  const sideFromHandleId = (handleId: unknown): 'top' | 'right' | 'bottom' | 'left' | null => {
-    if (typeof handleId !== 'string') return null
-    if (handleId.endsWith('-top')) return 'top'
-    if (handleId.endsWith('-right')) return 'right'
-    if (handleId.endsWith('-bottom')) return 'bottom'
-    if (handleId.endsWith('-left')) return 'left'
-    return null
-  }
-
-  const autoOffset = useMemo(() => {
-    if (hasFiniteAutoOffset) return baseAutoOffset
-
-    const srcSide = sideFromHandleId(sourceHandle) ?? positionToSide(srcPos)
-    const tgtSide = sideFromHandleId(targetHandle) ?? positionToSide(tgtPos)
-    if (!srcSide || !tgtSide) return baseAutoOffset
-
-    let srcOutgoing = 0
-    let srcIncoming = 0
-    let tgtOutgoing = 0
-    let tgtIncoming = 0
-    for (const e of allEdges) {
-      const s = sideFromHandleId((e as any).sourceHandle)
-      const t = sideFromHandleId((e as any).targetHandle)
-      if ((e as any).source === props.source && s === srcSide) srcOutgoing += 1
-      if ((e as any).target === props.source && t === srcSide) srcIncoming += 1
-      if ((e as any).source === props.target && s === tgtSide) tgtOutgoing += 1
-      if ((e as any).target === props.target && t === tgtSide) tgtIncoming += 1
-    }
-
-    const mixedAtSource = srcOutgoing > 0 && srcIncoming > 0
-    const mixedAtTarget = tgtOutgoing > 0 && tgtIncoming > 0
-    const halfUnit = 12 // 1/2 of LAYOUT_UNIT(24)
-    if (mixedAtSource || mixedAtTarget) {
-      const extra = halfUnit * (mixedAtSource ? 1 : 0) - halfUnit * (mixedAtTarget ? 1 : 0)
-      return baseAutoOffset + Math.max(-halfUnit, Math.min(halfUnit, extra))
-    }
-
-    // Fallback: multiple edges sharing the same handle side should still be separated slightly.
-    const laneToSigned = (lane: number) => {
-      if (lane <= 0) return 0
-      const k = Math.ceil(lane / 2)
-      return lane % 2 === 1 ? k : -k
-    }
-
-    const sameSourceSide = allEdges
-      .filter((e) => (e as any).source === props.source && (sideFromHandleId((e as any).sourceHandle) ?? null) === srcSide)
-      .map((e) => String((e as any).id ?? ''))
-      .sort()
-    const sameTargetSide = allEdges
-      .filter((e) => (e as any).target === props.target && (sideFromHandleId((e as any).targetHandle) ?? null) === tgtSide)
-      .map((e) => String((e as any).id ?? ''))
-      .sort()
-
-    const myId = String(id ?? '')
-    const idxOut = sameSourceSide.indexOf(myId)
-    const idxIn = sameTargetSide.indexOf(myId)
-    const idx = Math.max(idxOut, idxIn)
-    const groupSize = Math.max(sameSourceSide.length, sameTargetSide.length)
-    if (groupSize > 1 && idx >= 0) {
-      const extra = laneToSigned(idx) * halfUnit
-      return baseAutoOffset + Math.max(-halfUnit, Math.min(halfUnit, extra))
-    }
-
-    return baseAutoOffset
-  }, [
-    allEdges,
-    baseAutoOffset,
-    hasFiniteAutoOffset,
-    positionToSide,
-    sideFromHandleId,
-    srcPos,
-    sourceHandle,
-    tgtPos,
-    targetHandle,
-    props.source,
-    props.target,
-  ])
 
   const semanticStyle: React.CSSProperties = {}
   if (semanticType === 'returnFlow') {
@@ -159,12 +78,11 @@ export function EditableBezierEdge(props: EdgeProps) {
     semanticStyle.opacity = 0.7
   }
 
-  const isHorizontal =
-    srcPos === Position.Left || srcPos === Position.Right || tgtPos === Position.Left || tgtPos === Position.Right
-  const sx0 = isHorizontal ? sourceX : sourceX + autoOffset
-  const sy0 = isHorizontal ? sourceY + autoOffset : sourceY
-  const tx0 = isHorizontal ? targetX : targetX + autoOffset
-  const ty0 = isHorizontal ? targetY + autoOffset : targetY
+  const edgeStep = Math.max(1, GRID_UNIT * SIZE_STEP_RATIO)
+  const sx0 = snapToGrid(sourceX, edgeStep)
+  const sy0 = snapToGrid(sourceY, edgeStep)
+  const tx0 = snapToGrid(targetX, edgeStep)
+  const ty0 = snapToGrid(targetY, edgeStep)
 
   const bezierParams = useMemo(() => {
     const p = padEdgeEndpoints({
@@ -174,6 +92,8 @@ export function EditableBezierEdge(props: EdgeProps) {
       targetY: ty0,
       sourcePosition: srcPos,
       targetPosition: tgtPos,
+      // 思维导图强制从 handle 直接出线，不做端点外移。
+      pad: isMindMapEdge ? 0 : undefined,
     })
     return {
       sourceX: p.sourceX,
@@ -183,7 +103,7 @@ export function EditableBezierEdge(props: EdgeProps) {
       targetY: p.targetY,
       targetPosition: tgtPos,
     }
-  }, [sx0, sy0, tx0, ty0, srcPos, tgtPos])
+  }, [sx0, sy0, tx0, ty0, srcPos, tgtPos, isMindMapEdge])
 
   const edgePath = useMemo(() => getBezierPath(bezierParams)[0], [bezierParams])
 
@@ -251,6 +171,9 @@ export function EditableBezierEdge(props: EdgeProps) {
   const endKind = hasEndArrow ? markerKindFrom(markerEnd) ?? 'closed' : null
   const startMarkerId = `${id}-start-marker`
   const endMarkerId = `${id}-end-marker`
+  const markerWidth = 4
+  const markerHeight = 8
+  const markerRefX = 1.5
   const startMarkerUrl = startKind ? `url(#${startMarkerId})` : undefined
   const endMarkerUrl = endKind ? `url(#${endMarkerId})` : undefined
 
@@ -337,11 +260,11 @@ export function EditableBezierEdge(props: EdgeProps) {
           {startKind && (
             <marker
               id={startMarkerId}
-              markerWidth={6}
-              markerHeight={12}
+              markerWidth={markerWidth}
+              markerHeight={markerHeight}
               viewBox="0 0 10 10"
               preserveAspectRatio="none"
-              refX={2}
+              refX={markerRefX}
               refY={5}
               orient="auto-start-reverse"
               markerUnits="userSpaceOnUse"
@@ -367,11 +290,11 @@ export function EditableBezierEdge(props: EdgeProps) {
           {endKind && (
             <marker
               id={endMarkerId}
-              markerWidth={6}
-              markerHeight={12}
+              markerWidth={markerWidth}
+              markerHeight={markerHeight}
               viewBox="0 0 10 10"
               preserveAspectRatio="none"
-              refX={2}
+              refX={markerRefX}
               refY={5}
               orient="auto"
               markerUnits="userSpaceOnUse"
@@ -419,7 +342,7 @@ export function EditableBezierEdge(props: EdgeProps) {
             rf.setEdges((eds) =>
               eds.map((edge) =>
                 edge.id === id
-                  ? { ...edge, data: { ...(edge.data ?? {}), editingLabel: true } }
+                  ? { ...edge, data: { ...(edge.data ?? {}), editingLabel: true, labelSettingsUnlocked: true } }
                   : { ...edge, data: { ...(edge.data ?? {}), editingLabel: false } },
               ),
             )

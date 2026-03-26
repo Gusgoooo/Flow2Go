@@ -8,6 +8,15 @@ const RETURN_FLOW_AUTO_ANIMATED_KEY = 'autoReturnFlowAnimated'
 const LONG_RETURN_ORDER_GAP = 2
 const LONG_RETURN_X_GAP = 280
 
+function classifyDecisionBranch(edge: Edge<any>): 'yes' | 'no' | null {
+  const text = typeof edge.label === 'string' ? edge.label.trim() : ''
+  if (!text) return null
+  const lower = text.toLowerCase()
+  if (lower === 'yes' || /\byes\b/i.test(lower) || /(是|通过|同意|成功|允许|确认)/.test(text)) return 'yes'
+  if (lower === 'no' || /\bno\b/i.test(lower) || /(否|不通过|不同意|失败|拒绝|取消)/.test(text)) return 'no'
+  return null
+}
+
 function isLaneNode(node: Node<any> | undefined): node is Node<any> {
   return Boolean(node && node.type === 'group' && (node.data as any)?.role === 'lane')
 }
@@ -135,6 +144,7 @@ function applyReturnFlowAnimation(
 export function rerouteSwimlaneEdges(nodes: Node<any>[], edges: Edge<any>[]): Edge<any>[] {
   const nodeById = new Map(nodes.map((n) => [n.id, n]))
   const occupiedRouteSignatures = new Set<string>()
+  const decisionOutUsage = new Map<string, { left: number; right: number }>()
 
   return edges.map((edge) => {
     const srcNode = nodeById.get(edge.source)
@@ -170,9 +180,33 @@ export function rerouteSwimlaneEdges(nodes: Node<any>[], edges: Edge<any>[]): Ed
     const srcDecision = isDecisionNode(srcNode)
     const tgtDecision = isDecisionNode(tgtNode)
     const decisionInvolved = srcDecision || tgtDecision
-    // decision 节点：强制使用左右句柄，避免 yes/no 判断从上/下穿出。
+    // decision 节点：强制使用左右句柄，且前两条出边必须分流到左右两个 handle。
     const dx = centerX(tgtNode, nodeById) - centerX(srcNode, nodeById)
-    const forcedSourceHandle = dx >= 0 ? 's-right' : 's-left'
+    let forcedSourceHandle = dx >= 0 ? 's-right' : 's-left'
+    if (srcDecision) {
+      const branch = classifyDecisionBranch(edge)
+      const usage = decisionOutUsage.get(srcNode.id) ?? { left: 0, right: 0 }
+      if (branch === 'yes') {
+        forcedSourceHandle = 's-right'
+      } else if (branch === 'no') {
+        forcedSourceHandle = 's-left'
+      } else {
+        if (usage.left === 0 && usage.right === 0) {
+          forcedSourceHandle = dx >= 0 ? 's-right' : 's-left'
+        } else if (usage.left === 0) {
+          forcedSourceHandle = 's-left'
+        } else if (usage.right === 0) {
+          forcedSourceHandle = 's-right'
+        } else {
+          forcedSourceHandle = dx >= 0 ? 's-right' : 's-left'
+        }
+      }
+      const nextUsage = {
+        left: usage.left + (forcedSourceHandle === 's-left' ? 1 : 0),
+        right: usage.right + (forcedSourceHandle === 's-right' ? 1 : 0),
+      }
+      decisionOutUsage.set(srcNode.id, nextUsage)
+    }
     const forcedTargetHandle = dx >= 0 ? 't-left' : 't-right'
     const sourceHandle2 = srcDecision ? forcedSourceHandle : sourceHandle
     const targetHandle2 = tgtDecision ? forcedTargetHandle : fixedTargetHandle

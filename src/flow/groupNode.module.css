@@ -10,8 +10,8 @@
 }
 
 .handle {
-  width: 14px;
-  height: 14px;
+  width: 8px;
+  height: 8px;
   border-radius: 999px;
   border: 1px solid #cbd5e1;
   background: #ffffff;
@@ -217,4 +217,3 @@
   transform-origin: center center;
   border-radius: 0;
 }
-

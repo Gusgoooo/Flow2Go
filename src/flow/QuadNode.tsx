@@ -50,7 +50,7 @@ type QuadNodeData = {
 const DEFAULT_TITLE_FS = 12
 const DEFAULT_SUBTITLE_FS = 10
 const QUAD_MIN_W = 80
-const QUAD_MIN_H = 44
+const QUAD_MIN_H = 32
 
 const COMPLETED_STROKE = '#31C262'
 const COMPLETED_FILL = 'rgba(49, 194, 98, 0.12)' // 12% 透明度
@@ -290,7 +290,7 @@ export function QuadNode(props: NodeProps) {
         // 允许 quad 节点继续收缩，避免最小宽度过大影响排版。
         minWidth={QUAD_MIN_W}
         minHeight={QUAD_MIN_H}
-        handleStyle={{ width: 12, height: 12, borderRadius: 9999 }}
+        handleStyle={{ width: 8, height: 8, borderRadius: 9999 }}
         isVisible={Boolean((props as any).selected)}
         keepAspectRatio={shape === 'circle'}
       />

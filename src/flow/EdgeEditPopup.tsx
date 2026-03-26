@@ -21,6 +21,7 @@ export function EdgeEditPopup({ edge, anchor, onUpdate, onClose }: Props) {
     labelStyle?: EdgeLabelStyle
     arrowStyle?: 'none' | 'end' | 'start' | 'both'
     labelTextOnly?: boolean
+    labelSettingsUnlocked?: boolean
   }
   const arrowStyle = (data.arrowStyle ?? 'end') as 'none' | 'end' | 'start' | 'both'
   const showLabel = Boolean((edge.label as any) && String(edge.label).trim().length > 0)
@@ -29,6 +30,7 @@ export function EdgeEditPopup({ edge, anchor, onUpdate, onClose }: Props) {
   const labelFontWeight = String(labelStyle.fontWeight ?? '400')
   const labelColor = String(labelStyle.color ?? 'rgba(0,0,0,0.88)')
   const labelTextOnly = Boolean((data as any).labelTextOnly)
+  const labelSettingsUnlocked = Boolean((data as any).labelSettingsUnlocked)
 
   useEffect(() => {
     const handler = (e: MouseEvent) => {
@@ -160,63 +162,67 @@ export function EdgeEditPopup({ edge, anchor, onUpdate, onClose }: Props) {
         />
       </label>
 
-      <label className={styles.itemCheck} title="仅文字标签，不显示底色边框（更克制）">
-        <input
-          type="checkbox"
-          checked={labelTextOnly}
-          onChange={(e) => {
-            onUpdate({ data: { ...(edge.data ?? {}), labelTextOnly: e.target.checked } as any } as any)
-          }}
-        />
-        <span className={styles.itemLabel}>纯文字</span>
-      </label>
+      {showLabel && labelSettingsUnlocked && (
+        <>
+          <label className={styles.itemCheck} title="仅文字标签，不显示底色边框（更克制）">
+            <input
+              type="checkbox"
+              checked={labelTextOnly}
+              onChange={(e) => {
+                onUpdate({ data: { ...(edge.data ?? {}), labelTextOnly: e.target.checked } as any } as any)
+              }}
+            />
+            <span className={styles.itemLabel}>纯文字</span>
+          </label>
 
-      <label className={styles.item}>
-        <span className={styles.itemLabel}>标签字号</span>
-        <input
-          className={styles.inputNum}
-          type="number"
-          min={10}
-          max={72}
-          step={1}
-          placeholder="12"
-          value={Number.isFinite(labelFontSize) ? labelFontSize : ''}
-          onChange={(e) => {
-            const raw = e.target.value
-            const num = Number(raw)
-            patchLabelStyle({ fontSize: !raw ? undefined : Number.isFinite(num) ? num : labelStyle.fontSize })
-          }}
-        />
-      </label>
+          <label className={styles.item}>
+            <span className={styles.itemLabel}>标签字号</span>
+            <input
+              className={styles.inputNum}
+              type="number"
+              min={10}
+              max={72}
+              step={1}
+              placeholder="12"
+              value={Number.isFinite(labelFontSize) ? labelFontSize : ''}
+              onChange={(e) => {
+                const raw = e.target.value
+                const num = Number(raw)
+                patchLabelStyle({ fontSize: !raw ? undefined : Number.isFinite(num) ? num : labelStyle.fontSize })
+              }}
+            />
+          </label>
 
-      <label className={styles.item}>
-        <span className={styles.itemLabel}>标签字重</span>
-        <select
-          className={styles.select}
-          value={labelFontWeight}
-          onChange={(e) => patchLabelStyle({ fontWeight: e.target.value })}
-        >
-          <option value="300">细</option>
-          <option value="400">常规</option>
-          <option value="500">中等</option>
-          <option value="600">加粗</option>
-          <option value="700">很粗</option>
-        </select>
-      </label>
+          <label className={styles.item}>
+            <span className={styles.itemLabel}>标签字重</span>
+            <select
+              className={styles.select}
+              value={labelFontWeight}
+              onChange={(e) => patchLabelStyle({ fontWeight: e.target.value })}
+            >
+              <option value="300">细</option>
+              <option value="400">常规</option>
+              <option value="500">中等</option>
+              <option value="600">加粗</option>
+              <option value="700">很粗</option>
+            </select>
+          </label>
 
-      <label className={styles.item}>
-        <span className={styles.itemLabel}>标签字色</span>
-        <ColorEditor
-          value={labelColor}
-          onChange={(color) => patchLabelStyle({ color })}
-          placeholder="rgba(0,0,0,0.88)"
-          showAlpha={true}
-          showPicker={true}
-          compact={true}
-          portalPicker={true}
-          focusRetainDataAttr="data-edge-edit-popup"
-        />
-      </label>
+          <label className={styles.item}>
+            <span className={styles.itemLabel}>标签字色</span>
+            <ColorEditor
+              value={labelColor}
+              onChange={(color) => patchLabelStyle({ color })}
+              placeholder="rgba(0,0,0,0.88)"
+              showAlpha={true}
+              showPicker={true}
+              compact={true}
+              portalPicker={true}
+              focusRetainDataAttr="data-edge-edit-popup"
+            />
+          </label>
+        </>
+      )}
 
       <label className={styles.itemCheck}>
         <input type="checkbox" checked={Boolean(edge.animated)} onChange={(e) => onUpdate({ animated: e.target.checked })} />

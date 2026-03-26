@@ -152,7 +152,7 @@ export function GroupNode(props: NodeProps) {
   const isLane = data.role === 'lane'
 
   if (isLane) {
-    const laneHeaderH = data.laneMeta?.headerSize ?? 44
+    const laneHeaderH = data.laneMeta?.headerSize ?? 48
     return (
       <div
         className={`${styles.group} ${styles.laneNode}`}
@@ -161,8 +161,8 @@ export function GroupNode(props: NodeProps) {
       >
         <NodeResizer
           minWidth={200}
-          minHeight={laneHeaderH + 40}
-          handleStyle={{ width: 12, height: 12, borderRadius: 9999 }}
+          minHeight={laneHeaderH + 48}
+          handleStyle={{ width: 8, height: 8, borderRadius: 9999 }}
           isVisible={Boolean((props as any).selected)}
         />
         <div className={styles.laneHeader} style={{ height: laneHeaderH }}>
@@ -225,8 +225,8 @@ export function GroupNode(props: NodeProps) {
       <NodeResizer
         // 允许 group/subgroup 容器继续收缩，避免最小宽度过大影响排版。
         minWidth={36}
-        minHeight={120}
-        handleStyle={{ width: 12, height: 12, borderRadius: 9999 }}
+        minHeight={128}
+        handleStyle={{ width: 8, height: 8, borderRadius: 9999 }}
         isVisible={Boolean((props as any).selected)}
       />
       {isLeftCenter ? (
@@ -554,4 +554,3 @@ export function GroupNode(props: NodeProps) {
     </div>
   )
 }
-

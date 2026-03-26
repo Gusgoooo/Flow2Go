@@ -519,6 +519,16 @@
   inset: 0;
 }
 
+.canvas :global(.react-flow__background) {
+  z-index: 0 !important;
+  opacity: 0.04;
+  pointer-events: none;
+}
+
+.canvas :global(.react-flow__viewport) {
+  z-index: 1;
+}
+
 /* 按住空格时画布为小手，可抓取拖动 */
 .canvas[data-space-pan="true"] .react-flow__pane {
   cursor: grab;

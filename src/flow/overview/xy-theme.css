@@ -100,8 +100,8 @@
 }
 
 .xy-theme .react-flow__handle {
-  width: 10px;
-  height: 10px;
+  width: 8px;
+  height: 8px;
   border: 1px solid #e2e8f0;
   background: #ffffff;
   opacity: 0;
@@ -111,4 +111,3 @@
 .xy-theme .react-flow__node:hover .react-flow__handle {
   opacity: 1;
 }
-

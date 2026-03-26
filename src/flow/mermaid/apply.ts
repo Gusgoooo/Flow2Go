@@ -7,6 +7,7 @@ import {
 import { buildPolylineSignature } from '../layout/routing/polylineUtils'
 import { layoutMindMapMindElixirStyle } from '../mindMap/mindElixirLayout'
 import { autoLayoutSwimlane } from '../swimlaneLayout'
+import { normalizeNodeGeometryToGrid, normalizeWaypointsToGrid } from '../grid'
 import type { FlowDirection, GraphBatchPayload, GraphOperation } from './types'
 
 export type ApplyMermaidContext = {
@@ -70,7 +71,7 @@ function dirToLayoutDirection(dir: FlowDirection) {
 function frameDefaults(title: string) {
   return {
     width: 640,
-    height: 420,
+    height: 416,
     data: {
       title,
       stroke: '#e2e8f0',
@@ -104,13 +105,31 @@ function hexToRgba(hex: string, alpha: number) {
 function quadDefaults(title: string, shape: 'rect' | 'circle' | 'diamond' | undefined) {
   return {
     width: 160,
-    height: 44,
+    height: 48,
     data: {
       title,
       label: title,
       shape: shape ?? 'rect',
     },
   }
+}
+
+function normalizeNodesForGrid(nodes: Array<Node<any>>): Array<Node<any>> {
+  return nodes.map((n) => normalizeNodeGeometryToGrid(n) as Node<any>)
+}
+
+function normalizeEdgesForGrid(edges: Array<Edge<any>>): Array<Edge<any>> {
+  return edges.map((e) => {
+    const waypoints = ((e.data ?? {}) as any)?.waypoints as Array<{ x: number; y: number }> | undefined
+    if (!Array.isArray(waypoints) || waypoints.length === 0) return e
+    return {
+      ...e,
+      data: {
+        ...(e.data ?? {}),
+        waypoints: normalizeWaypointsToGrid(waypoints),
+      },
+    }
+  })
 }
 
 async function layoutWithinFrame(
@@ -144,8 +163,8 @@ async function layoutTopLevel(
 
 function wrapFramesToContents(allNodes: Array<Node<any>>, compactLegacyMode: boolean) {
   const TITLE_H = 32
-  const MIN_W_DEFAULT = 220
-  const MIN_H = 140
+  const MIN_W_DEFAULT = 224
+  const MIN_H = 144
   const UNIT = compactLegacyMode ? LEGACY_COMPACT_INNER_UNIT : LAYOUT_UNIT
   const HALF_UNIT = Math.max(1, Math.round(UNIT * 0.5))
   const FRAME_GAP = HALF_UNIT
@@ -628,7 +647,7 @@ function wrapFramesToContents(allNodes: Array<Node<any>>, compactLegacyMode: boo
 
 function getNodeSize(n: Node<any>) {
   const w = n.measured?.width ?? n.width ?? (typeof (n.style as any)?.width === 'number' ? (n.style as any).width : undefined) ?? 160
-  const h = n.measured?.height ?? n.height ?? (typeof (n.style as any)?.height === 'number' ? (n.style as any).height : undefined) ?? 44
+  const h = n.measured?.height ?? n.height ?? (typeof (n.style as any)?.height === 'number' ? (n.style as any).height : undefined) ?? 48
   return { w, h }
 }
 
@@ -827,26 +846,6 @@ function getCenters(
   }
 }
 
-function chooseSideForVector(
-  dx: number,
-  dy: number,
-  penalties: Partial<Record<Side, number>>,
-): Side {
-  const score = scoreSideForVector(dx, dy, penalties)
-  const candidates: Side[] = ['right', 'left', 'bottom', 'top']
-  let best: Side = candidates[0]
-  let bestScore = score(best)
-  for (let i = 1; i < candidates.length; i += 1) {
-    const s = candidates[i]
-    const sc = score(s)
-    if (sc < bestScore) {
-      best = s
-      bestScore = sc
-    }
-  }
-  return best
-}
-
 function scoreSideForVector(
   dx: number,
   dy: number,
@@ -917,27 +916,16 @@ function applyInferredEdgeHandles(nodes: Array<Node<any>>, edges: Array<Edge<any
   const laneByPair = new Map<string, number>()
   // Undirected occupancy further reduces A<->B bi-direction overlaps.
   const laneByUndirectedPair = new Map<string, number>()
-  // Per-node per-side lane counters (for autoOffset)
-  const laneOutBySide = new Map<string, Record<Side, number>>()
-  const laneInBySide = new Map<string, Record<Side, number>>()
-  // Corridor lanes: separate edges from different columns so they don't overlap.
-  // Keyed by (rootFrame, srcSide, dxSign) and bucketed by sourceX.
-  const corridorBucketIndex = new Map<string, Map<number, number>>()
+  // Swimlane decision 节点出边使用计数：用于“左右各出一条”硬规则。
+  const decisionOutUsage = new Map<string, { left: number; right: number }>()
 
-  const getLaneRec = (m: Map<string, Record<Side, number>>, id: string) =>
-    m.get(id) ?? { top: 0, right: 0, bottom: 0, left: 0 }
-
-  const bumpLane = (m: Map<string, Record<Side, number>>, id: string, side: Side) => {
-    const rec = getLaneRec(m, id)
-    rec[side] += 1
-    m.set(id, rec)
-  }
-
-  // Convert 0,1,2,3... to signed lane: 0, +1, -1, +2, -2 ...
-  const laneToSigned = (lane: number) => {
-    if (lane <= 0) return 0
-    const k = Math.ceil(lane / 2)
-    return lane % 2 === 1 ? k : -k
+  const classifyDecisionBranch = (edge: Edge<any>): 'yes' | 'no' | null => {
+    const text = typeof edge.label === 'string' ? edge.label.trim() : ''
+    if (!text) return null
+    const lower = text.toLowerCase()
+    if (lower === 'yes' || /\byes\b/i.test(lower) || /(是|通过|同意|成功|允许|确认)/.test(text)) return 'yes'
+    if (lower === 'no' || /\bno\b/i.test(lower) || /(否|不通过|不同意|失败|拒绝|取消)/.test(text)) return 'no'
+    return null
   }
 
   const bump = (m: Map<string, Record<Side, number>>, id: string, side: Side) => {
@@ -947,12 +935,19 @@ function applyInferredEdgeHandles(nodes: Array<Node<any>>, edges: Array<Edge<any
   }
 
   return edges.map((e) => {
-    const dataTyped = (e.data ?? {}) as { semanticType?: unknown; waypoints?: unknown }
+    const dataTyped = (e.data ?? {}) as {
+      semanticType?: unknown
+      waypoints?: unknown
+      autoGeneratedSwimlane?: unknown
+      layoutProfile?: unknown
+    }
     const isSwimlaneEdge = dataTyped.semanticType != null
+    const isAutoGeneratedSwimlane = isSwimlaneEdge && dataTyped.autoGeneratedSwimlane === true
+    const isSwimlaneLayoutEdge = isSwimlaneEdge && (isAutoGeneratedSwimlane || dataTyped.layoutProfile === 'swimlane')
     const hasSavedWaypoints = Array.isArray(dataTyped.waypoints) && dataTyped.waypoints.length > 0
     // If a cross-lane route already has explicit waypoints, changing handles can desync the path.
     // So: only enforce handle cap when we can safely rely on auto-routing.
-    const enforceHandleCap = isSwimlaneEdge && !hasSavedWaypoints
+    const enforceHandleCap = isSwimlaneEdge && !hasSavedWaypoints && !isAutoGeneratedSwimlane
     const maxEdgesPerHandleSide = 3
 
     const existingSourceHandle = (e as any).sourceHandle as unknown
@@ -970,13 +965,37 @@ function applyInferredEdgeHandles(nodes: Array<Node<any>>, edges: Array<Edge<any
     if (!centers) {
       const fallback = inferHandlesForEdge(e.source, e.target, nodeById)
       if (!fallback) return e
-      const next = { ...e, sourceHandle: fallback.sourceHandle, targetHandle: fallback.targetHandle }
-      ;(next as any).data = { ...((next as any).data ?? {}), autoOffset: 0 }
-      return next
+      return { ...e, sourceHandle: fallback.sourceHandle, targetHandle: fallback.targetHandle }
     }
 
     const dx = centers.tCx - centers.sCx
     const dy = centers.tCy - centers.sCy
+    const srcNode = nodeById.get(e.source)
+    const srcSemantic = String((srcNode?.data as any)?.semanticType ?? '')
+    const srcShape = String((srcNode?.data as any)?.shape ?? '')
+    const srcLaneId = (srcNode?.data as any)?.laneId ?? srcNode?.parentId
+    const srcIsSwimlaneDecision =
+      isSwimlaneLayoutEdge &&
+      Boolean(srcLaneId) &&
+      (srcSemantic === 'decision' || srcShape === 'diamond')
+    let forcedDecisionSourceSide: Side | null = null
+    if (srcIsSwimlaneDecision) {
+      const usage = decisionOutUsage.get(e.source) ?? { left: 0, right: 0 }
+      const branch = classifyDecisionBranch(e)
+      if (branch === 'yes') {
+        forcedDecisionSourceSide = 'right'
+      } else if (branch === 'no') {
+        forcedDecisionSourceSide = 'left'
+      } else if (usage.left === 0 && usage.right === 0) {
+        forcedDecisionSourceSide = dx >= 0 ? 'right' : 'left'
+      } else if (usage.left === 0) {
+        forcedDecisionSourceSide = 'left'
+      } else if (usage.right === 0) {
+        forcedDecisionSourceSide = 'right'
+      } else {
+        forcedDecisionSourceSide = dx >= 0 ? 'right' : 'left'
+      }
+    }
 
     const incoming = incomingByTargetSide.get(e.source) ?? { top: 0, right: 0, bottom: 0, left: 0 }
     const outUsed = anySourceSide.get(e.source) ?? { top: 0, right: 0, bottom: 0, left: 0 }
@@ -1023,12 +1042,14 @@ function applyInferredEdgeHandles(nodes: Array<Node<any>>, edges: Array<Edge<any
       Boolean(existingTargetHandle) &&
       existingSrcSide != null &&
       existingTgtSide != null &&
-      (!enforceHandleCap ||
+      !srcIsSwimlaneDecision &&
+      (isAutoGeneratedSwimlane ||
+        !enforceHandleCap ||
         (totalOnNodeSide(e.source, existingSrcSide) < maxEdgesPerHandleSide &&
           totalOnNodeSide(e.target, existingTgtSide) < maxEdgesPerHandleSide))
 
-    let srcSide: Side
-    let tgtSide: Side
+    let srcSide: Side = existingSrcSide ?? 'right'
+    let tgtSide: Side = existingTgtSide ?? 'left'
 
     const scorePair = (sSide: Side, tSide: Side) => {
       // Keep geometric readability first: opposite-side pairs are still preferred,
@@ -1068,6 +1089,7 @@ function applyInferredEdgeHandles(nodes: Array<Node<any>>, edges: Array<Edge<any
       // - source outgoing side must not already have incoming on same side
       // - target incoming side must not already have outgoing on same side
       for (const sCandidate of sides) {
+        if (forcedDecisionSourceSide && sCandidate !== forcedDecisionSourceSide) continue
         for (const tCandidate of sides) {
           if ((sourceIncomingRec[sCandidate] ?? 0) > 0) continue
           if ((targetOutgoingRec[tCandidate] ?? 0) > 0) continue
@@ -1086,6 +1108,7 @@ function applyInferredEdgeHandles(nodes: Array<Node<any>>, edges: Array<Edge<any
       if (!foundStrictPair) {
         bestPairScore = Number.POSITIVE_INFINITY
         for (const sCandidate of sides) {
+          if (forcedDecisionSourceSide && sCandidate !== forcedDecisionSourceSide) continue
           for (const tCandidate of sides) {
             const score = scorePair(sCandidate, tCandidate)
             if (score < bestPairScore) {
@@ -1100,50 +1123,9 @@ function applyInferredEdgeHandles(nodes: Array<Node<any>>, edges: Array<Edge<any
 
     const next = { ...e, sourceHandle: sideToSourceHandle(srcSide), targetHandle: sideToTargetHandle(tgtSide) }
 
-    // Auto-offset lanes to reduce overlapping edges even when sharing the same handle.
-    //
-    // IMPORTANT (swimlane readability):
-    // - Swimlane edges should NOT drift far away (it kills readability).
-    // - We only allow a tiny offset (± 1/2 unit) to distinguish in/out when the same handle side is shared.
-    const outLaneRec = getLaneRec(laneOutBySide, e.source)
-    const inLaneRec = getLaneRec(laneInBySide, e.target)
-    const outLane = outLaneRec[srcSide] ?? 0
-    const inLane = inLaneRec[tgtSide] ?? 0
-
-    let autoOffset = 0
-    if (isSwimlaneEdge) {
-      const halfUnit = LAYOUT_UNIT / 2 // 12px
-
-      // Key rule: if a node side already has the opposite direction, separate in/out by ±halfUnit.
-      // - For this edge: source side is "out", target side is "in".
-      const srcIncomingOnSameSide = (incomingByTargetSide.get(e.source)?.[srcSide] ?? 0) > 0
-      const tgtOutgoingOnSameSide = (anySourceSide.get(e.target)?.[tgtSide] ?? 0) > 0
-
-      if (srcIncomingOnSameSide) autoOffset += halfUnit
-      if (tgtOutgoingOnSameSide) autoOffset -= halfUnit
-
-      // Swimlane: even without explicit in/out mix, multiple edges sharing the same handle side
-      // should be visually separated. Use 0, +half, -half ... but hard-clamp to keep readability.
-      if (autoOffset === 0) {
-        const lane = Math.max(outLane, inLane)
-        autoOffset = laneToSigned(lane) * halfUnit
-      }
-
-      // hard clamp: never drift far
-      autoOffset = Math.max(-halfUnit, Math.min(halfUnit, autoOffset))
-    } else {
-      // Flowchart readability: do NOT spread edges by far offsets.
-      // Keep endpoints pinned; overlap avoidance is handled by orthogonal rerouting (waypoints).
-      autoOffset = 0
-    }
-
-    ;(next as any).data = { ...((next as any).data ?? {}), autoOffset }
-
     // Update occupancy for subsequent edges in the same batch
     bump(anySourceSide, e.source, srcSide)
     bump(incomingByTargetSide, e.target, tgtSide)
-    bumpLane(laneOutBySide, e.source, srcSide)
-    bumpLane(laneInBySide, e.target, tgtSide)
     const laneKey = `${e.source}->${e.target}:${srcSide}:${tgtSide}`
     laneByPair.set(laneKey, (laneByPair.get(laneKey) ?? 0) + 1)
     const undirectedLaneKey =
@@ -1151,6 +1133,12 @@ function applyInferredEdgeHandles(nodes: Array<Node<any>>, edges: Array<Edge<any
         ? `${e.source}<->${e.target}:${srcSide}:${tgtSide}`
         : `${e.target}<->${e.source}:${tgtSide}:${srcSide}`
     laneByUndirectedPair.set(undirectedLaneKey, (laneByUndirectedPair.get(undirectedLaneKey) ?? 0) + 1)
+    if (srcIsSwimlaneDecision) {
+      const usage = decisionOutUsage.get(e.source) ?? { left: 0, right: 0 }
+      if (srcSide === 'left') usage.left += 1
+      if (srcSide === 'right') usage.right += 1
+      decisionOutUsage.set(e.source, usage)
+    }
 
     return next
   })
@@ -1408,8 +1396,8 @@ export async function materializeGraphBatchPayloadToSnapshot(
           laneId: op.params.id,
           laneIndex: laneIndexCounter++,
           laneAxis: swimlaneDirection === 'vertical' ? 'column' : 'row',
-          headerSize: 44,
-          padding: { top: 20, right: 24, bottom: 20, left: 24 },
+          headerSize: 48,
+          padding: { top: 24, right: 24, bottom: 24, left: 24 },
           minLaneWidth: 800,
           minLaneHeight: 160,
         }
@@ -1487,7 +1475,11 @@ export async function materializeGraphBatchPayloadToSnapshot(
         arrowStyle = op.params.arrowStyle ?? 'end'
       }
 
-      const edgeData: Record<string, any> = { arrowStyle }
+      const edgeData: Record<string, any> = {
+        arrowStyle,
+        // 所有“生成链路”产出的边默认使用纯文字标签样式。
+        labelTextOnly: true,
+      }
       const isDecisionNode = (n?: Node<any>) => {
         const st = (n?.data as any)?.semanticType
         const shape = (n?.data as any)?.shape
@@ -1507,6 +1499,8 @@ export async function materializeGraphBatchPayloadToSnapshot(
       let sourceHandle: string | undefined
       let targetHandle: string | undefined
       if (swimlaneMode) {
+        edgeData.layoutProfile = 'swimlane'
+        edgeData.autoGeneratedSwimlane = true
         const srcNode = nodeById.get(op.params.source)
         const tgtNode = nodeById.get(op.params.target)
         const srcLaneId = (srcNode?.data as any)?.laneId ?? srcNode?.parentId
@@ -1599,7 +1593,9 @@ export async function materializeGraphBatchPayloadToSnapshot(
 
   // Swimlane mode: layout already done by autoLayoutSwimlane; skip wrap/dagre/frame postprocess.
   if (swimlaneMode) {
+    safeNodes = normalizeNodesForGrid(safeNodes)
     let safeEdges = applyInferredEdgeHandles(safeNodes, edges)
+    safeEdges = normalizeEdgesForGrid(safeEdges)
     return { nodes: safeNodes, edges: safeEdges }
   }
 
@@ -1663,7 +1659,7 @@ export async function materializeGraphBatchPayloadToSnapshot(
     let cursorY = 0
     for (const f of framesInOrder) {
       if (frameExplicitPos.has(f.id)) continue
-      const h = f.measured?.height ?? f.height ?? (typeof (f.style as any)?.height === 'number' ? (f.style as any).height : undefined) ?? 420
+      const h = f.measured?.height ?? f.height ?? (typeof (f.style as any)?.height === 'number' ? (f.style as any).height : undefined) ?? 416
       f.position = { x: cursorX, y: cursorY }
       cursorY += h + Math.max(1, Math.round(LEGACY_COMPACT_INNER_UNIT * 0.5))
     }
@@ -1772,7 +1768,7 @@ export async function materializeGraphBatchPayloadToSnapshot(
     safeEdges = applyMindMapHorizontalHandles(safeNodes, safeEdges)
     for (const e of safeEdges) {
       const d = (e.data ?? {}) as any
-      d.autoOffset = 0
+      d.layoutProfile = 'mind-map'
       e.data = d
     }
   }
@@ -1780,6 +1776,8 @@ export async function materializeGraphBatchPayloadToSnapshot(
     safeEdges = applyFlowchartStrictHandles(safeNodes, safeEdges, effectiveDirection)
   }
 
+  safeNodes = normalizeNodesForGrid(safeNodes)
+  safeEdges = normalizeEdgesForGrid(safeEdges)
   return { nodes: safeNodes, edges: safeEdges }
 }
 

@@ -99,10 +99,13 @@ export const LAYOUT_SELECTOR_SYSTEM_PROMPT = [
 
 /** 各 layout profile 的 subgraph 提示（软约束：不再强制分区数量/固定英文名，交给 Planner 与用户意图） */
 const FLOWCHART_PROFILE_SUBGRAPH_SOFT_HINT = [
-  '【流程图 layout profile（软提示）】',
-  '- profile 名称仅作语义参考（前后端链路 / 数据管道 / Agent / 审批 / 架构 / 用户旅程等），按 Planner JSON 与用户诉求组织 subgraph 与节点即可。',
-  '- 不强制固定分区标题、不强制最少 subgraph 数量；需要分组时用 subgraph，不需要时可少画框或扁平节点。',
-  '- 画布上：子图内部与顶层画框/节点的相对位置由 Flow2Go 内置 Dagre 自动布局；间距遵循 Dagre 默认值，无需为留白而删减内容。',
+  '【流程图 layout profile（强可读性）】',
+  '- profile 名称仅作语义参考；核心目标是“简单、清晰、易读”，不要追求复杂关系完整还原。',
+  '- subgraph（group）可用但必须克制：仅按阶段分组（如 提交/审核/执行），禁止过度拆分。',
+  '- 跨 group 连线严格限制：仅允许“阶段结束 -> 下一阶段开始”这类必要交接；禁止来回横跳与大规模跨组连接。',
+  '- 默认结构应接近单链路：大多数节点 1 -> 1 推进；判断节点才允许分支（最多 yes/no 两条）。',
+  '- 主流程方向固定为 LR（从左到右）；避免主路径回头与网状连接。',
+  '- 布局由 Flow2Go 内置 Dagre 自动处理；请优先减少连接复杂度来提升可读性。',
 ].join('\n')
 
 const LAYOUT_PROFILE_SUBGRAPH_RULES: Record<LayoutProfileKey, string> = {
@@ -413,6 +416,7 @@ const FLOWCHART_GUARD_EDGE_MAX = 26
 
 const DIAGRAM_PLANNER_SYSTEM_PROMPT = [
   '你是 Flow2Go 的 Diagram Planner / Graph Normalizer（规划器）。',
+  '你同时是“自然语言 -> 简洁流程图结构”的转译器：目标不是完整保留用户描述，而是压缩成简单、清晰、稳定、易读的流程图语义。',
   '',
   '你的任务：把用户原始高噪声输入，压缩成结构规划 JSON（供 Mermaid 生成器使用）。',
   '',
@@ -461,11 +465,16 @@ const DIAGRAM_PLANNER_SYSTEM_PROMPT = [
   '- 列间距、线型由系统 mind-map 布局器与模板负责；你只负责结构信息。',
   '',
   '当 templateKey 为以下任一（6 个 flowchart layout profile：Frontend-Backend / Data Pipeline / Agent / Approval / System Architecture / User Journey）：',
-  '- 【需求简洁化（规划阶段）】在仍忠实用户目标的前提下，把输入压缩成最少必要主干：合并重复步骤、去掉与制图无关的说明、不要为“显得完整”而虚构子系统或空阶段。',
-  '- 【可读性优先（强）】默认生成“简单易懂”的流程：节点总量优先控制在 8~18；主链 4~8 步；分支最多 2 个；回流最多 1 条；禁止跨分支大量连接。',
-  '- mainChain：用一句白话写清端到端主路径；supportStrategy / feedbackStrategy 若无独立价值可写「无」或极短一句。',
-  '- structure.framesOrRoot：层次够用即可，不要为了填满模板而堆空壳阶段；constraints.targetNodeCountHintRange 宜略保守（宁可少节点，细节可留给用户画布上补充）。',
+  '- 【核心原则：强制简化】优先保留主流程，删除次要步骤，合并重复/相似动作；宁可少，不要乱；不要生成复杂依赖网。',
+  '- 【连接规则：默认 1 by 1】普通步骤默认单入单出，不要多下游/多汇入；仅判断节点允许分支。',
+  '- 【判断规则】decision 仅在必要时出现；每个 decision 最多 yes/no 两条分支；分支应尽快收敛；禁止连续多个判断节点。',
+  '- 【Group 规则】可以分阶段 group（提交/审核/执行等）但必须克制；默认禁止跨 group 连线，仅允许阶段交接时跨一次；禁止来回跨 group。',
+  '- 【方向与可读性】主流程必须从左到右（LR）推进，避免折返；结构应一眼可读，分支很少，节点不拥挤。',
+  '- 【边语义约束】默认 next；yes/no 仅用于 decision 分支；避免无意义复杂连接。',
+  '- mainChain：必须写成单链路主路径（一句话）；supportStrategy / feedbackStrategy 若无必要写「无」或极短补充。',
+  '- constraints 建议保守：targetNodeCountHintRange 默认偏小（建议 7~16），并显式强调 noCrossBranchConnections=true。',
   '- 仍禁止输出 Mermaid、禁止输出具体节点 id 与边表达式。',
+  '- 输出前必须自检：1) 大多数是否 1->1；2) 是否几乎无跨 group；3) 是否无网状结构；4) 是否简单清晰；不满足则继续简化。',
 ].join('\n')
 
 function detectMindMapIntent(prompt: string): boolean {
@@ -660,8 +669,14 @@ export async function openRouterGenerateDiagram(opts: OpenRouterChatOptions): Pr
     }
     layoutDecision = resolveLayoutDecision(route)
     chosen = sel.layoutProfileKey
-    const simpleFlowHint =
-      '【流程简化（强制）】请优先可读性：主链 4~7 步，节点总量尽量 7~15，分支 <=2，回流 <=1；跨组连线尽量为 0。若信息过多，请合并同类步骤并省略次要支线。'
+    const simpleFlowHint = [
+      '【流程图转译约束（强制）】',
+      '- 强制简化：优先主链，删除次要步骤，合并重复动作，宁可少不要乱。',
+      '- 默认 1 by 1：普通节点仅一个下游；仅 decision 允许 yes/no 两分支且尽快收敛。',
+      '- group 克制：仅按阶段分组；跨 group 连线仅允许阶段交接，禁止来回横跳。',
+      '- 方向固定 LR，主路径不得回头；整体保持稀疏、清晰、易读。',
+      '- 若信息过多，优先保留主流程并压缩细节。',
+    ].join('\n')
     plannerText = await openRouterDiagramPlanner({
       apiKey: key,
       model,

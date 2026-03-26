@@ -6,11 +6,12 @@
 import type { Edge, Node } from '@xyflow/react'
 import type { FlowDirection } from './mermaid/types'
 import { doesPolylineIntersectAnyExclusionBox, getNodeExclusionBoxes } from './layout/routing/exclusion'
+import { normalizeNodeGeometryToGrid, normalizeWaypointsToGrid } from './grid'
 
-const LANE_HEADER_SIZE = 44
+const LANE_HEADER_SIZE = 48
 const LANE_GAP = 24
-const LANE_PADDING = { top: 20, right: 24, bottom: 20, left: 24 }
-const MIN_LANE_WIDTH = 900
+const LANE_PADDING = { top: 24, right: 24, bottom: 24, left: 24 }
+const MIN_LANE_WIDTH = 912
 const MIN_LANE_HEIGHT = 160
 const CANVAS_START_X = 80
 const CANVAS_START_Y = 80
@@ -18,9 +19,15 @@ const NODE_GAP_X = 48
 const NODE_GAP_Y = 32
 
 const DEFAULT_NODE_SIZES: Record<string, { w: number; h: number }> = {
-  rect: { w: 140, h: 56 },
+  rect: { w: 160, h: 48 },
   circle: { w: 64, h: 64 },
   diamond: { w: 96, h: 64 },
+}
+
+function gridIndex(value: unknown, fallback: number): number {
+  const n = Number(value)
+  if (!Number.isFinite(n)) return fallback
+  return Math.max(0, Math.round(n))
 }
 
 function getAbsolutePosition(node: Node<any>, byId: Map<string, Node<any>>): { x: number; y: number } {
@@ -54,7 +61,7 @@ function getHandlePoint(
 }
 function getNodeSize(n: Node<any>): { w: number; h: number } {
   const w = n.measured?.width ?? n.width ?? (typeof (n.style as any)?.width === 'number' ? (n.style as any).width : undefined) ?? 160
-  const h = n.measured?.height ?? n.height ?? (typeof (n.style as any)?.height === 'number' ? (n.style as any).height : undefined) ?? 44
+  const h = n.measured?.height ?? n.height ?? (typeof (n.style as any)?.height === 'number' ? (n.style as any).height : undefined) ?? 48
   return { w, h }
 }
 
@@ -66,6 +73,16 @@ function estimateNodeSize(n: Node<any>): { w: number; h: number } {
     w: existing.w > 1 ? existing.w : preset.w,
     h: existing.h > 1 ? existing.h : preset.h,
   }
+}
+
+function edgeLabelLength(edge: Edge<any>): number {
+  const text = typeof edge.label === 'string' ? edge.label.trim() : ''
+  return text.length
+}
+
+function labelGapExtraByMaxLen(maxLen: number): number {
+  if (maxLen <= 0) return 0
+  return Math.min(120, Math.max(32, Math.round(maxLen * 5)))
 }
 
 /**
@@ -116,6 +133,22 @@ export function autoLayoutSwimlane(args: {
     (n) => n.type === 'group' && (n.data as any)?.role === 'lane',
   )
   const nonLaneNodes = nodes.filter((n) => !lanes.find((l) => l.id === n.id))
+  const nodeById = new Map(nodes.map((n) => [n.id, n]))
+  const laneLabelMaxLen = new Map<string, number>()
+  for (const edge of edges) {
+    const len = edgeLabelLength(edge)
+    if (len <= 0) continue
+    const srcNode = nodeById.get(edge.source)
+    const tgtNode = nodeById.get(edge.target)
+    if (!srcNode || !tgtNode) continue
+    const srcLaneId = (srcNode.data as any)?.laneId ?? srcNode.parentId
+    const tgtLaneId = (tgtNode.data as any)?.laneId ?? tgtNode.parentId
+    if (!srcLaneId || srcLaneId !== tgtLaneId) continue
+    laneLabelMaxLen.set(srcLaneId, Math.max(laneLabelMaxLen.get(srcLaneId) ?? 0, len))
+  }
+  const laneLabelGapExtra = new Map(
+    Array.from(laneLabelMaxLen.entries()).map(([laneId, maxLen]) => [laneId, labelGapExtraByMaxLen(maxLen)]),
+  )
 
   // 按 laneIndex 排序
   lanes.sort((a, b) => {
@@ -159,31 +192,67 @@ export function autoLayoutSwimlane(args: {
     const padRight = LANE_PADDING.right
     const padBottom = LANE_PADDING.bottom
     const padLeft = LANE_PADDING.left
+    const laneGapExtra = laneLabelGapExtra.get(lane.id) ?? 0
+    const laneGapX = NODE_GAP_X + laneGapExtra
+    const laneGapY = NODE_GAP_Y + Math.round(laneGapExtra * 0.35)
 
     let totalContentW = 0
     let totalContentH = 0
 
     if (isHorizontal) {
-      // 节点在 lane 内从左到右排列
+      // 节点在 lane 内按“列 + 行”网格布局（支持多行）
+      const layoutItems = ordered.map((child, index) => {
+        const size = estimateNodeSize(child)
+        const row = gridIndex((child.data as any)?.laneRow, 0)
+        const col = gridIndex((child.data as any)?.laneCol, index)
+        return { child, size, row, col }
+      })
+      const colKeys = Array.from(new Set(layoutItems.map((item) => item.col))).sort((a, b) => a - b)
+      const rowKeys = Array.from(new Set(layoutItems.map((item) => item.row))).sort((a, b) => a - b)
+      const colRank = new Map(colKeys.map((key, idx) => [key, idx]))
+      const rowRank = new Map(rowKeys.map((key, idx) => [key, idx]))
+
+      const colWidths = new Map<number, number>()
+      const rowHeights = new Map<number, number>()
+      for (const item of layoutItems) {
+        const c = colRank.get(item.col) ?? 0
+        const r = rowRank.get(item.row) ?? 0
+        colWidths.set(c, Math.max(colWidths.get(c) ?? 0, item.size.w))
+        rowHeights.set(r, Math.max(rowHeights.get(r) ?? 0, item.size.h))
+      }
+
+      const colStarts = new Map<number, number>()
+      const rowStarts = new Map<number, number>()
       let cx = padLeft
-      let maxH = 0
-      for (const child of ordered) {
-        const size = estimateNodeSize(child)
-        child.width = size.w
-        child.height = size.h
-        child.style = { ...(child.style as any), width: size.w, height: size.h }
-        child.position = { x: cx, y: padTop }
-        cx += size.w + NODE_GAP_X
-        maxH = Math.max(maxH, size.h)
+      for (let c = 0; c < colKeys.length; c += 1) {
+        colStarts.set(c, cx)
+        cx += (colWidths.get(c) ?? 0) + laneGapX
       }
-      totalContentW = cx - NODE_GAP_X + padRight
-      totalContentH = padTop + maxH + padBottom
-      // 垂直居中到 body 中线
-      const bodyMidY = padTop + maxH / 2
-      for (const child of ordered) {
-        const size = estimateNodeSize(child)
-        child.position = { x: child.position!.x, y: bodyMidY - size.h / 2 }
+      let cy = padTop
+      for (let r = 0; r < rowKeys.length; r += 1) {
+        rowStarts.set(r, cy)
+        cy += (rowHeights.get(r) ?? 0) + laneGapY
       }
+
+      for (const item of layoutItems) {
+        const c = colRank.get(item.col) ?? 0
+        const r = rowRank.get(item.row) ?? 0
+        const colStart = colStarts.get(c) ?? padLeft
+        const rowStart = rowStarts.get(r) ?? padTop
+        const colW = colWidths.get(c) ?? item.size.w
+        const rowH = rowHeights.get(r) ?? item.size.h
+
+        item.child.width = item.size.w
+        item.child.height = item.size.h
+        item.child.style = { ...(item.child.style as any), width: item.size.w, height: item.size.h }
+        item.child.position = {
+          x: colStart + (colW - item.size.w) / 2,
+          y: rowStart + (rowH - item.size.h) / 2,
+        }
+      }
+
+      totalContentW = (colKeys.length > 0 ? cx - laneGapX : padLeft) + padRight
+      totalContentH = (rowKeys.length > 0 ? cy - laneGapY : padTop) + padBottom
     } else {
       // 节点在 lane 内从上到下排列
       let cy = padTop
@@ -194,11 +263,11 @@ export function autoLayoutSwimlane(args: {
         child.height = size.h
         child.style = { ...(child.style as any), width: size.w, height: size.h }
         child.position = { x: padLeft, y: cy }
-        cy += size.h + NODE_GAP_Y
+        cy += size.h + laneGapY
         maxW = Math.max(maxW, size.w)
       }
       totalContentW = padLeft + maxW + padRight
-      totalContentH = cy - NODE_GAP_Y + padBottom
+      totalContentH = cy - laneGapY + padBottom
     }
 
     laneSizes.push({ id: lane.id, contentW: totalContentW, contentH: totalContentH })
@@ -239,6 +308,7 @@ export function autoLayoutSwimlane(args: {
   const byId = new Map(nodes.map((n) => [n.id, n]))
   const laneIndexById = new Map(lanes.map((l, i) => [l.id, i]))
   const laneOrderCounter = new Map<string, number>()
+  const usedRouteSignatures = new Set<string>()
   const exclusionBoxes = getNodeExclusionBoxes(nodes as Node<any>[])
   const routedEdges = edges.map((e) => {
     const srcNode = byId.get(e.source)
@@ -262,8 +332,8 @@ export function autoLayoutSwimlane(args: {
     laneOrderCounter.set(pairKey, order + 1)
     const signed = order % 2 === 0 ? order / 2 : -((order + 1) / 2)
     // 走“就近 corridor”，仅在必要时逐步外扩，避免夸张拉线到泳道外
-    const baseLift = 14 + Math.abs(signed) * 6
-    const baseCorridor = (sp.x + tp.x) / 2 + signed * 12
+    const baseLift = 16 + Math.abs(signed) * 8
+    const baseCorridor = (sp.x + tp.x) / 2 + signed * 8
     const buildWaypoints = (corridorX: number, lift: number) =>
       sourceHandle === 's-bottom'
         ? [
@@ -279,21 +349,30 @@ export function autoLayoutSwimlane(args: {
             { x: tp.x, y: tp.y + lift },
           ]
 
-    let bestWaypoints = buildWaypoints(baseCorridor, baseLift)
-    let found = false
+    let bestWaypoints = normalizeWaypointsToGrid(buildWaypoints(baseCorridor, baseLift))
+    let bestSig = ''
+    let bestNodeSafe: Array<{ x: number; y: number }> | null = null
     for (let i = 0; i <= 10; i++) {
-      const tryLift = baseLift + i * 4
-      const tryCorridor = baseCorridor + (i % 2 === 0 ? i * 10 : -i * 10)
-      const tryWaypoints = buildWaypoints(tryCorridor, tryLift)
+      const tryLift = baseLift + i * 8
+      const tryCorridor = baseCorridor + (i % 2 === 0 ? i * 8 : -i * 8)
+      const tryWaypoints = normalizeWaypointsToGrid(buildWaypoints(tryCorridor, tryLift))
       const polyline = [{ x: sp.x, y: sp.y }, ...tryWaypoints, { x: tp.x, y: tp.y }]
       const collide = doesPolylineIntersectAnyExclusionBox(polyline, exclusionBoxes, [srcNode.id, tgtNode.id])
-      if (!collide) {
+      const sig = JSON.stringify(polyline)
+      const occupied = usedRouteSignatures.has(sig)
+      if (!collide && !bestNodeSafe) bestNodeSafe = tryWaypoints
+      if (!collide && !occupied) {
         bestWaypoints = tryWaypoints
-        found = true
+        bestSig = sig
         break
       }
       bestWaypoints = tryWaypoints
     }
+    if (!bestSig) {
+      if (bestNodeSafe) bestWaypoints = bestNodeSafe
+      bestSig = JSON.stringify([{ x: sp.x, y: sp.y }, ...bestWaypoints, { x: tp.x, y: tp.y }])
+    }
+    usedRouteSignatures.add(bestSig)
     return {
       ...e,
       // 泳道图禁用贝塞尔：跨泳道也统一走正交多弯折（smoothstep）。
@@ -310,5 +389,18 @@ export function autoLayoutSwimlane(args: {
       },
     }
   })
-  return { nodes, edges: routedEdges }
+  return {
+    nodes: nodes.map((n) => normalizeNodeGeometryToGrid(n) as Node<any>),
+    edges: routedEdges.map((e) => {
+      const wps = ((e.data ?? {}) as any)?.waypoints as Array<{ x: number; y: number }> | undefined
+      if (!Array.isArray(wps) || wps.length === 0) return e
+      return {
+        ...e,
+        data: {
+          ...(e.data as any),
+          waypoints: normalizeWaypointsToGrid(wps),
+        },
+      }
+    }),
+  }
 }

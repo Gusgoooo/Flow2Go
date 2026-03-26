@@ -18,6 +18,7 @@ export function getDefaultOrthogonalPoints(
   const isHorizontalSource = sourcePosition === Position.Left || sourcePosition === Position.Right
   const isHorizontalTarget = targetPosition === Position.Left || targetPosition === Position.Right
   const isCShape = sourcePosition === targetPosition
+  const EPS = 1e-3
 
   const source = { x: sourceX, y: sourceY }
   const target = { x: targetX, y: targetY }
@@ -33,16 +34,18 @@ export function getDefaultOrthogonalPoints(
     // 交叉位次（例如 Right→Left 且 target 在 source 左边）：
     // 需要同时满足 source 先按 out 方向离开、target 再按 in 方向进入，
     // 因此使用「双外廊 + 中轴」的 5 段折线，而不是直接中点 Z 型。
-    if (sourcePosition === Position.Right && targetPosition === Position.Left && targetX <= sourceX) {
+    if (sourcePosition === Position.Right && targetPosition === Position.Left && targetX <= sourceX + EPS) {
       const xOut = sourceX + offset
       const xIn = targetX - offset
-      const midY = (sourceY + targetY) / 2 + autoOffset
+      const alignedY = Math.abs(targetY - sourceY) < EPS
+      const midY = alignedY ? sourceY + (Math.abs(autoOffset) > EPS ? autoOffset : offset) : (sourceY + targetY) / 2 + autoOffset
       return [source, { x: xOut, y: sourceY }, { x: xOut, y: midY }, { x: xIn, y: midY }, { x: xIn, y: targetY }, target]
     }
-    if (sourcePosition === Position.Left && targetPosition === Position.Right && targetX >= sourceX) {
+    if (sourcePosition === Position.Left && targetPosition === Position.Right && targetX >= sourceX - EPS) {
       const xOut = sourceX - offset
       const xIn = targetX + offset
-      const midY = (sourceY + targetY) / 2 + autoOffset
+      const alignedY = Math.abs(targetY - sourceY) < EPS
+      const midY = alignedY ? sourceY + (Math.abs(autoOffset) > EPS ? autoOffset : offset) : (sourceY + targetY) / 2 + autoOffset
       return [source, { x: xOut, y: sourceY }, { x: xOut, y: midY }, { x: xIn, y: midY }, { x: xIn, y: targetY }, target]
     }
     // Z 型：末段必须沿「in」方向水平接近 target，使 markerEnd（orient=auto）箭头朝节点内侧。
@@ -62,16 +65,28 @@ export function getDefaultOrthogonalPoints(
     // 交叉位次（例如 Bottom→Top 且 target 在 source 上方，同时存在明显水平位移）：
     // 用多一折的 5 段折线，让 source 先按 out 方向离开、target 再按 in 方向进入，
     // 并为中间避让留下稳定的“走廊”。
-    if (sourcePosition === Position.Bottom && targetPosition === Position.Top && targetY <= sourceY && Math.abs(targetX - sourceX) > 1e-3) {
+    if (sourcePosition === Position.Bottom && targetPosition === Position.Top && targetY <= sourceY + EPS && Math.abs(targetX - sourceX) > EPS) {
       const yOut = sourceY + offset
       const yIn = targetY - offset
       const midX = (sourceX + targetX) / 2 + autoOffset
       return [source, { x: sourceX, y: yOut }, { x: midX, y: yOut }, { x: midX, y: yIn }, { x: targetX, y: yIn }, target]
     }
-    if (sourcePosition === Position.Top && targetPosition === Position.Bottom && targetY >= sourceY && Math.abs(targetX - sourceX) > 1e-3) {
+    if (sourcePosition === Position.Bottom && targetPosition === Position.Top && targetY <= sourceY + EPS && Math.abs(targetX - sourceX) <= EPS) {
+      const yOut = sourceY + offset
+      const yIn = targetY - offset
+      const midX = sourceX + (Math.abs(autoOffset) > EPS ? autoOffset : offset)
+      return [source, { x: sourceX, y: yOut }, { x: midX, y: yOut }, { x: midX, y: yIn }, { x: targetX, y: yIn }, target]
+    }
+    if (sourcePosition === Position.Top && targetPosition === Position.Bottom && targetY >= sourceY - EPS && Math.abs(targetX - sourceX) > EPS) {
       const yOut = sourceY - offset
       const yIn = targetY + offset
       const midX = (sourceX + targetX) / 2 + autoOffset
+      return [source, { x: sourceX, y: yOut }, { x: midX, y: yOut }, { x: midX, y: yIn }, { x: targetX, y: yIn }, target]
+    }
+    if (sourcePosition === Position.Top && targetPosition === Position.Bottom && targetY >= sourceY - EPS && Math.abs(targetX - sourceX) <= EPS) {
+      const yOut = sourceY - offset
+      const yIn = targetY + offset
+      const midX = sourceX + (Math.abs(autoOffset) > EPS ? autoOffset : offset)
       return [source, { x: sourceX, y: yOut }, { x: midX, y: yOut }, { x: midX, y: yIn }, { x: targetX, y: yIn }, target]
     }
     let midY = (sourceY + targetY) / 2 + autoOffset
@@ -83,7 +98,31 @@ export function getDefaultOrthogonalPoints(
     return [source, { x: sourceX, y: midY }, { x: targetX, y: midY }, target]
   }
   if (isHorizontalSource) {
-    return [source, { x: targetX, y: sourceY + autoOffset }, target]
+    // Mixed orientation (horizontal -> vertical):
+    // enforce source-out first and target-in last to avoid crossing target body.
+    const sourceOutX = sourcePosition === Position.Right ? sourceX + offset : sourceX - offset
+    const targetInY = targetPosition === Position.Top ? targetY - offset : targetY + offset
+    const bendY = targetInY + autoOffset
+    return [
+      source,
+      { x: sourceOutX, y: sourceY },
+      { x: sourceOutX, y: bendY },
+      { x: targetX, y: bendY },
+      { x: targetX, y: targetInY },
+      target,
+    ]
   }
-  return [source, { x: sourceX + autoOffset, y: targetY }, target]
+  // Mixed orientation (vertical -> horizontal):
+  // enforce source-out first and target-in last to avoid crossing target body.
+  const sourceOutY = sourcePosition === Position.Bottom ? sourceY + offset : sourceY - offset
+  const targetInX = targetPosition === Position.Left ? targetX - offset : targetX + offset
+  const bendX = targetInX + autoOffset
+  return [
+    source,
+    { x: sourceX, y: sourceOutY },
+    { x: bendX, y: sourceOutY },
+    { x: bendX, y: targetY },
+    { x: targetInX, y: targetY },
+    target,
+  ]
 }

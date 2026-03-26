@@ -1,6 +1,7 @@
 import { useCallback, useMemo } from 'react'
 import { NodeResizer, useReactFlow, type NodeProps } from '@xyflow/react'
 import { type GradientValue, gradientToCss } from './GradientColorEditor'
+import { snapPointToGrid, snapSizeToGrid } from './grid'
 
 export type AssetNodeData = {
   assetUrl: string
@@ -46,12 +47,12 @@ export function AssetNode(props: NodeProps) {
                 // 这样拖拽哪个角，视觉上就从哪个角拉伸，而不是绕中心缩放
                 position:
                   Number.isFinite(x) && Number.isFinite(y)
-                    ? { x, y }
+                    ? snapPointToGrid({ x, y })
                     : n.position,
                 data: {
                   ...(n.data ?? {}),
-                  assetWidth: Math.round(width),
-                  assetHeight: Math.round(height),
+                  assetWidth: snapSizeToGrid(width),
+                  assetHeight: snapSizeToGrid(height),
                 },
               }
             : n,
@@ -95,8 +96,8 @@ export function AssetNode(props: NodeProps) {
         minHeight={MIN_SIZE}
         onResize={onResize}
         handleStyle={{
-          width: 12,
-          height: 12,
+          width: 8,
+          height: 8,
           borderRadius: 9999,
           background: '#3b82f6',
           border: '2px solid #fff',

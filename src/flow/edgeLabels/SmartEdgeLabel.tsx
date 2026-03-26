@@ -291,9 +291,10 @@ export function SmartEdgeLabel(props: SmartEdgeLabelProps) {
             title={text}
             style={{
               maxWidth: maxLabelWidth,
-              padding: textOnly ? '0' : '4px 10px',
-              borderRadius: textOnly ? 0 : 8,
-              background: textOnly ? 'transparent' : 'rgba(255,255,255,0.5)',
+              // textOnly: 保持纯文字观感，但用浅色底遮挡边线，形成“文字切线”效果。
+              padding: textOnly ? '0 4px' : '4px 10px',
+              borderRadius: textOnly ? 2 : 8,
+              background: textOnly ? 'rgba(248,250,252,0.98)' : 'rgba(255,255,255,0.5)',
               backdropFilter: textOnly ? 'none' : 'blur(2px)',
               WebkitBackdropFilter: textOnly ? 'none' : 'blur(2px)',
               border: textOnly ? 'none' : '1px solid rgba(148,163,184,0.55)',

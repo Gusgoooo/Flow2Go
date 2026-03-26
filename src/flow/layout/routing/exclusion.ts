@@ -16,7 +16,7 @@ export const ROUTING_PAD_X = 24
 export const ROUTING_PAD_Y = 24
 
 const DEFAULT_SIZE_BY_KIND: Record<string, { width: number; height: number }> = {
-  rect: { width: 140, height: 56 },
+  rect: { width: 160, height: 48 },
   circle: { width: 64, height: 64 },
   diamond: { width: 96, height: 64 },
   text: { width: 120, height: 32 },
