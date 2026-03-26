@@ -115,6 +115,25 @@ function quadDefaults(title: string, shape: 'rect' | 'circle' | 'diamond' | unde
   }
 }
 
+const SEMANTIC_END_NODE_FILL = 'rgba(226, 232, 240, 0.8)'
+const SEMANTIC_DECISION_NODE_FILL = '#FFB100'
+
+function withSemanticNodeStyleDefaults(rawStyle: Record<string, any>): Record<string, any> {
+  const next = { ...rawStyle }
+  const semantic = String(rawStyle.semanticType ?? '').toLowerCase()
+  const hasUserFill = typeof next.color === 'string' && next.color.trim().length > 0
+  const hasUserStrokeWidth = typeof next.strokeWidth === 'number' && Number.isFinite(next.strokeWidth)
+
+  if (semantic === 'end' && !hasUserFill) {
+    next.color = SEMANTIC_END_NODE_FILL
+  }
+  if (semantic === 'decision') {
+    if (!hasUserFill) next.color = SEMANTIC_DECISION_NODE_FILL
+    if (!hasUserStrokeWidth) next.strokeWidth = 0
+  }
+  return next
+}
+
 function normalizeNodesForGrid(nodes: Array<Node<any>>): Array<Node<any>> {
   return nodes.map((n) => normalizeNodeGeometryToGrid(n) as Node<any>)
 }
@@ -700,6 +719,36 @@ function inferHandlesForEdge(
   return { sourceHandle: 's-top', targetHandle: 't-bottom' }
 }
 
+function isBidirectionalArrowEdge(edge: Edge<any>): boolean {
+  const arrowStyle = String(((edge.data ?? {}) as any)?.arrowStyle ?? '').toLowerCase()
+  if (arrowStyle === 'both') return true
+  return Boolean(edge.markerStart && edge.markerEnd)
+}
+
+/**
+ * Flowchart 特判（仅双向箭头）：
+ * - 左侧节点在右侧节点下方：上 -> 上
+ * - 左侧节点在右侧节点上方：下 -> 下
+ * 该规则与 source/target 顺序无关，仅依赖几何关系。
+ */
+function inferBidirectionalDiagonalHandlesForFlowchart(
+  edge: Edge<any>,
+  nodeById: Map<string, Node<any>>,
+): { sourceHandle: string; targetHandle: string } | null {
+  if (!isBidirectionalArrowEdge(edge)) return null
+  const centers = getCenters(edge.source, edge.target, nodeById)
+  if (!centers) return null
+  const dx = centers.tCx - centers.sCx
+  const dy = centers.tCy - centers.sCy
+  const EPS = 1e-6
+  if (Math.abs(dx) <= EPS || Math.abs(dy) <= EPS) return null
+  const sourceIsLeft = centers.sCx < centers.tCx
+  const leftCy = sourceIsLeft ? centers.sCy : centers.tCy
+  const rightCy = sourceIsLeft ? centers.tCy : centers.sCy
+  const side: 'top' | 'bottom' = leftCy > rightCy ? 'top' : 'bottom'
+  return { sourceHandle: `s-${side}`, targetHandle: `t-${side}` }
+}
+
 type Side = 'top' | 'right' | 'bottom' | 'left'
 type RoutePoint = { x: number; y: number }
 
@@ -725,6 +774,45 @@ function oppositeSide(side: Side): Side {
   if (side === 'bottom') return 'top'
   if (side === 'left') return 'right'
   return 'left'
+}
+
+function dominantSideFromDelta(dx: number, dy: number): Side {
+  if (Math.abs(dx) >= Math.abs(dy)) return dx >= 0 ? 'right' : 'left'
+  return dy >= 0 ? 'bottom' : 'top'
+}
+
+function emptySideUsage(): Record<Side, number> {
+  return { top: 0, right: 0, bottom: 0, left: 0 }
+}
+
+function chooseLeastUsedDistinctSide(
+  preferred: Side,
+  usage: Record<Side, number>,
+  blocked?: Side,
+): Side {
+  const sequence: Side[] = [
+    preferred,
+    oppositeSide(preferred),
+    'right',
+    'left',
+    'bottom',
+    'top',
+  ]
+  const unique: Side[] = []
+  for (const side of sequence) {
+    if (blocked && side === blocked) continue
+    if (!unique.includes(side)) unique.push(side)
+  }
+  let best = unique[0] ?? preferred
+  let bestCount = usage[best] ?? 0
+  for (const side of unique) {
+    const count = usage[side] ?? 0
+    if (count < bestCount) {
+      best = side
+      bestCount = count
+    }
+  }
+  return best
 }
 
 const FLOW_ROUTE_LEAD = 24
@@ -888,6 +976,7 @@ function shouldPreferLeftToRightByComplexity(payload: GraphBatchPayload): boolea
 
 function applyInferredEdgeHandles(nodes: Array<Node<any>>, edges: Array<Edge<any>>) {
   const nodeById = new Map(nodes.map((n) => [n.id, n]))
+  const sides: Side[] = ['right', 'left', 'bottom', 'top']
   const rootFrameCache = new Map<string, string | null>()
   const getRootFrameId = (nodeId: string): string | null => {
     if (rootFrameCache.has(nodeId)) return rootFrameCache.get(nodeId) ?? null
@@ -917,8 +1006,9 @@ function applyInferredEdgeHandles(nodes: Array<Node<any>>, edges: Array<Edge<any
   const laneByPair = new Map<string, number>()
   // Undirected occupancy further reduces A<->B bi-direction overlaps.
   const laneByUndirectedPair = new Map<string, number>()
-  // Swimlane decision 节点出边使用计数：用于“左右各出一条”硬规则。
-  const decisionOutUsage = new Map<string, { left: number; right: number }>()
+  // Swimlane decision 节点出边使用计数：用于分散拥堵，并保证 yes/no 分支不走同一 handle。
+  const decisionOutUsage = new Map<string, Record<Side, number>>()
+  const decisionBranchSideByLabel = new Map<string, { yes?: Side; no?: Side }>()
 
   const classifyDecisionBranch = (edge: Edge<any>): 'yes' | 'no' | null => {
     const text = typeof edge.label === 'string' ? edge.label.trim() : ''
@@ -980,21 +1070,25 @@ function applyInferredEdgeHandles(nodes: Array<Node<any>>, edges: Array<Edge<any
       Boolean(srcLaneId) &&
       (srcSemantic === 'decision' || srcShape === 'diamond')
     let forcedDecisionSourceSide: Side | null = null
+    const decisionBranch = srcIsSwimlaneDecision ? classifyDecisionBranch(e) : null
     if (srcIsSwimlaneDecision) {
-      const usage = decisionOutUsage.get(e.source) ?? { left: 0, right: 0 }
-      const branch = classifyDecisionBranch(e)
-      if (branch === 'yes') {
-        forcedDecisionSourceSide = 'right'
-      } else if (branch === 'no') {
-        forcedDecisionSourceSide = 'left'
-      } else if (usage.left === 0 && usage.right === 0) {
-        forcedDecisionSourceSide = dx >= 0 ? 'right' : 'left'
-      } else if (usage.left === 0) {
-        forcedDecisionSourceSide = 'left'
-      } else if (usage.right === 0) {
-        forcedDecisionSourceSide = 'right'
+      const usage = decisionOutUsage.get(e.source) ?? emptySideUsage()
+      const preferred = dominantSideFromDelta(dx, dy)
+      if (decisionBranch) {
+        const pair = decisionBranchSideByLabel.get(e.source) ?? {}
+        const current = decisionBranch === 'yes' ? pair.yes : pair.no
+        if (current) {
+          forcedDecisionSourceSide = current
+        } else {
+          const other = decisionBranch === 'yes' ? pair.no : pair.yes
+          const chosen = chooseLeastUsedDistinctSide(preferred, usage, other)
+          forcedDecisionSourceSide = chosen
+          if (decisionBranch === 'yes') pair.yes = chosen
+          else pair.no = chosen
+          decisionBranchSideByLabel.set(e.source, pair)
+        }
       } else {
-        forcedDecisionSourceSide = dx >= 0 ? 'right' : 'left'
+        forcedDecisionSourceSide = chooseLeastUsedDistinctSide(preferred, usage)
       }
     }
 
@@ -1037,7 +1131,6 @@ function applyInferredEdgeHandles(nodes: Array<Node<any>>, edges: Array<Edge<any
     const sourceScore = scoreSideForVector(dx, dy, sourcePenalties)
     // Target vector is reversed: target chooses side that "faces" source.
     const targetScore = scoreSideForVector(-dx, -dy, targetPenalties)
-    const sides: Side[] = ['right', 'left', 'bottom', 'top']
     const shouldKeepExistingHandles =
       Boolean(existingSourceHandle) &&
       Boolean(existingTargetHandle) &&
@@ -1135,10 +1228,15 @@ function applyInferredEdgeHandles(nodes: Array<Node<any>>, edges: Array<Edge<any
         : `${e.target}<->${e.source}:${tgtSide}:${srcSide}`
     laneByUndirectedPair.set(undirectedLaneKey, (laneByUndirectedPair.get(undirectedLaneKey) ?? 0) + 1)
     if (srcIsSwimlaneDecision) {
-      const usage = decisionOutUsage.get(e.source) ?? { left: 0, right: 0 }
-      if (srcSide === 'left') usage.left += 1
-      if (srcSide === 'right') usage.right += 1
+      const usage = decisionOutUsage.get(e.source) ?? emptySideUsage()
+      usage[srcSide] += 1
       decisionOutUsage.set(e.source, usage)
+      if (decisionBranch) {
+        const pair = decisionBranchSideByLabel.get(e.source) ?? {}
+        if (decisionBranch === 'yes') pair.yes = srcSide
+        else pair.no = srcSide
+        decisionBranchSideByLabel.set(e.source, pair)
+      }
     }
 
     return next
@@ -1225,16 +1323,21 @@ function applyFlowchartStrictHandles(
   const boxes = getNodeExclusionBoxes(nodes)
   const shifts = shiftSequence(FLOW_ROUTE_SHIFT_STEP, FLOW_ROUTE_MAX_SHIFT_TRIES)
   const occupiedRouteSignatures = new Set<string>()
-  const decisionOutLane = new Map<string, number>()
+  const decisionOutUsage = new Map<string, Record<Side, number>>()
+  const decisionBranchSideByLabel = new Map<string, { yes?: Side; no?: Side }>()
   void direction
   return edges.map((e) => {
     let sourceHandle = e.sourceHandle
     let targetHandle = e.targetHandle
 
     const srcNode = nodeById.get(e.source)
+    const tgtNode = nodeById.get(e.target)
     const srcSemantic = String((srcNode?.data as any)?.semanticType ?? '')
     const srcShape = String((srcNode?.data as any)?.shape ?? '')
+    const tgtSemantic = String((tgtNode?.data as any)?.semanticType ?? '')
+    const tgtShape = String((tgtNode?.data as any)?.shape ?? '')
     const srcIsDecision = srcSemantic === 'decision' || srcShape === 'diamond'
+    const tgtIsDecision = tgtSemantic === 'decision' || tgtShape === 'diamond'
     const edgeLabel = typeof e.label === 'string' ? e.label.trim() : ''
     const edgeLabelLower = edgeLabel.toLowerCase()
     const isYes =
@@ -1246,15 +1349,40 @@ function applyFlowchartStrictHandles(
       /(否|不通过|不同意|失败|拒绝|取消)/.test(edgeLabel) ||
       /\bno\b/i.test(edgeLabelLower)
 
-    // 决策节点：左右出边区分 yes/no（优先 label 语义；无 label 时按出边序号左右分流）
-    if (srcIsDecision) {
-      if (isYes) sourceHandle = 's-right'
-      else if (isNo) sourceHandle = 's-left'
-      else {
-        const k = decisionOutLane.get(e.source) ?? 0
-        decisionOutLane.set(e.source, k + 1)
-        sourceHandle = k % 2 === 0 ? 's-right' : 's-left'
+    // 流程图双向箭头对角特判：不影响 decision 既有出边策略。
+    if (!srcIsDecision && !tgtIsDecision) {
+      const bidirectionalForced = inferBidirectionalDiagonalHandlesForFlowchart(e, nodeById)
+      if (bidirectionalForced) {
+        sourceHandle = bidirectionalForced.sourceHandle
+        targetHandle = bidirectionalForced.targetHandle
       }
+    }
+
+    // 决策节点：yes/no 必须走不同 handle；方向由几何自动推断，不写死左右。
+    if (srcIsDecision) {
+      const inferred = inferHandlesForEdge(e.source, e.target, nodeById)
+      const inferredSide = handleToSide(inferred?.sourceHandle) ?? 'right'
+      const usage = decisionOutUsage.get(e.source) ?? emptySideUsage()
+      const branch: 'yes' | 'no' | null = isYes ? 'yes' : isNo ? 'no' : null
+      let chosenSide: Side
+      if (branch) {
+        const pair = decisionBranchSideByLabel.get(e.source) ?? {}
+        const current = branch === 'yes' ? pair.yes : pair.no
+        if (current) {
+          chosenSide = current
+        } else {
+          const other = branch === 'yes' ? pair.no : pair.yes
+          chosenSide = chooseLeastUsedDistinctSide(inferredSide, usage, other)
+          if (branch === 'yes') pair.yes = chosenSide
+          else pair.no = chosenSide
+          decisionBranchSideByLabel.set(e.source, pair)
+        }
+      } else {
+        chosenSide = chooseLeastUsedDistinctSide(inferredSide, usage)
+      }
+      usage[chosenSide] += 1
+      decisionOutUsage.set(e.source, usage)
+      sourceHandle = sideToSourceHandle(chosenSide)
     }
 
     if (!sourceHandle || !targetHandle) {
@@ -1435,9 +1563,10 @@ export async function materializeGraphBatchPayloadToSnapshot(
           extraData.laneId = op.params.parentId
         }
       }
-      const styleObj = (op.params.style ?? {}) as Record<string, any>
+      const rawStyleObj = (op.params.style ?? {}) as Record<string, any>
+      const styleObj = withSemanticNodeStyleDefaults(rawStyleObj)
       if (styleObj.semanticType && !op.params.shape) {
-        const st = styleObj.semanticType
+        const st = String(styleObj.semanticType).toLowerCase()
         if (st === 'start' || st === 'end') d.data.shape = 'circle'
         else if (st === 'decision') d.data.shape = 'diamond'
         else d.data.shape = 'rect'

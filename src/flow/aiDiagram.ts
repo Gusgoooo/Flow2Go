@@ -411,8 +411,23 @@ const SCENE_ROUTER_SYSTEM_PROMPT = [
 
 const LONG_INPUT_SUMMARY_THRESHOLD = 2200
 const LONG_INPUT_TIMEOUT_MS = 150_000
-const FLOWCHART_GUARD_NODE_MAX = 20
-const FLOWCHART_GUARD_EDGE_MAX = 26
+const FLOWCHART_GUARD_NODE_MAX = 16
+const FLOWCHART_GUARD_EDGE_MAX = 20
+const FLOWCHART_GUARD_EDGE_OVER_NODE_ALLOWANCE = 4
+const STABLE_GENERATION_TEMPERATURE = 0
+
+function isFlowchartOverComplex(nodesCount: number, edgesCount: number): boolean {
+  if (nodesCount > FLOWCHART_GUARD_NODE_MAX) return true
+  if (edgesCount > FLOWCHART_GUARD_EDGE_MAX) return true
+  if (nodesCount <= 0) return edgesCount > 0
+  const denseByGap = edgesCount > nodesCount + FLOWCHART_GUARD_EDGE_OVER_NODE_ALLOWANCE
+  const denseByRatio = edgesCount / nodesCount > 1.35
+  return denseByGap || denseByRatio
+}
+
+function flowchartComplexityScore(nodesCount: number, edgesCount: number): number {
+  return nodesCount + edgesCount * 1.15
+}
 
 const DIAGRAM_PLANNER_SYSTEM_PROMPT = [
   '你是 Flow2Go 的 Diagram Planner / Graph Normalizer（规划器）。',
@@ -563,7 +578,7 @@ async function openRouterDiagramPlanner(
     ].join('\n'),
     signal,
     timeoutMs,
-    temperature: 0.2,
+    temperature: STABLE_GENERATION_TEMPERATURE,
   })
 
   const s = raw.trim()
@@ -827,7 +842,7 @@ export async function openRouterGenerateDiagram(opts: OpenRouterChatOptions): Pr
           user: userPrompt,
           signal,
           timeoutMs: attemptTimeout,
-          temperature: 0.2,
+          temperature: STABLE_GENERATION_TEMPERATURE,
         })
         break
       } catch (e) {
@@ -860,7 +875,7 @@ export async function openRouterGenerateDiagram(opts: OpenRouterChatOptions): Pr
   const d1 = await generateOnce(undefined, '主生成')
   const nodesCount = Array.isArray(d1.nodes) ? d1.nodes.length : 0
   const edgesCount = Array.isArray(d1.edges) ? d1.edges.length : 0
-  const tooComplex = nodesCount > FLOWCHART_GUARD_NODE_MAX || edgesCount > FLOWCHART_GUARD_EDGE_MAX
+  const tooComplex = isFlowchartOverComplex(nodesCount, edgesCount)
   if (tooComplex) {
     report('复杂度守门触发', `首次结果过密：nodes=${nodesCount}, edges=${edgesCount}，执行强压缩重生…`)
     const d2 = await generateOnce(
@@ -868,6 +883,7 @@ export async function openRouterGenerateDiagram(opts: OpenRouterChatOptions): Pr
         '【复杂度守门（强制重生）】首次结果过于复杂，必须显著简化：',
         `- 节点上限：${FLOWCHART_GUARD_NODE_MAX}`,
         `- 连线上限：${FLOWCHART_GUARD_EDGE_MAX}`,
+        `- 连线密度上限：edges <= nodes + ${FLOWCHART_GUARD_EDGE_OVER_NODE_ALLOWANCE}`,
         '- 主链仅保留 4~8 步；分支最多 2 个；回流最多 1 条。',
         '- 合并重复/近义节点；禁止碎节点、禁止跨分支大量连线、禁止全连接。',
         '- 若信息过多，宁可省略次要细节，不要牺牲可读性。',
@@ -876,11 +892,11 @@ export async function openRouterGenerateDiagram(opts: OpenRouterChatOptions): Pr
     )
     const nodes2 = Array.isArray(d2.nodes) ? d2.nodes.length : 0
     const edges2 = Array.isArray(d2.edges) ? d2.edges.length : 0
-    const stillTooComplex = nodes2 > FLOWCHART_GUARD_NODE_MAX || edges2 > FLOWCHART_GUARD_EDGE_MAX
+    const stillTooComplex = isFlowchartOverComplex(nodes2, edges2)
     if (stillTooComplex) {
       report('复杂度守门结果', `重生后仍偏复杂（nodes=${nodes2}, edges=${edges2}），返回更优候选`)
-      const score1 = nodesCount + edgesCount * 0.8
-      const score2 = nodes2 + edges2 * 0.8
+      const score1 = flowchartComplexityScore(nodesCount, edgesCount)
+      const score2 = flowchartComplexityScore(nodes2, edges2)
       return score2 <= score1 ? d2 : d1
     }
     report('复杂度守门通过', `重生后收敛：nodes=${nodes2}, edges=${edges2}`)

@@ -67,6 +67,239 @@ function cloneDraft(draft: SwimlaneDraft): SwimlaneDraft {
   }
 }
 
+const EDGE_SEMANTIC_TYPES = new Set<NonNullable<SwimlaneDraftEdge['semanticType']>>([
+  'normal',
+  'crossLane',
+  'returnFlow',
+  'conditional',
+])
+
+function normalizeEdgeSemanticType(value: unknown): SwimlaneDraftEdge['semanticType'] | undefined {
+  const raw = String(value ?? '').trim()
+  if (!raw) return undefined
+  return EDGE_SEMANTIC_TYPES.has(raw as NonNullable<SwimlaneDraftEdge['semanticType']>)
+    ? (raw as SwimlaneDraftEdge['semanticType'])
+    : undefined
+}
+
+function isYesNoLabel(text: unknown): boolean {
+  const t = String(text ?? '').trim().toLowerCase()
+  if (!t) return false
+  return t === 'yes' || t === 'no' || t === '是' || t === '否'
+}
+
+function isReturnLabel(text: unknown): boolean {
+  const t = String(text ?? '').trim()
+  if (!t) return false
+  return /(回流|驳回|退回|重试|回退|返回)/.test(t)
+}
+
+const HIDDEN_EDGE_RELATION_LABELS = new Set([
+  'next',
+  'submit_to',
+  'notify',
+  'request',
+  'return_to',
+  'cancel_to',
+])
+
+function normalizeRelationToken(value: unknown): string {
+  return String(value ?? '')
+    .trim()
+    .toLowerCase()
+    .replace(/[\s-]+/g, '_')
+}
+
+function sanitizeEdgeLabel(
+  labelValue: unknown,
+  relationValue?: unknown,
+): string | undefined {
+  if (typeof labelValue !== 'string') return undefined
+  const trimmed = labelValue.trim()
+  if (!trimmed) return undefined
+  const labelToken = normalizeRelationToken(trimmed)
+  const relationToken = normalizeRelationToken(relationValue)
+  const token = labelToken || relationToken
+
+  if (HIDDEN_EDGE_RELATION_LABELS.has(token)) return undefined
+  if (labelToken === 'yes') return '是'
+  if (labelToken === 'no') return '否'
+  return trimmed.slice(0, 12)
+}
+
+function isCrossLaneReturnFlowEdge(
+  edge: SwimlaneDraftEdge,
+  nodeById: Map<string, SwimlaneDraftNode>,
+): boolean {
+  if (edge.semanticType !== 'returnFlow') return false
+  const sourceNode = nodeById.get(edge.source)
+  const targetNode = nodeById.get(edge.target)
+  if (!sourceNode || !targetNode) return false
+  return sourceNode.laneId !== targetNode.laneId
+}
+
+function pruneCrossLaneReturnFlowEdges(
+  edges: SwimlaneDraftEdge[],
+  nodeById: Map<string, SwimlaneDraftNode>,
+  laneOrderById: Map<string, number>,
+): SwimlaneDraftEdge[] {
+  if (edges.length <= 1) return edges
+
+  const sameLaneReturnSources = new Set<string>()
+  for (const edge of edges) {
+    if (edge.semanticType !== 'returnFlow') continue
+    const sourceNode = nodeById.get(edge.source)
+    const targetNode = nodeById.get(edge.target)
+    if (!sourceNode || !targetNode) continue
+    if (sourceNode.laneId === targetNode.laneId) sameLaneReturnSources.add(edge.source)
+  }
+
+  // 同 source 已有同泳道回流时，移除对应跨泳道回流。
+  const afterSameLanePrune = edges.filter((edge) => {
+    return !(isCrossLaneReturnFlowEdge(edge, nodeById) && sameLaneReturnSources.has(edge.source))
+  })
+
+  // 全图跨泳道回流边最多保留 1 条，确保初稿清晰。
+  const crossReturnWithIndex = afterSameLanePrune
+    .map((edge, index) => ({ edge, index }))
+    .filter(({ edge }) => isCrossLaneReturnFlowEdge(edge, nodeById))
+
+  if (crossReturnWithIndex.length <= 1) return afterSameLanePrune
+
+  const best = [...crossReturnWithIndex].sort((a, b) => {
+    const sa = nodeById.get(a.edge.source)
+    const ta = nodeById.get(a.edge.target)
+    const sb = nodeById.get(b.edge.source)
+    const tb = nodeById.get(b.edge.target)
+    const laneGapA = Math.abs((laneOrderById.get(sa?.laneId ?? '') ?? 0) - (laneOrderById.get(ta?.laneId ?? '') ?? 0))
+    const laneGapB = Math.abs((laneOrderById.get(sb?.laneId ?? '') ?? 0) - (laneOrderById.get(tb?.laneId ?? '') ?? 0))
+    const orderGapA = Math.max(0, Number(sa?.order ?? 0) - Number(ta?.order ?? 0))
+    const orderGapB = Math.max(0, Number(sb?.order ?? 0) - Number(tb?.order ?? 0))
+    const labelPenaltyA = isReturnLabel(a.edge.label) ? 0 : 1
+    const labelPenaltyB = isReturnLabel(b.edge.label) ? 0 : 1
+    const scoreA = labelPenaltyA * 1_000_000 + laneGapA * 1_000 + orderGapA
+    const scoreB = labelPenaltyB * 1_000_000 + laneGapB * 1_000 + orderGapB
+    if (scoreA !== scoreB) return scoreA - scoreB
+    return a.index - b.index
+  })[0]
+
+  const keepId = best?.edge.id
+  return afterSameLanePrune.filter((edge) => {
+    if (!isCrossLaneReturnFlowEdge(edge, nodeById)) return true
+    return edge.id === keepId
+  })
+}
+
+/**
+ * 对 Draft 做“生成链路兜底归一化”：
+ * 1) lane 顺序连续；
+ * 2) node 必有有效 laneId（便于后续 parentId + laneId 双归属）；
+ * 3) edge.semanticType 显式且与跨泳道/回流语义一致。
+ */
+function enforceSwimlaneDraftSemantics(input: SwimlaneDraft): SwimlaneDraft {
+  const draft = cloneDraft(input)
+
+  const lanesSorted = [...draft.lanes].sort((a, b) => (a.order ?? 0) - (b.order ?? 0))
+  const lanes: SwimlaneDraft['lanes'] = []
+  const laneIdSeen = new Set<string>()
+  for (let i = 0; i < lanesSorted.length; i += 1) {
+    const lane = lanesSorted[i]
+    const title = String(lane?.title ?? '').trim() || `泳道${i + 1}`
+    const baseId = String(lane?.id ?? '').trim() || `lane-${slug(title) || i + 1}`
+    let id = baseId
+    let k = 2
+    while (laneIdSeen.has(id)) {
+      id = `${baseId}-${k}`
+      k += 1
+    }
+    laneIdSeen.add(id)
+    lanes.push({ id, title, order: lanes.length })
+  }
+  if (lanes.length === 0) {
+    lanes.push({ id: 'lane-default', title: '默认泳道', order: 0 })
+    laneIdSeen.add('lane-default')
+  }
+  draft.lanes = lanes
+  const laneOrderById = new Map(draft.lanes.map((lane) => [lane.id, lane.order]))
+  const fallbackLaneId = lanes[0].id
+
+  const nodes: SwimlaneDraftNode[] = []
+  const nodeIdSeen = new Set<string>()
+  for (let i = 0; i < draft.nodes.length; i += 1) {
+    const node = draft.nodes[i]
+    const baseId = String(node?.id ?? '').trim() || `n-${i + 1}`
+    let id = baseId
+    let k = 2
+    while (nodeIdSeen.has(id)) {
+      id = `${baseId}-${k}`
+      k += 1
+    }
+    nodeIdSeen.add(id)
+    const semanticType =
+      (node.semanticType as SwimlaneDraftNode['semanticType'] | undefined) ??
+      (node.shape === 'diamond' ? 'decision' : undefined)
+    const shape = node.shape ?? inferShape(semanticType)
+    const laneId = laneIdSeen.has(String(node.laneId ?? '')) ? String(node.laneId) : fallbackLaneId
+    nodes.push({
+      ...node,
+      id,
+      title: String(node.title ?? '').trim().slice(0, 16),
+      laneId,
+      semanticType,
+      shape,
+      order: Number.isFinite(node.order) ? Number(node.order) : i,
+      laneRow: Number.isFinite(node.laneRow) ? Math.max(0, Math.round(Number(node.laneRow))) : undefined,
+      laneCol: Number.isFinite(node.laneCol) ? Math.max(0, Math.round(Number(node.laneCol))) : undefined,
+    })
+  }
+  draft.nodes = nodes
+  const nodeById = new Map(draft.nodes.map((node) => [node.id, node]))
+
+  const edges: SwimlaneDraftEdge[] = []
+  const edgeIdSeen = new Set<string>()
+  for (let i = 0; i < draft.edges.length; i += 1) {
+    const edge = draft.edges[i]
+    const source = String(edge.source ?? '').trim()
+    const target = String(edge.target ?? '').trim()
+    if (!nodeById.has(source) || !nodeById.has(target)) continue
+    const sourceNode = nodeById.get(source)!
+    const targetNode = nodeById.get(target)!
+    const isCrossLane = sourceNode.laneId !== targetNode.laneId
+    const explicit = normalizeEdgeSemanticType(edge.semanticType)
+
+    let semanticType: SwimlaneDraftEdge['semanticType']
+    if (isCrossLane) {
+      semanticType = explicit === 'returnFlow' || isReturnLabel(edge.label) ? 'returnFlow' : 'crossLane'
+    } else if (explicit === 'returnFlow' || (sourceNode.order ?? 0) > (targetNode.order ?? 0)) {
+      semanticType = 'returnFlow'
+    } else if (explicit === 'conditional' || isDecisionNode(sourceNode) || isYesNoLabel(edge.label)) {
+      semanticType = 'conditional'
+    } else {
+      semanticType = 'normal'
+    }
+
+    const baseId = String(edge?.id ?? '').trim() || `e-${i + 1}`
+    let id = baseId
+    let k = 2
+    while (edgeIdSeen.has(id)) {
+      id = `${baseId}-${k}`
+      k += 1
+    }
+    edgeIdSeen.add(id)
+
+    edges.push({
+      ...edge,
+      id,
+      source,
+      target,
+      label: sanitizeEdgeLabel(edge.label),
+      semanticType,
+    })
+  }
+  draft.edges = pruneCrossLaneReturnFlowEdges(edges, nodeById, laneOrderById)
+  return draft
+}
+
 /**
  * 为泳道图补齐 laneRow/laneCol：
  * 1) 决策节点多出边时，目标节点分行；
@@ -180,7 +413,7 @@ export function applySwimlaneDraftLaneHeuristics(input: SwimlaneDraft): Swimlane
 export function swimlaneDraftToGraphBatchPayload(
   draft: SwimlaneDraft,
 ): GraphBatchPayload {
-  const normalizedDraft = applySwimlaneDraftLaneHeuristics(draft)
+  const normalizedDraft = applySwimlaneDraftLaneHeuristics(enforceSwimlaneDraftSemantics(draft))
   const ops: GraphOperation[] = []
 
   // lanes -> createFrame (排序后按 order)
@@ -207,6 +440,7 @@ export function swimlaneDraftToGraphBatchPayload(
         shape,
         parentId: node.laneId,
         style: {
+          laneId: node.laneId,
           ...(node.semanticType ? { semanticType: node.semanticType } : {}),
           ...(node.order != null ? { nodeOrder: node.order } : {}),
           ...(node.laneRow != null ? { laneRow: node.laneRow } : {}),
@@ -345,14 +579,15 @@ export function buildSwimlaneDraftFromPrompt(prompt: string): SwimlaneDraft {
     const line = sentenceLines[i]
     if (!returnKeywords.some((k) => line.includes(k))) continue
     const from = nodes[i]
-    // 优先回到最近的同 lane 上游节点；否则回到起点
-    let to = nodes[0]
+    // 优先回到最近的同 lane 上游节点；若找不到，则不自动补跨泳道回流（保持初稿清晰）。
+    let to: SwimlaneDraftNode | undefined
     for (let j = i - 1; j >= 0; j -= 1) {
       if (nodes[j].laneId === from.laneId) {
         to = nodes[j]
         break
       }
     }
+    if (!to) continue
     edges.push({
       id: `re-${i + 1}`,
       source: from.id,
@@ -400,6 +635,8 @@ const SWIMLANE_DRAFT_SYSTEM_PROMPT = `
    - 仅在“责任交接”时允许：submit_to / request / notify / return_to / cancel_to；
    - 不允许频繁跨泳道、不允许跨多个泳道远距连接、不允许来回横跳。
 重要原则：能在当前泳道完成就不要跨泳道。
+4) 每个节点必须明确归属某个泳道，禁止归属模糊。
+5) decision 节点的 yes/no 分支必须走不同 handle（不要求固定左右），不要单侧多叉。
 
 三、结构收敛原则
 - 用户描述复杂时，主动简化；
@@ -424,6 +661,7 @@ const SWIMLANE_DRAFT_SYSTEM_PROMPT = `
 3) 不允许长距离回流；
 4) 取消/终止走独立短路径并快速结束；
 5) 异常路径不反复穿插主流程。
+6) 跨泳道回流默认尽量不画；若业务强需要，最多保留 1 条最关键跨泳道回流，其余交给用户手动补线。
 
 七、输出前自检（必须执行）
 1) 大多数节点是否 1 by 1？
@@ -443,6 +681,9 @@ const SWIMLANE_DRAFT_SYSTEM_PROMPT = `
 3) 严禁输出 \`\`\`json 或 \`\`\` 包裹代码块。
 4) 输出结构必须包含：title, direction, lanes, nodes, edges。
 5) 除非用户明确只有单一参与方，否则不要退化为单泳道。
+6) lanes.order 必须从 0 开始连续递增（0,1,2...）。
+7) 每条 edge 必须有 semanticType，且跨泳道边优先显式为 crossLane；跨泳道 returnFlow 必须极少（默认 0，最多 1）。
+8) nodes 必须有 laneId（后续会映射为 parentId + laneId 双归属）。
 
 优先输出语义 schema（推荐）：
 {
@@ -525,6 +766,7 @@ function mapRelationToSemanticType(relationValue: unknown): SwimlaneDraftEdge['s
   if (!relation) return undefined
   if (relation === 'yes' || relation === 'no') return 'conditional'
   if (relation === 'return_to') return 'returnFlow'
+  if (relation === 'submit_to' || relation === 'notify' || relation === 'request') return 'crossLane'
   if (relation === 'cancel_to') return 'conditional'
   return undefined
 }
@@ -626,14 +868,14 @@ export function normalizeSwimlaneDraftCandidate(input: any): any {
     const semanticType =
       (edge?.semanticType as SwimlaneDraftEdge['semanticType'] | undefined) ??
       mapRelationToSemanticType(relation)
+    const cleanedLabel = sanitizeEdgeLabel(edge?.label, relation)
     const label =
-      typeof edge?.label === 'string'
-        ? edge.label.slice(0, 12)
-        : relation === 'yes'
-          ? '是'
-          : relation === 'no'
-            ? '否'
-            : undefined
+      cleanedLabel ??
+      (relation === 'yes'
+        ? '是'
+        : relation === 'no'
+          ? '否'
+          : undefined)
     return {
       id: String(edge?.id ?? `e-${i + 1}`),
       source: String(edge?.source ?? edge?.from ?? ''),
@@ -698,15 +940,24 @@ function validateSwimlaneDraft(draft: any): SwimlaneDraft {
     const source = String(e?.source ?? '')
     const target = String(e?.target ?? '')
     if (!nodeIds.has(source) || !nodeIds.has(target)) throw new Error(`edge[${i}] source/target 无效`)
+    const relation = normalizeRelationToken(e?.relation)
+    const cleanedLabel = sanitizeEdgeLabel(e?.label, relation)
+    const label =
+      cleanedLabel ??
+      (relation === 'yes'
+        ? '是'
+        : relation === 'no'
+          ? '否'
+          : undefined)
     return {
       id: String(e?.id ?? `e-${i + 1}`),
       source,
       target,
-      label: typeof e?.label === 'string' ? e.label.slice(0, 12) : undefined,
+      label,
       semanticType: e?.semanticType,
     }
   })
-  return applySwimlaneDraftLaneHeuristics(draft as SwimlaneDraft)
+  return applySwimlaneDraftLaneHeuristics(enforceSwimlaneDraftSemantics(draft as SwimlaneDraft))
 }
 
 export async function generateSwimlaneDraftWithLLM(
@@ -721,7 +972,7 @@ export async function generateSwimlaneDraftWithLLM(
   try {
     const requestBody = JSON.stringify({
       model,
-      temperature: 0.2,
+      temperature: 0,
       messages: [
         { role: 'system', content: SWIMLANE_DRAFT_SYSTEM_PROMPT },
         { role: 'user', content: prompt },

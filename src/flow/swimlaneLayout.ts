@@ -6,10 +6,20 @@
 import type { Edge, Node } from '@xyflow/react'
 import type { FlowDirection } from './mermaid/types'
 import { doesPolylineIntersectAnyExclusionBox, getNodeExclusionBoxes } from './layout/routing/exclusion'
-import { GRID_UNIT, SIZE_STEP_RATIO, normalizeNodeGeometryToGrid, normalizeWaypointsToGrid } from './grid'
+import {
+  HANDLE_ALIGN_UNIT,
+  SIZE_STEP_RATIO,
+  normalizeNodeGeometryToGrid,
+  normalizeWaypointsToGrid,
+  snapSizeByNodeType,
+  snapToGrid,
+} from './grid'
 
 const LANE_HEADER_SIZE = 48
-const LANE_GAP = Math.max(1, GRID_UNIT * SIZE_STEP_RATIO)
+// 泳道容器（group）按 handle 对齐网格走 16 的半步（8px），
+// 这样在后续 normalize 到网格时不会把间距“吃掉”成 0。
+const LANE_STACK_STEP = Math.max(1, HANDLE_ALIGN_UNIT * SIZE_STEP_RATIO)
+const LANE_GAP = LANE_STACK_STEP
 const LANE_PADDING = { top: 24, right: 24, bottom: 24, left: 24 }
 const MIN_LANE_WIDTH = 912
 const MIN_LANE_HEIGHT = 160
@@ -277,31 +287,31 @@ export function autoLayoutSwimlane(args: {
   // ── Phase A: 排列 lane 容器 ──
   if (isHorizontal) {
     // horizontal: lane 从上到下，所有 lane 统一宽度
-    const unifiedW = Math.max(MIN_LANE_WIDTH, ...laneSizes.map((s) => s.contentW))
-    let cy = CANVAS_START_Y
+    const unifiedW = snapSizeByNodeType(Math.max(MIN_LANE_WIDTH, ...laneSizes.map((s) => s.contentW)), 'group')
+    let cy = snapToGrid(CANVAS_START_Y, LANE_STACK_STEP)
     for (let i = 0; i < lanes.length; i++) {
       const lane = lanes[i]
       const sizeInfo = laneSizes[i]
-      const h = Math.max(MIN_LANE_HEIGHT, sizeInfo.contentH)
-      lane.position = { x: CANVAS_START_X, y: cy }
+      const h = snapSizeByNodeType(Math.max(MIN_LANE_HEIGHT, sizeInfo.contentH), 'group')
+      lane.position = { x: snapToGrid(CANVAS_START_X, LANE_STACK_STEP), y: cy }
       lane.width = unifiedW
       lane.height = h
       lane.style = { ...(lane.style as any), width: unifiedW, height: h }
-      cy += h + LANE_GAP
+      cy = snapToGrid(cy + h + LANE_GAP, LANE_STACK_STEP)
     }
   } else {
     // vertical: lane 从左到右，所有 lane 统一高度
-    const unifiedH = Math.max(MIN_LANE_HEIGHT, ...laneSizes.map((s) => s.contentH))
-    let cx = CANVAS_START_X
+    const unifiedH = snapSizeByNodeType(Math.max(MIN_LANE_HEIGHT, ...laneSizes.map((s) => s.contentH)), 'group')
+    let cx = snapToGrid(CANVAS_START_X, LANE_STACK_STEP)
     for (let i = 0; i < lanes.length; i++) {
       const lane = lanes[i]
       const sizeInfo = laneSizes[i]
-      const w = Math.max(MIN_LANE_WIDTH, sizeInfo.contentW)
-      lane.position = { x: cx, y: CANVAS_START_Y }
+      const w = snapSizeByNodeType(Math.max(MIN_LANE_WIDTH, sizeInfo.contentW), 'group')
+      lane.position = { x: cx, y: snapToGrid(CANVAS_START_Y, LANE_STACK_STEP) }
       lane.width = w
       lane.height = unifiedH
       lane.style = { ...(lane.style as any), width: w, height: unifiedH }
-      cx += w + LANE_GAP
+      cx = snapToGrid(cx + w + LANE_GAP, LANE_STACK_STEP)
     }
   }
 

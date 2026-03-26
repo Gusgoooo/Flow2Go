@@ -3417,6 +3417,12 @@ function EditorInner({ onBackHome, source, previewSnapshot, readOnly: _readOnly 
                             setNodes(nextNodes)
                             setEdges(nextEdges)
                             pushHistory(nextNodes, nextEdges, 'ai-swimlane')
+                            // 泳道图生成后需要重新居中视角（并考虑左右面板安全区）。
+                            requestAnimationFrame(() => {
+                              requestAnimationFrame(() => {
+                                customFitView()
+                              })
+                            })
                             setAiModalOpen(false)
                             setAiModalGenerating(false)
                             setAiModalProgress(null)

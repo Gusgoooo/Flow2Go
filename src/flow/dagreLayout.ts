@@ -15,10 +15,14 @@ function edgeLabelLength(edge: Edge): number {
   return text.length
 }
 
+const BASE_DAGRE_RANKSEP = 96
+const BASE_DAGRE_NODESEP = 64
+const BASE_DAGRE_EDGESEP = 32
+
 function resolveLabelAwareDagreSpacing(
   edges: Array<Edge>,
   nodeIdSet: Set<string>,
-): { ranksep: number; nodesep: number; edgesep: number } | undefined {
+): { ranksep: number; nodesep: number; edgesep: number } {
   let maxLabelLen = 0
   for (const e of edges) {
     if (e.hidden) continue
@@ -27,14 +31,20 @@ function resolveLabelAwareDagreSpacing(
     if (len <= 0) continue
     maxLabelLen = Math.max(maxLabelLen, len)
   }
-  if (maxLabelLen <= 0) return undefined
+  if (maxLabelLen <= 0) {
+    return {
+      ranksep: BASE_DAGRE_RANKSEP,
+      nodesep: BASE_DAGRE_NODESEP,
+      edgesep: BASE_DAGRE_EDGESEP,
+    }
+  }
 
   // 标签越长，主链 rank 间距越大；nodesep 同步小幅增加，避免相邻边标签互挤。
   const labelExtra = Math.min(120, Math.max(36, Math.round(maxLabelLen * 6)))
   return {
-    ranksep: 72 + labelExtra,
-    nodesep: 40 + Math.round(labelExtra * 0.45),
-    edgesep: 24,
+    ranksep: BASE_DAGRE_RANKSEP + labelExtra,
+    nodesep: BASE_DAGRE_NODESEP + Math.round(labelExtra * 0.45),
+    edgesep: BASE_DAGRE_EDGESEP,
   }
 }
 
@@ -55,7 +65,7 @@ export async function autoLayoutDagre<NData extends Record<string, unknown>>(
   const labelSpacing = resolveLabelAwareDagreSpacing(edges, nodeIdSet)
   g.setGraph({
     rankdir: mapRankDir(direction),
-    ...(labelSpacing ?? {}),
+    ...labelSpacing,
   })
 
   for (const n of visibleNodes) {
