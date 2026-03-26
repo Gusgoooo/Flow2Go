@@ -171,6 +171,10 @@
   flex-direction: column;
 }
 
+.laneNodeLeft {
+  flex-direction: row;
+}
+
 .laneHeader {
   display: flex;
   align-items: center;
@@ -182,6 +186,13 @@
   flex-shrink: 0;
 }
 
+.laneHeaderLeft {
+  border-bottom: none;
+  border-right: 1px solid #cbd5e1;
+  border-radius: 7px 0 0 7px;
+  padding: 16px 0;
+}
+
 .laneHeaderTitle {
   font-size: 14px;
   font-weight: 700;
@@ -190,6 +201,14 @@
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
+}
+
+.laneHeaderTitleVertical {
+  transform: rotate(-90deg);
+  transform-origin: center center;
+  white-space: nowrap;
+  overflow: visible;
+  text-overflow: clip;
 }
 
 .laneHeaderInput {
@@ -207,9 +226,16 @@
   width: 100%;
 }
 
+.laneHeaderInputVertical {
+  transform: rotate(-90deg);
+  transform-origin: center center;
+  width: max(120px, calc(100% - 12px));
+}
+
 .laneBody {
   flex: 1;
   min-height: 40px;
+  min-width: 40px;
 }
 
 .resizer .react-flow__resize-control {

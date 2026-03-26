@@ -6,10 +6,10 @@
 import type { Edge, Node } from '@xyflow/react'
 import type { FlowDirection } from './mermaid/types'
 import { doesPolylineIntersectAnyExclusionBox, getNodeExclusionBoxes } from './layout/routing/exclusion'
-import { normalizeNodeGeometryToGrid, normalizeWaypointsToGrid } from './grid'
+import { GRID_UNIT, SIZE_STEP_RATIO, normalizeNodeGeometryToGrid, normalizeWaypointsToGrid } from './grid'
 
 const LANE_HEADER_SIZE = 48
-const LANE_GAP = 24
+const LANE_GAP = Math.max(1, GRID_UNIT * SIZE_STEP_RATIO)
 const LANE_PADDING = { top: 24, right: 24, bottom: 24, left: 24 }
 const MIN_LANE_WIDTH = 912
 const MIN_LANE_HEIGHT = 160
@@ -188,10 +188,11 @@ export function autoLayoutSwimlane(args: {
         })()
 
     const headerH = LANE_HEADER_SIZE
-    const padTop = LANE_PADDING.top + headerH
+    const laneHeaderOnLeft = (((lane.data as any)?.titlePosition ?? 'top-center') as string) === 'left-center'
+    const padTop = LANE_PADDING.top + (laneHeaderOnLeft ? 0 : headerH)
     const padRight = LANE_PADDING.right
     const padBottom = LANE_PADDING.bottom
-    const padLeft = LANE_PADDING.left
+    const padLeft = LANE_PADDING.left + (laneHeaderOnLeft ? headerH : 0)
     const laneGapExtra = laneLabelGapExtra.get(lane.id) ?? 0
     const laneGapX = NODE_GAP_X + laneGapExtra
     const laneGapY = NODE_GAP_Y + Math.round(laneGapExtra * 0.35)

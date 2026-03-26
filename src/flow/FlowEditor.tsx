@@ -72,8 +72,10 @@ import {
 } from './aiDiagram'
 import { AI_SCENE_CAPSULE_PRESETS } from './aiPromptPresets'
 import { AiSceneCapsules } from './AiSceneCapsules'
+import { BUILTIN_ASSETS } from './builtinAssets'
 import {
   GRID_UNIT,
+  HANDLE_ALIGN_UNIT,
   normalizeNodeGeometryToGrid,
   normalizeWaypointsToGrid,
   snapSizeByNodeType,
@@ -136,6 +138,76 @@ const DEFAULT_GROUP_SIZE = { w: 640, h: 416 }
 
 function normalizeNodesToGrid(nodeList: FlowNode[]): FlowNode[] {
   return nodeList.map((node) => normalizeNodeGeometryToGrid(node) as FlowNode)
+}
+
+const BUILTIN_ASSET_SIZE_BY_ID = new Map(
+  BUILTIN_ASSETS.map((asset) => [
+    asset.id,
+    {
+      width: asset.width ?? HANDLE_ALIGN_UNIT * 2,
+      height: asset.height ?? HANDLE_ALIGN_UNIT * 2,
+      name: asset.name,
+    },
+  ]),
+)
+
+function normalizeBuiltinAssetName(name: string): string {
+  return name.trim().toLowerCase().replace(/\.(svg|png)$/i, '')
+}
+
+const BUILTIN_ASSET_ID_BY_NAME = new Map(
+  BUILTIN_ASSETS.map((asset) => [normalizeBuiltinAssetName(asset.name), asset.id]),
+)
+
+function normalizeBuiltinAssetNodeSizes(nodeList: FlowNode[]): FlowNode[] {
+  return nodeList.map((node) => {
+    if (node.type !== 'asset') return node
+    const dataAny = (node.data ?? {}) as any
+    const byId = typeof dataAny.assetBuiltinId === 'string' ? BUILTIN_ASSET_SIZE_BY_ID.get(dataAny.assetBuiltinId) : undefined
+    const inferredBuiltinId =
+      typeof dataAny.assetBuiltinId === 'string'
+        ? dataAny.assetBuiltinId
+        : typeof dataAny.assetName === 'string'
+          ? BUILTIN_ASSET_ID_BY_NAME.get(normalizeBuiltinAssetName(dataAny.assetName))
+          : undefined
+    const byName = inferredBuiltinId ? BUILTIN_ASSET_SIZE_BY_ID.get(inferredBuiltinId) : undefined
+    const builtinMeta = byId ?? byName
+    const widthRaw = Number(dataAny.assetWidth)
+    const heightRaw = Number(dataAny.assetHeight)
+    const minWidth = GRID_UNIT
+    const minHeight = GRID_UNIT
+    const nextWidth = Number.isFinite(widthRaw)
+      ? Math.max(widthRaw, builtinMeta?.width ?? minWidth, minWidth)
+      : (builtinMeta?.width ?? minWidth)
+    const nextHeight = Number.isFinite(heightRaw)
+      ? Math.max(heightRaw, builtinMeta?.height ?? minHeight, minHeight)
+      : (builtinMeta?.height ?? minHeight)
+    const nextBuiltinId = inferredBuiltinId ?? dataAny.assetBuiltinId
+
+    if (
+      nextWidth === widthRaw &&
+      nextHeight === heightRaw &&
+      (nextBuiltinId == null || nextBuiltinId === dataAny.assetBuiltinId)
+    ) {
+      return node
+    }
+
+    return {
+      ...node,
+      data: {
+        ...dataAny,
+        ...(nextBuiltinId ? { assetBuiltinId: nextBuiltinId } : {}),
+        assetWidth: nextWidth,
+        assetHeight: nextHeight,
+      },
+    }
+  })
+}
+
+function mergeBuiltinAssets(existing: AssetItem[]): AssetItem[] {
+  const builtinIds = new Set(BUILTIN_ASSETS.map((a) => a.id))
+  const customAssets = existing.filter((a) => !builtinIds.has(a.id))
+  return [...BUILTIN_ASSETS, ...customAssets]
 }
 
 function normalizeEdgesToGrid(edgeList: FlowEdge[]): FlowEdge[] {
@@ -633,7 +705,9 @@ function EditorInner({ onBackHome, source, previewSnapshot, readOnly: _readOnly 
   const initial = useMemo(() => {
     // 预览模式：使用 previewSnapshot
     if (previewSnapshot) {
-      const nodes = normalizeNodesToGrid(((previewSnapshot.nodes as FlowNode[]) ?? []))
+      const nodes = normalizeBuiltinAssetNodeSizes(
+        normalizeNodesToGrid(((previewSnapshot.nodes as FlowNode[]) ?? [])),
+      )
       const edges = normalizeEdgesToGrid(((previewSnapshot.edges as FlowEdge[]) ?? []))
       return {
         nodes,
@@ -652,7 +726,9 @@ function EditorInner({ onBackHome, source, previewSnapshot, readOnly: _readOnly 
       (snap.nodes.length > 0 || snap.edges.length > 0)
     if (!hasValidSnapshot) {
       // 用户第一次打开产品：使用默认示例并居中展示
-      const nodes = normalizeNodesToGrid(((defaultExample.nodes as FlowNode[]) ?? []))
+      const nodes = normalizeBuiltinAssetNodeSizes(
+        normalizeNodesToGrid(((defaultExample.nodes as FlowNode[]) ?? [])),
+      )
       const edges = normalizeEdgesToGrid(((defaultExample.edges as FlowEdge[]) ?? []))
       return {
         nodes,
@@ -663,7 +739,9 @@ function EditorInner({ onBackHome, source, previewSnapshot, readOnly: _readOnly 
       }
     }
     const snap2 = (proj as any).snapshot
-    const nodes = normalizeNodesToGrid(((snap2.nodes as FlowNode[]) ?? []))
+    const nodes = normalizeBuiltinAssetNodeSizes(
+      normalizeNodesToGrid(((snap2.nodes as FlowNode[]) ?? [])),
+    )
     const edges = normalizeEdgesToGrid(((snap2.edges as FlowEdge[]) ?? []))
     return {
       nodes,
@@ -717,11 +795,12 @@ function EditorInner({ onBackHome, source, previewSnapshot, readOnly: _readOnly 
     if (typeof window === 'undefined') return []
     try {
       const raw = window.localStorage.getItem('flow2go-assets')
-      if (!raw) return []
+      if (!raw) return [...BUILTIN_ASSETS]
       const parsed = JSON.parse(raw) as AssetItem[]
-      return Array.isArray(parsed) ? parsed : []
+      if (!Array.isArray(parsed)) return [...BUILTIN_ASSETS]
+      return mergeBuiltinAssets(parsed)
     } catch {
-      return []
+      return [...BUILTIN_ASSETS]
     }
   })
 
@@ -851,7 +930,7 @@ function EditorInner({ onBackHome, source, previewSnapshot, readOnly: _readOnly 
     historyRef.current.future.push(current)
     setNodes(prev.nodes)
     setEdges(prev.edges)
-    rf.setViewport(prev.viewport, { duration: 0 })
+    // 仅撤销图内容，不干预当前视角（缩放/平移不计入撤销体验）
   }, [edges, nodes, rf])
 
   const redo = useCallback(() => {
@@ -862,7 +941,7 @@ function EditorInner({ onBackHome, source, previewSnapshot, readOnly: _readOnly 
     historyRef.current.past.push(current)
     setNodes(next.nodes)
     setEdges(next.edges)
-    rf.setViewport(next.viewport, { duration: 0 })
+    // 仅重做图内容，不干预当前视角（缩放/平移不计入撤销体验）
   }, [edges, nodes, rf])
 
   // ---------- Context Menu ----------
@@ -1383,6 +1462,7 @@ function EditorInner({ onBackHome, source, previewSnapshot, readOnly: _readOnly 
         }
         return change
       })
+      const selectionOnly = (normalizedChanges as any[]).length > 0 && (normalizedChanges as any[]).every((ch) => ch?.type === 'select')
       
       // Resize（拖拽左上角/边缘把手）时，React Flow 往往会同时发 position + dimensions 变更。
       // 这时不应该平移 edge.waypoints，否则会出现边的折线“诡异变化/抖动”。
@@ -1393,11 +1473,25 @@ function EditorInner({ onBackHome, source, previewSnapshot, readOnly: _readOnly 
       }
 
       const deltaById = new Map<string, { dx: number; dy: number }>()
+      const isDescendantOfAnyResizingGroup = (nodeId: string): boolean => {
+        if (!resizingIds.size) return false
+        let cur = oldById.get(nodeId)
+        const seen = new Set<string>()
+        while (cur?.parentId && !seen.has(cur.parentId)) {
+          if (resizingIds.has(cur.parentId)) return true
+          seen.add(cur.parentId)
+          cur = oldById.get(cur.parentId)
+        }
+        return false
+      }
       for (const ch of normalizedChanges as any[]) {
         if (ch?.type !== 'position') continue
         const id = ch.id as string | undefined
         if (!id) continue
         if (resizingIds.has(id)) continue
+        // Group resize from top/left emits synthetic child position updates to keep absolute position fixed.
+        // Those deltas are local-space only and must not drive edge waypoint translation.
+        if (isDescendantOfAnyResizingGroup(id)) continue
         const old = oldById.get(id)
         const nextPos = ch.position as { x: number; y: number } | undefined
         if (!old || !nextPos) continue
@@ -1481,39 +1575,7 @@ function EditorInner({ onBackHome, source, previewSnapshot, readOnly: _readOnly 
         let next = applyNodeChanges(normalizedChanges, prev)
         next = normalizeNodesToGrid(next)
 
-        // 群组 resize（尤其拖左上角把手）时，React Flow 会改变群组的 position。
-        // 为了实现“调整群组大小不影响内部边/节点位置”，需要把群组的位移反向分摊给【直接子节点】，
-        // 让子树整体绝对位置不变（只改变群组边框）。注意：不能对所有子孙都反向移动，否则嵌套群组会被重复补偿而错位。
-        if (resizingIds.size) {
-          const prevById = new Map(prev.map((n) => [n.id, n]))
-          const nextById = new Map(next.map((n) => [n.id, n]))
-
-          // 只处理群组节点的 resize
-          const groupDeltaById = new Map<string, { dx: number; dy: number }>()
-          for (const id of resizingIds) {
-            const before = prevById.get(id)
-            const after = nextById.get(id)
-            if (!before || !after) continue
-            if (before.type !== 'group' || after.type !== 'group') continue
-            const dx = after.position.x - before.position.x
-            const dy = after.position.y - before.position.y
-            if (dx !== 0 || dy !== 0) groupDeltaById.set(id, { dx, dy })
-          }
-
-          if (groupDeltaById.size) {
-            next = next.map((n) => {
-              // 只对被 resize 群组的【直接子节点】做反向移动；群组自身保持变更后的 position/dimensions
-              const pid = n.parentId
-              if (pid && groupDeltaById.has(pid)) {
-                const d = groupDeltaById.get(pid)!
-                return { ...n, position: snapPos({ x: n.position.x - d.dx, y: n.position.y - d.dy }) }
-              }
-              return n
-            })
-          }
-        }
-
-        pushHistory(next, edges, 'nodes')
+        if (!selectionOnly) pushHistory(next, edges, 'nodes')
         return next
       })
     },
@@ -1522,9 +1584,10 @@ function EditorInner({ onBackHome, source, previewSnapshot, readOnly: _readOnly 
 
   const onEdgesChange = useCallback(
     (changes: EdgeChange<FlowEdge>[]) => {
+      const selectionOnly = (changes as any[]).length > 0 && (changes as any[]).every((ch) => ch?.type === 'select')
       setEdges((eds) => {
         const next = normalizeEdgesToGrid(applyEdgeChanges(changes, eds))
-        pushHistory(nodes, next, 'edges')
+        if (!selectionOnly) pushHistory(nodes, next, 'edges')
         return next
       })
     },
@@ -1559,16 +1622,21 @@ function EditorInner({ onBackHome, source, previewSnapshot, readOnly: _readOnly 
       return children.concat(children.flatMap((c) => collectDescendants(c.id)))
     }
 
-    const toCopy: FlowNode[] = []
+    const toCopyMap = new Map<string, FlowNode>()
+    const addUniqueNode = (n: FlowNode) => {
+      if (!toCopyMap.has(n.id)) toCopyMap.set(n.id, n)
+    }
+
     for (const n of selectedNodesNow) {
-      toCopy.push(n)
+      addUniqueNode(n)
       if (isGroupNode(n)) {
         const desc = collectDescendants(n.id)
         for (const d of desc) {
-          if (!toCopy.find((x) => x.id === d.id)) toCopy.push(d)
+          addUniqueNode(d)
         }
       }
     }
+    const toCopy = Array.from(toCopyMap.values())
 
     // 复制相关的边
     const nodeIds = new Set(toCopy.map((n) => n.id))
@@ -1581,10 +1649,12 @@ function EditorInner({ onBackHome, source, previewSnapshot, readOnly: _readOnly 
     if (!clipboardRef.current || clipboardRef.current.nodes.length === 0) return
 
     const { nodes: clipNodes, edges: clipEdges } = clipboardRef.current
+    const uniqueClipNodes = Array.from(new Map(clipNodes.map((n) => [n.id, n])).values())
+    const uniqueClipEdges = Array.from(new Map(clipEdges.map((e) => [e.id, e])).values())
     const idMap = new Map<string, string>()
 
     // 生成新 ID
-    clipNodes.forEach((nd) => {
+    uniqueClipNodes.forEach((nd) => {
       idMap.set(nd.id, isGroupNode(nd) ? nowId('g') : nowId('n'))
     })
 
@@ -1592,7 +1662,7 @@ function EditorInner({ onBackHome, source, previewSnapshot, readOnly: _readOnly 
     const offset = { x: GRID[0] * 10, y: GRID[1] * 10 }
 
     // 创建新节点
-    const newNodes: FlowNode[] = clipNodes.map((nd) => {
+    const newNodes: FlowNode[] = uniqueClipNodes.map((nd) => {
       const newId = idMap.get(nd.id)!
       // 如果父节点也在剪贴板中，使用新的父 ID；否则保留原父 ID（粘贴到同一群组内）
       const newParentId = nd.parentId
@@ -1613,13 +1683,20 @@ function EditorInner({ onBackHome, source, previewSnapshot, readOnly: _readOnly 
     })
 
     // 创建新边
-    const newEdges: FlowEdge[] = clipEdges.map((e) => ({
-      ...e,
-      id: nowId('e'),
-      source: idMap.get(e.source) ?? e.source,
-      target: idMap.get(e.target) ?? e.target,
-      selected: false,
-    }))
+    const newEdges: FlowEdge[] = uniqueClipEdges
+      .map((e) => {
+        const nextSource = idMap.get(e.source)
+        const nextTarget = idMap.get(e.target)
+        if (!nextSource || !nextTarget) return null
+        return {
+          ...e,
+          id: nowId('e'),
+          source: nextSource,
+          target: nextTarget,
+          selected: false,
+        } as FlowEdge
+      })
+      .filter((e): e is FlowEdge => Boolean(e))
 
     // 取消当前选中，添加新节点
     setNodes((nds) => {
@@ -2052,7 +2129,7 @@ function EditorInner({ onBackHome, source, previewSnapshot, readOnly: _readOnly 
         height: defaultSize.h,
         style: { width: defaultSize.w, height: defaultSize.h },
         // 文本节点空标签：立即进入编辑态，并由 TextNode 按内容自适应宽高（类 Figma）
-        data: { label: nodeType === 'quad' ? `节点 ${id.slice(-4)}` : '' },
+        data: { label: nodeType === 'quad' ? '节点' : '' },
       }
       setNodes((nds) => {
         const next = nds.concat(base)
@@ -2078,8 +2155,9 @@ function EditorInner({ onBackHome, source, previewSnapshot, readOnly: _readOnly 
         width: w,
         height: h,
         data: {
-          title: '画框',
+          title: '编组',
           stroke: '#e2e8f0',
+          strokeWidth: 1,
           fill: 'rgba(226, 232, 240, 0.20)',
           titleFontSize: 14,
           titleColor: '#64748b',
@@ -2117,12 +2195,14 @@ function EditorInner({ onBackHome, source, previewSnapshot, readOnly: _readOnly 
               assetUrl: asset.dataUrl,
               assetName: asset.name,
               assetType: asset.type,
-              assetWidth: asset.width ?? 120,
-              assetHeight: asset.height ?? 80,
+              ...(asset.id.startsWith('builtin-') ? { assetBuiltinId: asset.id } : {}),
+              assetWidth: Math.max(asset.width ?? 120, GRID_UNIT),
+              assetHeight: Math.max(asset.height ?? 80, GRID_UNIT),
             },
           }
           setNodes((nds) => {
-            const next = nds.concat(base)
+            const deselected = nds.map((nd) => ({ ...nd, selected: false }))
+            const next = deselected.concat({ ...base, selected: true })
             pushHistory(next, edges, 'drop')
             return next
           })
@@ -2148,7 +2228,7 @@ function EditorInner({ onBackHome, source, previewSnapshot, readOnly: _readOnly 
             : nodeType === 'text'
               ? { width: DEFAULT_TEXT_SIZE.w, height: DEFAULT_TEXT_SIZE.h }
               : undefined,
-        data: { label: nodeType === 'text' ? '' : `${nodeType} ${id.slice(-4)}` },
+        data: { label: nodeType === 'text' ? '' : '节点' },
       }
 
       setNodes((nds) => {
@@ -2544,7 +2624,7 @@ function EditorInner({ onBackHome, source, previewSnapshot, readOnly: _readOnly 
     }
 
     const groupId = nowId('g')
-    const title = `群组 ${groupId.slice(-4)}`
+    const title = '编组'
     const titleH = title.trim() ? GROUP_TITLE_H : 0
 
     // 计算 commonParentId 时，必须排除“父节点也在 picked 里”的情况，

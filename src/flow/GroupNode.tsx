@@ -153,9 +153,15 @@ export function GroupNode(props: NodeProps) {
 
   if (isLane) {
     const laneHeaderH = data.laneMeta?.headerSize ?? 48
+    const laneTitlePosition = data.titlePosition ?? 'top-center'
+    const laneHeaderOnLeft = laneTitlePosition === 'left-center'
+    const laneHeaderStyle: React.CSSProperties = laneHeaderOnLeft
+      ? { width: laneHeaderH, height: '100%' }
+      : { height: laneHeaderH }
+
     return (
       <div
-        className={`${styles.group} ${styles.laneNode}`}
+        className={`${styles.group} ${styles.laneNode} ${laneHeaderOnLeft ? styles.laneNodeLeft : ''}`}
         style={groupStyle}
         onDoubleClick={onDoubleClick}
       >
@@ -165,39 +171,79 @@ export function GroupNode(props: NodeProps) {
           handleStyle={{ width: 8, height: 8, borderRadius: 9999 }}
           isVisible={Boolean((props as any).selected)}
         />
-        <div className={styles.laneHeader} style={{ height: laneHeaderH }}>
+        <div className={`${styles.laneHeader} ${laneHeaderOnLeft ? styles.laneHeaderLeft : ''}`} style={laneHeaderStyle}>
           {editing ? (
-            <textarea
-              ref={inputRef}
-              className={`${styles.laneHeaderInput} nodrag`}
-              autoFocus
-              value={draft}
-              placeholder="泳道名称"
-              style={{ ...titleStyle, height: 'auto' }}
-              rows={1}
-              onChange={(e) => {
-                setDraft(e.target.value)
-                e.target.style.height = 'auto'
-                e.target.style.height = e.target.scrollHeight + 'px'
-              }}
-              onBlur={(e) => {
-                if ((e.relatedTarget as HTMLElement)?.closest?.(`[${QUICK_TOOLBAR_DATA_ATTR}]`)) return
-                commit()
-              }}
-              onKeyDown={(e) => {
-                if (e.key === 'Enter' && (e.shiftKey || e.metaKey || e.ctrlKey)) {
-                  e.preventDefault()
+            <>
+              <QuickTextStyleToolbar
+                anchorRef={inputRef}
+                visible={editing}
+                onRequestClose={commit}
+                fontSize={titleFs}
+                fontWeight={data.titleFontWeight ?? '800'}
+                textColor={data.titleColor ?? '#334155'}
+                onFontSizeChange={(v) =>
+                  rf.setNodes((nds) =>
+                    nds.map((n) =>
+                      n.id === props.id
+                        ? { ...n, data: { ...(n.data ?? {}), titleFontSize: v } }
+                        : n,
+                    ),
+                  )
+                }
+                onFontWeightChange={(v) =>
+                  rf.setNodes((nds) =>
+                    nds.map((n) =>
+                      n.id === props.id
+                        ? { ...n, data: { ...(n.data ?? {}), titleFontWeight: v } }
+                        : n,
+                    ),
+                  )
+                }
+                onTextColorChange={(v) =>
+                  rf.setNodes((nds) =>
+                    nds.map((n) =>
+                      n.id === props.id
+                        ? { ...n, data: { ...(n.data ?? {}), titleColor: v } }
+                        : n,
+                    ),
+                  )
+                }
+              />
+              <textarea
+                ref={inputRef}
+                className={`${styles.laneHeaderInput} ${laneHeaderOnLeft ? styles.laneHeaderInputVertical : ''} nodrag`}
+                autoFocus
+                value={draft}
+                placeholder="泳道名称"
+                style={{ ...titleStyle, height: 'auto' }}
+                rows={1}
+                onChange={(e) => {
+                  setDraft(e.target.value)
+                  e.target.style.height = 'auto'
+                  e.target.style.height = e.target.scrollHeight + 'px'
+                }}
+                onBlur={(e) => {
+                  if ((e.relatedTarget as HTMLElement)?.closest?.(`[${QUICK_TOOLBAR_DATA_ATTR}]`)) return
                   commit()
-                }
-                if (e.key === 'Escape') {
-                  e.preventDefault()
-                  setEditing(false)
-                  setDraft(data.title ?? '')
-                }
-              }}
-            />
+                }}
+                onKeyDown={(e) => {
+                  if (e.key === 'Enter' && (e.shiftKey || e.metaKey || e.ctrlKey)) {
+                    e.preventDefault()
+                    commit()
+                  }
+                  if (e.key === 'Escape') {
+                    e.preventDefault()
+                    setEditing(false)
+                    setDraft(data.title ?? '')
+                  }
+                }}
+              />
+            </>
           ) : (
-            <div className={styles.laneHeaderTitle} style={titleStyle}>
+            <div
+              className={`${styles.laneHeaderTitle} ${laneHeaderOnLeft ? styles.laneHeaderTitleVertical : ''}`}
+              style={titleStyle}
+            >
               {data.title ?? ''}
             </div>
           )}
@@ -225,7 +271,7 @@ export function GroupNode(props: NodeProps) {
       <NodeResizer
         // 允许 group/subgroup 容器继续收缩，避免最小宽度过大影响排版。
         minWidth={36}
-        minHeight={128}
+        minHeight={32}
         handleStyle={{ width: 8, height: 8, borderRadius: 9999 }}
         isVisible={Boolean((props as any).selected)}
       />

@@ -75,6 +75,7 @@ function frameDefaults(title: string) {
     data: {
       title,
       stroke: '#e2e8f0',
+      strokeWidth: 1,
       fill: 'rgba(226, 232, 240, 0.20)',
       titleFontSize: 14,
       titleColor: '#64748b',
@@ -1392,6 +1393,8 @@ export async function materializeGraphBatchPayloadToSnapshot(
       }
       if (isLane) {
         nodeData.role = 'lane'
+        // 生成泳道默认采用左侧标题样式（左侧灰底 + 竖排标题）
+        nodeData.titlePosition = 'left-center'
         nodeData.laneMeta = {
           laneId: op.params.id,
           laneIndex: laneIndexCounter++,

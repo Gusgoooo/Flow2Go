@@ -233,16 +233,8 @@ export function QuadNode(props: NodeProps) {
       : data.strokeWidth
   const semanticType = data.semanticType
   const shapeHint = data.shape
-  const isSwimlaneNode = Boolean(data.laneId)
   const isDecisionNode = semanticType === 'decision' || shapeHint === 'diamond'
-  const isOrdinarySwimlaneNode = isSwimlaneNode && !isDecisionNode && (
-    (semanticType != null && ['start', 'task', 'end', 'data'].includes(semanticType)) ||
-    (shapeHint != null && (shapeHint === 'rect' || shapeHint === 'circle')) ||
-    (semanticType == null && shapeHint == null)
-  )
-  const effectiveHandleMode = isOrdinarySwimlaneNode
-    ? 'leftRight'
-    : (data.handleMode ?? (isDecisionNode ? 'leftRight' : undefined))
+  const effectiveHandleMode = data.handleMode ?? (isDecisionNode ? 'leftRight' : undefined)
   const showLeftRightHandles = effectiveHandleMode === 'leftRight'
   const inferredShape: QuadShape = semanticType && !data.shape
     ? (semanticType === 'start' || semanticType === 'end' ? 'circle'
@@ -292,7 +284,6 @@ export function QuadNode(props: NodeProps) {
         minHeight={QUAD_MIN_H}
         handleStyle={{ width: 8, height: 8, borderRadius: 9999 }}
         isVisible={Boolean((props as any).selected)}
-        keepAspectRatio={shape === 'circle'}
       />
       <div
         className={styles.nodeInner}

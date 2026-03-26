@@ -242,7 +242,17 @@
 }
 
 .assetCardName {
-  display: none;
+  display: block;
+  padding: 4px 6px 6px;
+  font-size: 11px;
+  line-height: 1.2;
+  color: #475569;
+  text-align: center;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  border-top: 1px solid #eef2f7;
+  background: #ffffff;
 }
 
 .assetEmpty {
@@ -530,21 +540,24 @@
 }
 
 /* 按住空格时画布为小手，可抓取拖动 */
-.canvas[data-space-pan="true"] .react-flow__pane {
+.canvas[data-space-pan="true"] :global(.react-flow__pane) {
   cursor: grab;
 }
-.canvas[data-space-pan="true"] .react-flow__pane:active {
+.canvas[data-space-pan="true"] :global(.react-flow__pane:active) {
   cursor: grabbing;
 }
 /* 按住空格时所有节点也显示小手，并忽略点击 */
-.canvas[data-space-pan="true"] .react-flow__node {
+.canvas[data-space-pan="true"] :global(.react-flow__node) {
   cursor: grab !important;
   pointer-events: none !important;
 }
-.canvas[data-space-pan="true"] .react-flow__edge {
+.canvas[data-space-pan="true"] :global(.react-flow__edge) {
   pointer-events: none !important;
 }
-.canvas[data-space-pan="true"] .react-flow__handle {
+.canvas[data-space-pan="true"] :global(.react-flow__handle) {
+  pointer-events: none !important;
+}
+.canvas[data-space-pan="true"] :global(.react-flow__resize-control) {
   pointer-events: none !important;
 }
 
