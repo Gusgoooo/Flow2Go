@@ -65,6 +65,7 @@ import { EdgeEditPopup } from './EdgeEditPopup'
 import { AssetEditPopup } from './AssetEditPopup'
 import {
   openRouterGenerateDiagram,
+  openRouterGenerateDiagramFromImage,
   normalizeAiDiagramToSnapshot,
   type AiDiagramDraft,
   type AiDiagramSceneHint,
@@ -626,6 +627,9 @@ function EditorInner({ onBackHome, source, previewSnapshot, readOnly: _readOnly 
   const [aiModalOpen, setAiModalOpen] = useState(false)
   const [aiModalPrompt, setAiModalPrompt] = useState('')
   const [aiModalPromptUserEdited, setAiModalPromptUserEdited] = useState(false)
+  const [aiModalImageDataUrl, setAiModalImageDataUrl] = useState<string | null>(null)
+  const [aiModalImageName, setAiModalImageName] = useState<string | null>(null)
+  const aiModalImageInputRef = useRef<HTMLInputElement | null>(null)
   /** 与胶囊绑定：生成时传入 diagramScene；点 ✕ 取消高亮并清空输入框 */
   const [aiModalScene, setAiModalScene] = useState<AiDiagramSceneHint | null>(null)
   const [aiConfigOpen, setAiConfigOpen] = useState(false)
@@ -3228,6 +3232,8 @@ function EditorInner({ onBackHome, source, previewSnapshot, readOnly: _readOnly 
                   setAiConfigOpen(false)
                   setAiModalPrompt('')
                   setAiModalPromptUserEdited(false)
+                  setAiModalImageDataUrl(null)
+                  setAiModalImageName(null)
                   setAiModalScene(null)
                   setAiModalOpen(true)
                 }}
@@ -3361,6 +3367,80 @@ function EditorInner({ onBackHome, source, previewSnapshot, readOnly: _readOnly 
                       placeholder="输入你的需求，支持多层级描述…"
                       className={styles.aiChatInput}
                     />
+                    <input
+                      ref={aiModalImageInputRef}
+                      type="file"
+                      accept="image/png,image/jpeg,image/webp,image/svg+xml"
+                      style={{ display: 'none' }}
+                      onChange={(e: ChangeEvent<HTMLInputElement>) => {
+                        const file = e.target.files?.[0]
+                        if (!file) return
+                        const reader = new FileReader()
+                        reader.onload = () => {
+                          const dataUrl = String(reader.result || '')
+                          if (!dataUrl.startsWith('data:image/')) {
+                            setAiModalError('暂不支持该图片格式，请使用 png/jpg/webp/svg')
+                            return
+                          }
+                          setAiModalError(null)
+                          setAiModalImageDataUrl(dataUrl)
+                          setAiModalImageName(file.name)
+                        }
+                        reader.onerror = () => {
+                          setAiModalError('图片读取失败，请重试')
+                        }
+                        reader.readAsDataURL(file)
+                        e.currentTarget.value = ''
+                      }}
+                    />
+                    <div style={{ display: 'flex', gap: 8, alignItems: 'center', flexWrap: 'wrap' }}>
+                      <button
+                        type="button"
+                        className={styles.btnSecondary}
+                        style={{ borderRadius: 10, padding: '6px 10px', fontSize: 12 }}
+                        onClick={() => aiModalImageInputRef.current?.click()}
+                      >
+                        上传参考图
+                      </button>
+                      {aiModalImageName ? (
+                        <div style={{ fontSize: 12, color: '#475569' }}>已选择：{aiModalImageName}</div>
+                      ) : (
+                        <div style={{ fontSize: 12, color: '#94a3b8' }}>可选：上传流程图/草图进行识图落图</div>
+                      )}
+                      {aiModalImageDataUrl && (
+                        <button
+                          type="button"
+                          className={styles.btnSecondary}
+                          style={{ borderRadius: 10, padding: '6px 10px', fontSize: 12 }}
+                          onClick={() => {
+                            setAiModalImageDataUrl(null)
+                            setAiModalImageName(null)
+                          }}
+                        >
+                          移除图片
+                        </button>
+                      )}
+                    </div>
+                    {aiModalImageDataUrl && (
+                      <div
+                        style={{
+                          border: '1px solid #e2e8f0',
+                          borderRadius: 10,
+                          padding: 8,
+                          background: '#f8fafc',
+                          display: 'flex',
+                          justifyContent: 'center',
+                          maxHeight: 220,
+                          overflow: 'hidden',
+                        }}
+                      >
+                        <img
+                          src={aiModalImageDataUrl}
+                          alt={aiModalImageName || '识图预览'}
+                          style={{ maxWidth: '100%', maxHeight: 200, objectFit: 'contain' }}
+                        />
+                      </div>
+                    )}
                     <div className={styles.aiNote} style={{ marginTop: 8, color: '#ef4444' }}>
                       请勿使用该功能发送公司数据
                     </div>
@@ -3388,18 +3468,39 @@ function EditorInner({ onBackHome, source, previewSnapshot, readOnly: _readOnly 
                     <button
                       type="button"
                       className={styles.aiGenerateBtn}
-                      disabled={aiModalGenerating || !aiModalPrompt.trim()}
+                      disabled={aiModalGenerating || (!aiModalPrompt.trim() && !aiModalImageDataUrl)}
                       onClick={async () => {
                         const p = aiModalPrompt.trim()
-                        if (!p) return
+                        if (!p && !aiModalImageDataUrl) return
                         setAiModalGenerating(true)
                         setAiModalError(null)
                         setAiModalProgress({ phase: '已提交', detail: '等待 OpenRouter…' })
                         try {
                           const ac = new AbortController()
                           aiModalAbortRef.current = ac
+                          if (aiModalImageDataUrl) {
+                            setAiModalProgress({ phase: '识图结构化', detail: '读取图中节点和连线…' })
+                            const { draft } = await openRouterGenerateDiagramFromImage({
+                              apiKey: aiModalKey.trim(),
+                              model: aiModalModel.trim() || 'qwen/qwen3-max-thinking',
+                              imageDataUrl: aiModalImageDataUrl,
+                              prompt: p || undefined,
+                              signal: ac.signal,
+                              diagramScene: aiModalScene ?? undefined,
+                              onProgress: (info: AiGenerateProgressInfo) => {
+                                setAiModalProgress({ phase: info.phase, detail: info.detail })
+                              },
+                            })
+                            setAiDiagramDraft(draft)
+                            applyAiDraftDirect(draft)
+                            setAiModalOpen(false)
+                            setAiModalImageDataUrl(null)
+                            setAiModalImageName(null)
+                            return
+                          }
                           // Swimlane 独立链路：先走 LLM 结构化 Draft，再物化为图
                           if (aiModalScene === 'swimlane') {
+                            if (!p) throw new Error('泳道图请先输入文本描述')
                             setAiModalProgress({ phase: '生成泳道图', detail: 'LLM 结构化中…' })
                             const { generateSwimlaneDraftWithLLM, swimlaneDraftToGraphBatchPayload } = await import('./swimlaneDraft')
                             const { materializeGraphBatchPayloadToSnapshot } = await import('./mermaid/apply')

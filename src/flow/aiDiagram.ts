@@ -36,6 +36,18 @@ export type OpenRouterChatOptions = {
   onProgress?: (info: AiGenerateProgressInfo) => void
 }
 
+export type OpenRouterImageToDiagramOptions = {
+  apiKey: string
+  model: string
+  imageDataUrl: string
+  /** 可选：用户额外补充要求（如“改成泳道图”） */
+  prompt?: string
+  signal?: AbortSignal
+  timeoutMs?: number
+  diagramScene?: AiDiagramSceneHint
+  onProgress?: (info: AiGenerateProgressInfo) => void
+}
+
 import { parseMermaidFlowchart, transpileMermaidFlowIR } from './mermaid'
 import { materializeGraphBatchPayloadToSnapshot } from './mermaid/apply'
 
@@ -143,11 +155,19 @@ function layoutDecisionSystemSnippet(ld: LayoutDecision): string {
   return lines.join('\n')
 }
 
-async function openRouterChatComplete(args: {
+type OpenRouterMessageContentPart =
+  | { type: 'text'; text: string }
+  | { type: 'image_url'; image_url: { url: string } }
+
+type OpenRouterMessage = {
+  role: 'system' | 'user'
+  content: string | OpenRouterMessageContentPart[]
+}
+
+async function openRouterChatCompleteByMessages(args: {
   apiKey: string
   model: string
-  system: string
-  user: string
+  messages: OpenRouterMessage[]
   signal?: AbortSignal
   timeoutMs: number
   temperature: number
@@ -177,10 +197,7 @@ async function openRouterChatComplete(args: {
     const requestBody = JSON.stringify({
       model: args.model,
       temperature: args.temperature,
-      messages: [
-        { role: 'system', content: args.system },
-        { role: 'user', content: args.user },
-      ],
+      messages: args.messages,
     })
     const res = await fetch('https://openrouter.ai/api/v1/chat/completions', {
       method: 'POST',
@@ -216,6 +233,28 @@ async function openRouterChatComplete(args: {
     controller.signal.removeEventListener('abort', relayAbort)
     window.clearTimeout(timeout)
   }
+}
+
+async function openRouterChatComplete(args: {
+  apiKey: string
+  model: string
+  system: string
+  user: string
+  signal?: AbortSignal
+  timeoutMs: number
+  temperature: number
+}): Promise<string> {
+  return openRouterChatCompleteByMessages({
+    apiKey: args.apiKey,
+    model: args.model,
+    signal: args.signal,
+    timeoutMs: args.timeoutMs,
+    temperature: args.temperature,
+    messages: [
+      { role: 'system', content: args.system },
+      { role: 'user', content: args.user },
+    ],
+  })
 }
 
 function stripCodeFences(s: string): string {
@@ -533,6 +572,142 @@ function parseSceneRouteJson(raw: string): SceneRouteV2 | null {
   } catch {
     return null
   }
+}
+
+const IMAGE_STRUCTURE_SCHEMA = 'flow2go.image.structure.v1' as const
+type ImageSceneHint = AiDiagramSceneHint | 'auto'
+type ImageStructuredNodeType = 'start_end' | 'process' | 'decision' | 'io' | 'subprocess'
+
+export type AiImageStructuredDraft = {
+  schema: typeof IMAGE_STRUCTURE_SCHEMA
+  title?: string
+  sceneHint: ImageSceneHint
+  lanes: string[]
+  nodes: Array<{ id: string; label: string; type: ImageStructuredNodeType; lane?: string }>
+  edges: Array<{ from: string; to: string; relation: string; label?: string }>
+  rawText: string
+}
+
+const IMAGE_TO_STRUCTURED_JSON_SYSTEM_PROMPT = [
+  '你是 Flow2Go 的“识图结构化转译器”。',
+  '你的任务：把输入图片中的流程/泳道/思维导图，识别并输出简洁、稳定的结构化 JSON。',
+  '',
+  '输出要求（强制）：',
+  '- 只能输出严格 JSON；不要 markdown，不要解释。',
+  `- schema 必须为 "${IMAGE_STRUCTURE_SCHEMA}"。`,
+  '- sceneHint 只能是：mind-map | flowchart | swimlane | auto。',
+  '- nodes/edges 必须是数组，且 id 引用必须有效。',
+  '- 节点 label 用中文短语，尽量简短。',
+  '- 关系优先简化为 next / yes / no / notify / request / return_to。',
+  '- 若图片信息不完整，可做最小补全，但禁止臆造复杂关系。',
+  '',
+  'JSON 结构：',
+  '{',
+  `  "schema": "${IMAGE_STRUCTURE_SCHEMA}",`,
+  '  "title": "可选标题",',
+  '  "sceneHint": "mind-map|flowchart|swimlane|auto",',
+  '  "lanes": ["可选泳道1", "可选泳道2"],',
+  '  "nodes": [',
+  '    { "id": "n1", "label": "开始", "type": "start_end", "lane": "可选泳道" }',
+  '  ],',
+  '  "edges": [',
+  '    { "from": "n1", "to": "n2", "relation": "next", "label": "可选" }',
+  '  ]',
+  '}',
+].join('\n')
+
+function toShortString(input: unknown, fallback = '', maxLen = 48): string {
+  if (typeof input !== 'string') return fallback
+  const v = input.trim()
+  if (!v) return fallback
+  return v.length > maxLen ? v.slice(0, maxLen) : v
+}
+
+function normalizeImageSceneHint(input: unknown): ImageSceneHint {
+  if (input === 'mind-map' || input === 'flowchart' || input === 'swimlane' || input === 'auto') return input
+  return 'auto'
+}
+
+function normalizeImageNodeType(input: unknown): ImageStructuredNodeType {
+  if (input === 'start_end' || input === 'process' || input === 'decision' || input === 'io' || input === 'subprocess') return input
+  return 'process'
+}
+
+function validateImageStructuredDraft(obj: any, rawText: string): AiImageStructuredDraft {
+  if (!obj || typeof obj !== 'object') throw new Error('识图返回不是对象')
+  if (obj.schema && obj.schema !== IMAGE_STRUCTURE_SCHEMA) {
+    throw new Error(`识图 schema 不匹配（需要 ${IMAGE_STRUCTURE_SCHEMA}）`)
+  }
+  if (!Array.isArray(obj.nodes)) throw new Error('识图 nodes 必须是数组')
+  if (!Array.isArray(obj.edges)) throw new Error('识图 edges 必须是数组')
+
+  const lanes: string[] = Array.isArray(obj.lanes)
+    ? Array.from(
+        new Set(
+          obj.lanes
+            .map((x: unknown) => toShortString(x))
+            .filter((v: string) => v.length > 0),
+        ),
+      )
+    : []
+
+  const nodesRaw = obj.nodes as any[]
+  const nodeIdUsed = new Set<string>()
+  const nodes = nodesRaw
+    .map((n: any, idx: number) => {
+      const idRaw = toShortString(n?.id, `n${idx + 1}`, 40)
+      const id = nodeIdUsed.has(idRaw) ? `${idRaw}_${idx + 1}` : idRaw
+      nodeIdUsed.add(id)
+      const label = toShortString(n?.label, `步骤${idx + 1}`, 32)
+      const type = normalizeImageNodeType(n?.type)
+      const lane = toShortString(n?.lane, '', 24) || undefined
+      return { id, label, type, lane }
+    })
+    .filter((n) => !!n.id)
+
+  if (!nodes.length) throw new Error('识图未提取到有效节点')
+
+  const nodeIdSet = new Set(nodes.map((n) => n.id))
+  const edges = (obj.edges as any[])
+    .map((e: any) => {
+      const from = toShortString(e?.from, '', 40)
+      const to = toShortString(e?.to, '', 40)
+      const relation = toShortString(e?.relation, 'next', 24)
+      const label = toShortString(e?.label, '', 24) || undefined
+      return { from, to, relation, label }
+    })
+    .filter((e) => nodeIdSet.has(e.from) && nodeIdSet.has(e.to))
+
+  return {
+    schema: IMAGE_STRUCTURE_SCHEMA,
+    title: toShortString(obj.title, '', 60) || undefined,
+    sceneHint: normalizeImageSceneHint(obj.sceneHint),
+    lanes,
+    nodes,
+    edges,
+    rawText,
+  }
+}
+
+function buildDiagramPromptFromImageStructured(structured: AiImageStructuredDraft, userPrompt?: string): string {
+  const payload = {
+    schema: structured.schema,
+    title: structured.title,
+    sceneHint: structured.sceneHint,
+    lanes: structured.lanes,
+    nodes: structured.nodes,
+    edges: structured.edges,
+  }
+  return [
+    '【任务】请基于下方“识图结构化 JSON”生成清晰、简洁、可读的图结构。',
+    '- 优先保留已识别节点与连接关系；若缺失可做最小补全。',
+    '- 默认简化连接，避免网状结构。',
+    userPrompt?.trim() ? `【用户补充要求】\n${userPrompt.trim()}` : '',
+    '【识图结构化 JSON】',
+    JSON.stringify(payload),
+  ]
+    .filter(Boolean)
+    .join('\n\n')
 }
 
 async function openRouterSceneRoute(args: OpenRouterChatOptions): Promise<SceneRouteV2> {
@@ -904,4 +1079,90 @@ export async function openRouterGenerateDiagram(opts: OpenRouterChatOptions): Pr
   }
   report('生成完成', '流程图/通用')
   return d1
+}
+
+export async function openRouterGenerateDiagramFromImage(
+  opts: OpenRouterImageToDiagramOptions,
+): Promise<{ draft: AiDiagramDraft; structured: AiImageStructuredDraft }> {
+  const {
+    apiKey,
+    model,
+    imageDataUrl,
+    prompt,
+    signal,
+    timeoutMs = DEFAULT_TIMEOUT_MS,
+    diagramScene,
+    onProgress,
+  } = opts
+  const key = (apiKey ?? '').trim()
+  if (!imageDataUrl || typeof imageDataUrl !== 'string' || !imageDataUrl.startsWith('data:image/')) {
+    throw new Error('请先选择有效的图片文件（png/jpg/svg/webp）')
+  }
+
+  const t0 = typeof performance !== 'undefined' ? performance.now() : Date.now()
+  const elapsed = () => Math.round((typeof performance !== 'undefined' ? performance.now() : Date.now()) - t0)
+  const report = (phase: string, detail?: string) => {
+    const elapsedMs = elapsed()
+    try {
+      onProgress?.({ phase, detail, elapsedMs })
+    } catch {
+      /* no-op */
+    }
+    console.info(`[Flow2Go AI] +${elapsedMs}ms`, phase, detail ?? '')
+  }
+
+  report('识图结构化', '请求多模态模型中…')
+  const recognitionRaw = await openRouterChatCompleteByMessages({
+    apiKey: key,
+    model,
+    signal,
+    timeoutMs,
+    temperature: STABLE_GENERATION_TEMPERATURE,
+    messages: [
+      { role: 'system', content: IMAGE_TO_STRUCTURED_JSON_SYSTEM_PROMPT },
+      {
+        role: 'user',
+        content: [
+          {
+            type: 'text',
+            text: [
+              '请识别这张图并输出结构化 JSON。',
+              prompt?.trim() ? `额外要求：${prompt.trim()}` : '额外要求：无',
+              '如果无法确定细节，请保持结构简洁并使用 next 关系。',
+            ].join('\n'),
+          },
+          { type: 'image_url', image_url: { url: imageDataUrl } },
+        ],
+      },
+    ],
+  })
+
+  let parsed: unknown
+  const cleaned = stripCodeFences(recognitionRaw).trim()
+  try {
+    parsed = JSON.parse(cleaned)
+  } catch {
+    throw new Error('识图阶段返回的不是合法 JSON')
+  }
+  const structured = validateImageStructuredDraft(parsed, recognitionRaw)
+  report('识图结构化完成', `nodes=${structured.nodes.length}, edges=${structured.edges.length}`)
+
+  // scene 优先级：用户显式胶囊 > 识图判断（auto 不覆盖）
+  const sceneFromImage = structured.sceneHint === 'auto' ? undefined : structured.sceneHint
+  const mergedScene = diagramScene ?? sceneFromImage
+  const mergedPrompt = buildDiagramPromptFromImageStructured(structured, prompt)
+
+  const draft = await openRouterGenerateDiagram({
+    apiKey: key,
+    model,
+    prompt: mergedPrompt,
+    signal,
+    timeoutMs,
+    diagramScene: mergedScene,
+    onProgress: (info) => {
+      report(`落图 · ${info.phase}`, info.detail)
+    },
+  })
+  report('识图落图完成', '已应用为可编辑图结构')
+  return { draft, structured }
 }
