@@ -1,17 +1,17 @@
 {
   "version": 1,
-  "exportedAt": 1774336314233,
-  "name": "新手开屏",
+  "exportedAt": 1774508459865,
+  "name": "新手引导",
   "nodes": [
     {
       "id": "g-1773732012659-2b6423a0d32858",
       "type": "group",
       "position": {
-        "x": 2480,
-        "y": -1400
+        "x": 2376,
+        "y": -1592
       },
-      "width": 488,
-      "height": 162,
+      "width": 680,
+      "height": 264,
       "data": {
         "title": "\n",
         "stroke": "#ffffff",
@@ -20,13 +20,13 @@
       },
       "draggable": true,
       "style": {
-        "width": 408,
-        "height": 146
+        "width": 680,
+        "height": 264
       },
       "zIndex": 0,
       "measured": {
-        "width": 488,
-        "height": 162
+        "width": 680,
+        "height": 264
       },
       "selected": false,
       "resizing": false,
@@ -36,28 +36,28 @@
       "id": "n-1773731674100-e1dbc7ee370f08",
       "type": "text",
       "position": {
-        "x": 80,
-        "y": 32
+        "x": 112,
+        "y": 64
       },
       "data": {
         "label": "👏欢迎使用Flow2Go！",
-        "labelFontSize": 32,
+        "labelFontSize": 46,
         "labelColor": "#C059FF",
         "labelFontWeight": "800"
       },
       "measured": {
-        "width": 343,
-        "height": 53
+        "width": 520,
+        "height": 72
       },
       "selected": false,
       "dragging": false,
       "zIndex": 9999,
       "parentId": "g-1773732012659-2b6423a0d32858",
-      "width": 343,
-      "height": 53,
+      "width": 520,
+      "height": 72,
       "style": {
-        "width": 343,
-        "height": 53
+        "width": 520,
+        "height": 72
       },
       "resizing": false
     },
@@ -65,27 +65,27 @@
       "id": "n-1773731746338-89a0e8bdf8fc28",
       "type": "text",
       "position": {
-        "x": 120,
-        "y": 88
+        "x": 152,
+        "y": 144
       },
       "data": {
         "label": "鼠标右键点击画布新建节点",
-        "labelFontSize": 20,
+        "labelFontSize": 30,
         "labelColor": "#C059FF"
       },
       "measured": {
-        "width": 248,
-        "height": 36
+        "width": 368,
+        "height": 52
       },
       "selected": false,
       "dragging": false,
       "zIndex": 9999,
       "parentId": "g-1773732012659-2b6423a0d32858",
-      "width": 248,
-      "height": 36,
+      "width": 368,
+      "height": 52,
       "style": {
-        "width": 248,
-        "height": 36
+        "width": 368,
+        "height": 52
       },
       "resizing": false
     },
@@ -93,8 +93,8 @@
       "id": "n-1773731856895-899aeac91549b",
       "type": "quad",
       "position": {
-        "x": 2256,
-        "y": -1160
+        "x": 2248,
+        "y": -1248
       },
       "data": {
         "label": "🔐数据在本地",
@@ -106,12 +106,12 @@
       },
       "measured": {
         "width": 280,
-        "height": 84
+        "height": 88
       },
       "selected": false,
       "dragging": false,
       "width": 280,
-      "height": 84,
+      "height": 88,
       "resizing": false,
       "zIndex": 1
     },
@@ -119,8 +119,8 @@
       "id": "n-1773731902027-a89e3ebad85468",
       "type": "quad",
       "position": {
-        "x": 2584,
-        "y": -1160
+        "x": 2576,
+        "y": -1248
       },
       "data": {
         "label": "🧩极简交互",
@@ -132,12 +132,12 @@
       },
       "measured": {
         "width": 280,
-        "height": 84
+        "height": 88
       },
       "selected": false,
       "dragging": false,
       "width": 280,
-      "height": 84,
+      "height": 88,
       "resizing": false,
       "zIndex": 1
     },
@@ -145,12 +145,12 @@
       "id": "n-1773731998309-f280cb2636e86",
       "type": "quad",
       "position": {
-        "x": 2912,
-        "y": -1160
+        "x": 2904,
+        "y": -1248
       },
       "data": {
-        "label": "AI生成",
-        "title": "AI生成",
+        "label": "✨AI生成",
+        "title": "✨AI生成",
         "showSubtitle": true,
         "subtitle": "自动整理需求+生成初稿，帮你快人一步",
         "labelFontSize": 16,
@@ -158,584 +158,2573 @@
       },
       "measured": {
         "width": 288,
-        "height": 84
+        "height": 88
       },
       "selected": false,
       "dragging": false,
       "width": 288,
-      "height": 84,
+      "height": 88,
       "resizing": false,
-      "zIndex": 1
-    },
-    {
-      "id": "g-1774335929253-51bcce8ff26e58",
-      "type": "group",
-      "position": {
-        "x": 1976,
-        "y": -944
-      },
-      "width": 560,
-      "height": 324,
-      "data": {
-        "title": "大群组",
-        "stroke": "#e2e8f0",
-        "strokeWidth": 1,
-        "fill": "#ffffff",
-        "titleColor": "#0f172a"
-      },
-      "draggable": true,
-      "style": {
-        "width": 560,
-        "height": 236
-      },
-      "zIndex": 0,
-      "measured": {
-        "width": 560,
-        "height": 324
-      },
-      "selected": false,
-      "dragging": false,
-      "resizing": false
-    },
-    {
-      "id": "g-1774335898252-3c88a4ebbdb7c",
-      "type": "group",
-      "position": {
-        "x": 1984,
-        "y": -904
-      },
-      "width": 176,
-      "height": 188,
-      "data": {
-        "title": "群组",
-        "stroke": "#3b82f6",
-        "strokeWidth": 1,
-        "fill": "rgba(59, 130, 246, 0.10)"
-      },
-      "draggable": true,
-      "style": {
-        "width": 176,
-        "height": 188
-      },
-      "zIndex": 0,
-      "measured": {
-        "width": 176,
-        "height": 188
-      },
-      "selected": false,
-      "dragging": false
-    },
-    {
-      "id": "n-1774335881851-d66d96bad0aa98",
-      "type": "quad",
-      "position": {
-        "x": 1992,
-        "y": -864
-      },
-      "width": 160,
-      "height": 44,
-      "style": {
-        "width": 160,
-        "height": 44
-      },
-      "data": {
-        "label": "节点",
-        "title": "节点"
-      },
-      "measured": {
-        "width": 160,
-        "height": 44
-      },
-      "selected": false,
-      "dragging": false,
-      "zIndex": 1
-    },
-    {
-      "id": "n-1774335883552-26c99c9a5c2a88",
-      "type": "quad",
-      "position": {
-        "x": 1992,
-        "y": -816
-      },
-      "width": 160,
-      "height": 44,
-      "style": {
-        "width": 160,
-        "height": 44
-      },
-      "data": {
-        "label": "节点",
-        "title": "节点"
-      },
-      "measured": {
-        "width": 160,
-        "height": 44
-      },
-      "selected": false,
-      "dragging": false,
-      "zIndex": 1
-    },
-    {
-      "id": "n-1774335885852-49755431b5ab5",
-      "type": "quad",
-      "position": {
-        "x": 1992,
-        "y": -768
-      },
-      "width": 160,
-      "height": 44,
-      "style": {
-        "width": 160,
-        "height": 44
-      },
-      "data": {
-        "label": "节点",
-        "title": "节点"
-      },
-      "measured": {
-        "width": 160,
-        "height": 44
-      },
-      "selected": false,
-      "dragging": false,
-      "zIndex": 1
-    },
-    {
-      "id": "g-1774335923339-540a29e2596478",
-      "type": "group",
-      "position": {
-        "x": 2168,
-        "y": -904
-      },
-      "width": 176,
-      "height": 188,
-      "data": {
-        "title": "群组",
-        "stroke": "#FF6A00",
-        "strokeWidth": 1,
-        "fill": "rgba(255,177,0,0.09)",
-        "titleColor": "#FF6A00"
-      },
-      "draggable": true,
-      "style": {
-        "width": 176,
-        "height": 188
-      },
-      "zIndex": 0,
-      "measured": {
-        "width": 176,
-        "height": 188
-      },
-      "selected": false,
-      "dragging": false
-    },
-    {
-      "id": "n-1774335923339-403efabbb5646",
-      "type": "quad",
-      "position": {
-        "x": 2176,
-        "y": -864
-      },
-      "width": 160,
-      "height": 44,
-      "style": {
-        "width": 160,
-        "height": 44
-      },
-      "data": {
-        "label": "节点",
-        "title": "节点"
-      },
-      "measured": {
-        "width": 160,
-        "height": 44
-      },
-      "selected": false,
-      "dragging": false,
-      "zIndex": 1
-    },
-    {
-      "id": "n-1774335923339-d625e92b22016",
-      "type": "quad",
-      "position": {
-        "x": 2176,
-        "y": -816
-      },
-      "width": 160,
-      "height": 44,
-      "style": {
-        "width": 160,
-        "height": 44
-      },
-      "data": {
-        "label": "节点",
-        "title": "节点"
-      },
-      "measured": {
-        "width": 160,
-        "height": 44
-      },
-      "selected": false,
-      "dragging": false,
-      "zIndex": 1
-    },
-    {
-      "id": "n-1774335923339-b19ec1b86f07d",
-      "type": "quad",
-      "position": {
-        "x": 2176,
-        "y": -768
-      },
-      "width": 160,
-      "height": 44,
-      "style": {
-        "width": 160,
-        "height": 44
-      },
-      "data": {
-        "label": "节点",
-        "title": "节点"
-      },
-      "measured": {
-        "width": 160,
-        "height": 44
-      },
-      "selected": false,
-      "dragging": false,
-      "zIndex": 1
-    },
-    {
-      "id": "g-1774335925819-27a6bda9a2e1a",
-      "type": "group",
-      "position": {
-        "x": 2352,
-        "y": -904
-      },
-      "width": 176,
-      "height": 188,
-      "data": {
-        "title": "群组",
-        "stroke": "#C059FF",
-        "strokeWidth": 1,
-        "fill": "rgba(192,89,255,0.05)",
-        "titleColor": "#C059FF"
-      },
-      "draggable": true,
-      "style": {
-        "width": 176,
-        "height": 188
-      },
-      "zIndex": 0,
-      "measured": {
-        "width": 176,
-        "height": 188
-      },
-      "selected": false,
-      "dragging": false
-    },
-    {
-      "id": "n-1774335925819-de0f4fd00dedd8",
-      "type": "quad",
-      "position": {
-        "x": 2360,
-        "y": -864
-      },
-      "width": 160,
-      "height": 44,
-      "style": {
-        "width": 160,
-        "height": 44
-      },
-      "data": {
-        "label": "节点",
-        "title": "节点"
-      },
-      "measured": {
-        "width": 160,
-        "height": 44
-      },
-      "selected": false,
-      "dragging": false,
-      "zIndex": 1
-    },
-    {
-      "id": "n-1774335925819-90d431d4e87cb",
-      "type": "quad",
-      "position": {
-        "x": 2360,
-        "y": -816
-      },
-      "width": 160,
-      "height": 44,
-      "style": {
-        "width": 160,
-        "height": 44
-      },
-      "data": {
-        "label": "节点",
-        "title": "节点"
-      },
-      "measured": {
-        "width": 160,
-        "height": 44
-      },
-      "selected": false,
-      "dragging": false,
-      "zIndex": 1
-    },
-    {
-      "id": "n-1774335925819-1b7983f28671",
-      "type": "quad",
-      "position": {
-        "x": 2360,
-        "y": -768
-      },
-      "width": 160,
-      "height": 44,
-      "style": {
-        "width": 160,
-        "height": 44
-      },
-      "data": {
-        "label": "节点",
-        "title": "节点"
-      },
-      "measured": {
-        "width": 160,
-        "height": 44
-      },
-      "selected": false,
-      "dragging": false,
       "zIndex": 1
     },
     {
       "id": "n-1774335944386-e1ccfb71f4f788",
       "type": "text",
       "position": {
-        "x": 2696,
-        "y": -1008
+        "x": 2672,
+        "y": -1040
       },
       "data": {
-        "label": "示例",
-        "labelFontSize": 26,
+        "label": "模板示例",
+        "labelFontSize": 25,
         "labelColor": "#94a3b8",
         "labelFontWeight": "800"
       },
       "measured": {
-        "width": 63,
+        "width": 168,
         "height": 44
       },
       "selected": false,
       "dragging": false,
       "zIndex": 9999,
-      "width": 63,
+      "width": 168,
       "height": 44,
       "style": {
-        "width": 63,
+        "width": 168,
         "height": 44
       },
       "resizing": false
     },
     {
-      "id": "g-1774336217366-cdff85f32f6fc8",
+      "id": "g-1774496661571-ac13054f3aaf5",
       "type": "group",
       "position": {
-        "x": 2552,
-        "y": -944
+        "x": 3400,
+        "y": -968
       },
-      "width": 936,
-      "height": 324,
+      "width": 1368,
+      "height": 904,
       "data": {
-        "title": "",
+        "title": "思维导图",
         "stroke": "#e2e8f0",
         "strokeWidth": 1,
         "fill": "#ffffff",
-        "titleColor": "#0f172a"
+        "titleFontSize": 14,
+        "titleColor": "#64748b",
+        "role": "frame"
       },
       "draggable": true,
       "style": {
-        "width": 936,
-        "height": 324
+        "width": 1368,
+        "height": 904
+      },
+      "measured": {
+        "width": 1368,
+        "height": 904
+      },
+      "selected": false,
+      "dragging": false,
+      "resizing": false,
+      "zIndex": 0
+    },
+    {
+      "id": "n-1774493318691-0e512682658f98",
+      "type": "quad",
+      "position": {
+        "x": 608,
+        "y": 408
+      },
+      "width": 160,
+      "height": 48,
+      "style": {
+        "width": 160,
+        "height": 48
+      },
+      "data": {
+        "label": "AI大图图生成产品（Flow2Go）",
+        "title": "AI大图图生成产品（Flow2Go）",
+        "stroke": "#C059FF",
+        "strokeWidth": 2
+      },
+      "measured": {
+        "width": 160,
+        "height": 48
+      },
+      "selected": false,
+      "dragging": false,
+      "zIndex": 3,
+      "parentId": "g-1774496661571-ac13054f3aaf5"
+    },
+    {
+      "id": "n-1774493491004-20b90cc1800378",
+      "type": "quad",
+      "position": {
+        "x": 872,
+        "y": 576
+      },
+      "width": 160,
+      "height": 48,
+      "style": {
+        "width": 160,
+        "height": 48
+      },
+      "data": {
+        "label": "输入方式",
+        "title": "输入方式",
+        "stroke": "#4D9EF5",
+        "strokeWidth": 2
+      },
+      "measured": {
+        "width": 160,
+        "height": 48
+      },
+      "selected": false,
+      "dragging": false,
+      "zIndex": 3,
+      "parentId": "g-1774496661571-ac13054f3aaf5"
+    },
+    {
+      "id": "n-1774493543046-ca20e7e22142a",
+      "type": "quad",
+      "position": {
+        "x": 1136,
+        "y": 488
+      },
+      "width": 160,
+      "height": 48,
+      "style": {
+        "width": 160,
+        "height": 48
+      },
+      "data": {
+        "label": "自然语言描述",
+        "title": "自然语言描述",
+        "stroke": "#33D8EA",
+        "strokeWidth": 2
+      },
+      "measured": {
+        "width": 160,
+        "height": 48
+      },
+      "selected": false,
+      "dragging": false,
+      "zIndex": 3,
+      "parentId": "g-1774496661571-ac13054f3aaf5"
+    },
+    {
+      "id": "n-1774493578660-2878fd015168b8",
+      "type": "quad",
+      "position": {
+        "x": 1136,
+        "y": 544
+      },
+      "width": 160,
+      "height": 48,
+      "style": {
+        "width": 160,
+        "height": 48
+      },
+      "data": {
+        "label": "结构化文本",
+        "title": "结构化文本",
+        "stroke": "#33D8EA",
+        "strokeWidth": 2
+      },
+      "measured": {
+        "width": 160,
+        "height": 48
+      },
+      "selected": false,
+      "dragging": false,
+      "zIndex": 3,
+      "parentId": "g-1774496661571-ac13054f3aaf5"
+    },
+    {
+      "id": "n-1774493581555-19a71a2b5e4bd",
+      "type": "quad",
+      "position": {
+        "x": 1136,
+        "y": 600
+      },
+      "width": 160,
+      "height": 48,
+      "style": {
+        "width": 160,
+        "height": 48
+      },
+      "data": {
+        "label": "半结构化",
+        "title": "半结构化",
+        "stroke": "#33D8EA",
+        "strokeWidth": 2
+      },
+      "measured": {
+        "width": 160,
+        "height": 48
+      },
+      "selected": false,
+      "dragging": false,
+      "zIndex": 3,
+      "parentId": "g-1774496661571-ac13054f3aaf5"
+    },
+    {
+      "id": "n-1774493586619-fc55afa6d0ede",
+      "type": "quad",
+      "position": {
+        "x": 1136,
+        "y": 656
+      },
+      "width": 160,
+      "height": 48,
+      "style": {
+        "width": 160,
+        "height": 48
+      },
+      "data": {
+        "label": "历史图复用",
+        "title": "历史图复用",
+        "stroke": "#33D8EA",
+        "strokeWidth": 2
+      },
+      "measured": {
+        "width": 160,
+        "height": 48
+      },
+      "selected": false,
+      "dragging": false,
+      "zIndex": 3,
+      "parentId": "g-1774496661571-ac13054f3aaf5"
+    },
+    {
+      "id": "n-1774493698321-97baa602ab56e",
+      "type": "quad",
+      "position": {
+        "x": 872,
+        "y": 272
+      },
+      "width": 160,
+      "height": 48,
+      "style": {
+        "width": 160,
+        "height": 48
+      },
+      "data": {
+        "label": "核心目标",
+        "title": "核心目标",
+        "stroke": "#4D9EF5",
+        "strokeWidth": 3
+      },
+      "measured": {
+        "width": 160,
+        "height": 48
+      },
+      "selected": false,
+      "dragging": false,
+      "zIndex": 3,
+      "parentId": "g-1774496661571-ac13054f3aaf5"
+    },
+    {
+      "id": "n-1774493698321-7ab84cbc841928",
+      "type": "quad",
+      "position": {
+        "x": 1136,
+        "y": 184
+      },
+      "width": 160,
+      "height": 48,
+      "style": {
+        "width": 160,
+        "height": 48
+      },
+      "data": {
+        "label": "降低画图门槛",
+        "title": "降低画图门槛",
+        "stroke": "#33D8EA",
+        "strokeWidth": 3
+      },
+      "measured": {
+        "width": 160,
+        "height": 48
+      },
+      "selected": false,
+      "dragging": false,
+      "zIndex": 3,
+      "parentId": "g-1774496661571-ac13054f3aaf5"
+    },
+    {
+      "id": "n-1774493698321-cc33d232b495e",
+      "type": "quad",
+      "position": {
+        "x": 1136,
+        "y": 240
+      },
+      "width": 160,
+      "height": 48,
+      "style": {
+        "width": 160,
+        "height": 48
+      },
+      "data": {
+        "label": "提高表达效率",
+        "title": "提高表达效率",
+        "stroke": "#33D8EA",
+        "strokeWidth": 3
+      },
+      "measured": {
+        "width": 160,
+        "height": 48
+      },
+      "selected": false,
+      "dragging": false,
+      "zIndex": 3,
+      "parentId": "g-1774496661571-ac13054f3aaf5"
+    },
+    {
+      "id": "n-1774493698321-d62d90f794b7d8",
+      "type": "quad",
+      "position": {
+        "x": 1136,
+        "y": 296
+      },
+      "width": 160,
+      "height": 48,
+      "style": {
+        "width": 160,
+        "height": 48
+      },
+      "data": {
+        "label": "标准化业务表达",
+        "title": "标准化业务表达",
+        "stroke": "#33D8EA",
+        "strokeWidth": 3
+      },
+      "measured": {
+        "width": 160,
+        "height": 48
+      },
+      "selected": false,
+      "dragging": false,
+      "zIndex": 3,
+      "parentId": "g-1774496661571-ac13054f3aaf5"
+    },
+    {
+      "id": "n-1774493698321-39cfe260240988",
+      "type": "quad",
+      "position": {
+        "x": 1136,
+        "y": 352
+      },
+      "width": 160,
+      "height": 48,
+      "style": {
+        "width": 160,
+        "height": 48
+      },
+      "data": {
+        "label": "支持复杂逻辑可视化",
+        "title": "支持复杂逻辑可视化",
+        "stroke": "#33D8EA",
+        "strokeWidth": 3
+      },
+      "measured": {
+        "width": 160,
+        "height": 48
+      },
+      "selected": false,
+      "dragging": false,
+      "zIndex": 3,
+      "parentId": "g-1774496661571-ac13054f3aaf5"
+    },
+    {
+      "id": "n-1774493885542-140fbc364ed518",
+      "type": "quad",
+      "position": {
+        "x": 88,
+        "y": 136
+      },
+      "width": 160,
+      "height": 48,
+      "style": {
+        "width": 160,
+        "height": 48
+      },
+      "data": {
+        "label": "产品逻辑表达",
+        "title": "产品逻辑表达",
+        "stroke": "#33D8EA",
+        "strokeWidth": 2
+      },
+      "measured": {
+        "width": 160,
+        "height": 48
+      },
+      "selected": false,
+      "dragging": false,
+      "zIndex": 3,
+      "parentId": "g-1774496661571-ac13054f3aaf5"
+    },
+    {
+      "id": "n-1774493885542-fd062c3c19db28",
+      "type": "quad",
+      "position": {
+        "x": 88,
+        "y": 248
+      },
+      "width": 160,
+      "height": 48,
+      "style": {
+        "width": 160,
+        "height": 48
+      },
+      "data": {
+        "label": "结构收敛",
+        "title": "结构收敛",
+        "stroke": "#33D8EA",
+        "strokeWidth": 2
+      },
+      "measured": {
+        "width": 160,
+        "height": 48
+      },
+      "selected": false,
+      "dragging": false,
+      "zIndex": 3,
+      "parentId": "g-1774496661571-ac13054f3aaf5"
+    },
+    {
+      "id": "n-1774493885542-552ba957eb6648",
+      "type": "quad",
+      "position": {
+        "x": 88,
+        "y": 304
+      },
+      "width": 160,
+      "height": 48,
+      "style": {
+        "width": 160,
+        "height": 48
+      },
+      "data": {
+        "label": "图类型选择",
+        "title": "图类型选择",
+        "stroke": "#33D8EA",
+        "strokeWidth": 2
+      },
+      "measured": {
+        "width": 160,
+        "height": 48
+      },
+      "selected": false,
+      "dragging": false,
+      "zIndex": 3,
+      "parentId": "g-1774496661571-ac13054f3aaf5"
+    },
+    {
+      "id": "n-1774493885542-2462483a768da",
+      "type": "quad",
+      "position": {
+        "x": 88,
+        "y": 360
+      },
+      "width": 160,
+      "height": 48,
+      "style": {
+        "width": 160,
+        "height": 48
+      },
+      "data": {
+        "label": "布局引擎",
+        "title": "布局引擎",
+        "stroke": "#33D8EA",
+        "strokeWidth": 2
+      },
+      "measured": {
+        "width": 160,
+        "height": 48
+      },
+      "selected": false,
+      "dragging": false,
+      "zIndex": 3,
+      "parentId": "g-1774496661571-ac13054f3aaf5"
+    },
+    {
+      "id": "n-1774493899495-64e75d68206958",
+      "type": "quad",
+      "position": {
+        "x": 336,
+        "y": 248
+      },
+      "width": 160,
+      "height": 48,
+      "style": {
+        "width": 160,
+        "height": 48
+      },
+      "data": {
+        "label": "核心能力",
+        "title": "核心能力",
+        "stroke": "#4D9EF5",
+        "strokeWidth": 2
+      },
+      "measured": {
+        "width": 160,
+        "height": 48
+      },
+      "selected": false,
+      "dragging": false,
+      "zIndex": 3,
+      "parentId": "g-1774496661571-ac13054f3aaf5"
+    },
+    {
+      "id": "n-1774493966203-347bd5bac5bec8",
+      "type": "quad",
+      "position": {
+        "x": 88,
+        "y": 496
+      },
+      "width": 160,
+      "height": 48,
+      "style": {
+        "width": 160,
+        "height": 48
+      },
+      "data": {
+        "label": "业务流程梳理",
+        "title": "业务流程梳理",
+        "stroke": "#33D8EA",
+        "strokeWidth": 2
+      },
+      "measured": {
+        "width": 160,
+        "height": 48
+      },
+      "selected": false,
+      "dragging": false,
+      "zIndex": 3,
+      "parentId": "g-1774496661571-ac13054f3aaf5"
+    },
+    {
+      "id": "n-1774493966203-4bb1b8f5c22308",
+      "type": "quad",
+      "position": {
+        "x": 88,
+        "y": 552
+      },
+      "width": 160,
+      "height": 48,
+      "style": {
+        "width": 160,
+        "height": 48
+      },
+      "data": {
+        "label": " 审批流程设计",
+        "title": " 审批流程设计",
+        "stroke": "#33D8EA",
+        "strokeWidth": 2
+      },
+      "measured": {
+        "width": 160,
+        "height": 48
+      },
+      "selected": false,
+      "dragging": false,
+      "zIndex": 3,
+      "parentId": "g-1774496661571-ac13054f3aaf5"
+    },
+    {
+      "id": "n-1774493966203-8187f6eb63deb8",
+      "type": "quad",
+      "position": {
+        "x": 88,
+        "y": 608
+      },
+      "width": 160,
+      "height": 48,
+      "style": {
+        "width": 160,
+        "height": 48
+      },
+      "data": {
+        "label": "系统架构说明",
+        "title": "系统架构说明",
+        "stroke": "#33D8EA",
+        "strokeWidth": 2
+      },
+      "measured": {
+        "width": 160,
+        "height": 48
+      },
+      "selected": false,
+      "dragging": false,
+      "zIndex": 3,
+      "parentId": "g-1774496661571-ac13054f3aaf5"
+    },
+    {
+      "id": "n-1774493966203-043c185ad4aaf",
+      "type": "quad",
+      "position": {
+        "x": 88,
+        "y": 664
+      },
+      "width": 160,
+      "height": 48,
+      "style": {
+        "width": 160,
+        "height": 48
+      },
+      "data": {
+        "label": "方案汇报",
+        "title": "方案汇报",
+        "stroke": "#33D8EA",
+        "strokeWidth": 2
+      },
+      "measured": {
+        "width": 160,
+        "height": 48
+      },
+      "selected": false,
+      "dragging": false,
+      "zIndex": 3,
+      "parentId": "g-1774496661571-ac13054f3aaf5"
+    },
+    {
+      "id": "n-1774493966203-56fcf6454ecf9",
+      "type": "quad",
+      "position": {
+        "x": 344,
+        "y": 608
+      },
+      "width": 160,
+      "height": 48,
+      "style": {
+        "width": 160,
+        "height": 48
+      },
+      "data": {
+        "label": "典型场景",
+        "title": "典型场景",
+        "stroke": "#4D9EF5",
+        "strokeWidth": 2
+      },
+      "measured": {
+        "width": 160,
+        "height": 48
+      },
+      "selected": false,
+      "dragging": false,
+      "zIndex": 3,
+      "parentId": "g-1774496661571-ac13054f3aaf5"
+    },
+    {
+      "id": "g-1774496625603-6ed6dbe61ee538",
+      "type": "group",
+      "position": {
+        "x": 2120,
+        "y": -968
+      },
+      "width": 1232,
+      "height": 912,
+      "data": {
+        "title": "泳道图/流程图",
+        "stroke": "#e2e8f0",
+        "strokeWidth": 1,
+        "fill": "#ffffff",
+        "titleColor": "#64748b"
+      },
+      "draggable": true,
+      "style": {
+        "width": 1232,
+        "height": 912
       },
       "zIndex": 0,
       "measured": {
-        "width": 936,
-        "height": 324
+        "width": 1232,
+        "height": 912
       },
       "selected": false,
       "dragging": false
     },
     {
-      "id": "n-1774335964217-a2fe5be2debde",
-      "type": "quad",
+      "id": "g-1774495887961-0d4f2171f728b",
+      "type": "group",
       "position": {
-        "x": 40,
-        "y": 104
+        "x": 32,
+        "y": 720
       },
-      "width": 160,
-      "height": 44,
-      "style": {
-        "width": 160,
-        "height": 44
-      },
+      "width": 1168,
+      "height": 160,
       "data": {
-        "label": "节点 B",
-        "title": "节点 B",
-        "stroke": "#C059FF"
+        "title": "Development",
+        "stroke": "#e2e8f0",
+        "strokeWidth": 1.5,
+        "fill": "rgba(241, 245, 249, 0.5)",
+        "titleFontSize": 14,
+        "titleColor": "#334155",
+        "role": "lane",
+        "laneMeta": {
+          "laneId": "g-1774494235894-08b4e51c9215f",
+          "laneIndex": 0,
+          "laneAxis": "row",
+          "headerSize": 48,
+          "padding": {
+            "top": 24,
+            "right": 24,
+            "bottom": 24,
+            "left": 24
+          },
+          "minLaneWidth": 800,
+          "minLaneHeight": 160
+        },
+        "titlePosition": "left-center"
       },
-      "measured": {
-        "width": 160,
-        "height": 44
-      },
-      "selected": false,
-      "dragging": false,
-      "zIndex": 3,
-      "parentId": "g-1774336217366-cdff85f32f6fc8"
-    },
-    {
-      "id": "n-1774335967534-ee81ac2d6128b8",
-      "type": "quad",
-      "position": {
-        "x": 368,
-        "y": 64
-      },
-      "width": 160,
-      "height": 44,
+      "draggable": true,
       "style": {
-        "width": 160,
-        "height": 44
-      },
-      "data": {
-        "label": "节点 A",
-        "title": "节点 A",
-        "labelColor": "#C059FF",
-        "labelFontWeight": "800"
-      },
-      "measured": {
-        "width": 160,
-        "height": 44
-      },
-      "selected": false,
-      "dragging": false,
-      "parentId": "g-1774336217366-cdff85f32f6fc8",
-      "zIndex": 3
-    },
-    {
-      "id": "n-1774336036736-196bbbbc37b288",
-      "type": "quad",
-      "position": {
-        "x": 352,
-        "y": 216
-      },
-      "width": 160,
-      "height": 44,
-      "style": {
-        "width": 160,
-        "height": 44
-      },
-      "data": {
-        "label": "节点 C",
-        "title": "节点 C",
-        "color": "#C059FF",
-        "labelColor": "#ffffff"
-      },
-      "measured": {
-        "width": 160,
-        "height": 44
-      },
-      "selected": false,
-      "dragging": false,
-      "zIndex": 3,
-      "parentId": "g-1774336217366-cdff85f32f6fc8"
-    },
-    {
-      "id": "n-1774336100867-60a7aa3c84064",
-      "type": "quad",
-      "position": {
-        "x": 616,
-        "y": 136
-      },
-      "width": 80,
-      "height": 80,
-      "style": {
-        "width": 160,
+        "width": 1168,
         "height": 160
       },
-      "data": {
-        "label": "圆形节点",
-        "shape": "circle",
-        "labelColor": "#FF6A00",
-        "stroke": "#FF6A00",
-        "title": "圆形节点"
-      },
       "measured": {
-        "width": 80,
-        "height": 80
+        "width": 1168,
+        "height": 160
       },
       "selected": false,
-      "dragging": false,
       "resizing": false,
-      "zIndex": 3,
-      "parentId": "g-1774336217366-cdff85f32f6fc8"
+      "dragging": false,
+      "zIndex": 2,
+      "parentId": "g-1774496625603-6ed6dbe61ee538"
     },
     {
-      "id": "n-1774336119418-353f51abf86fe8",
+      "id": "g-1774494235894-08b4e51c9215f",
+      "type": "group",
+      "position": {
+        "x": 32,
+        "y": 64
+      },
+      "width": 1168,
+      "height": 144,
+      "data": {
+        "title": "customer",
+        "stroke": "#e2e8f0",
+        "strokeWidth": 1.5,
+        "fill": "rgba(241, 245, 249, 0.5)",
+        "titleFontSize": 14,
+        "titleColor": "#334155",
+        "role": "lane",
+        "laneMeta": {
+          "laneId": "g-1774494235894-08b4e51c9215f",
+          "laneIndex": 0,
+          "laneAxis": "row",
+          "headerSize": 48,
+          "padding": {
+            "top": 24,
+            "right": 24,
+            "bottom": 24,
+            "left": 24
+          },
+          "minLaneWidth": 800,
+          "minLaneHeight": 160
+        },
+        "titlePosition": "left-center"
+      },
+      "draggable": true,
+      "style": {
+        "width": 1168,
+        "height": 144
+      },
+      "measured": {
+        "width": 1168,
+        "height": 144
+      },
+      "selected": false,
+      "resizing": false,
+      "dragging": false,
+      "zIndex": 2,
+      "parentId": "g-1774496625603-6ed6dbe61ee538"
+    },
+    {
+      "id": "n-1774494177802-70004cacb96598",
       "type": "quad",
       "position": {
-        "x": 752,
-        "y": 152
+        "x": 96,
+        "y": 48
       },
-      "width": 144,
+      "width": 160,
       "height": 48,
       "style": {
         "width": 160,
-        "height": 160
+        "height": 48
       },
       "data": {
-        "label": "菱形节点",
-        "shape": "diamond",
-        "labelColor": "#ffffff",
-        "stroke": "#FF6A00",
-        "color": "#FF6A00",
-        "title": "菱形节点"
+        "label": "Customer Request",
+        "shape": "circle",
+        "laneId": "g-1774494235894-08b4e51c9215f",
+        "labelFontWeight": "600",
+        "labelFontSize": 11,
+        "title": "Customer Request",
+        "labelColor": "#C059FF",
+        "stroke": "#C059FF",
+        "strokeWidth": 2
       },
       "measured": {
-        "width": 144,
+        "width": 160,
+        "height": 48
+      },
+      "selected": false,
+      "resizing": false,
+      "dragging": false,
+      "zIndex": 5,
+      "parentId": "g-1774494235894-08b4e51c9215f"
+    },
+    {
+      "id": "g-1774494264633-42376afd8e96a",
+      "type": "group",
+      "position": {
+        "x": 32,
+        "y": 216
+      },
+      "width": 1168,
+      "height": 160,
+      "data": {
+        "title": "Sales",
+        "stroke": "#e2e8f0",
+        "strokeWidth": 1.5,
+        "fill": "rgba(241, 245, 249, 0.5)",
+        "titleFontSize": 14,
+        "titleColor": "#334155",
+        "role": "lane",
+        "laneMeta": {
+          "laneId": "g-1774494235894-08b4e51c9215f",
+          "laneIndex": 0,
+          "laneAxis": "row",
+          "headerSize": 48,
+          "padding": {
+            "top": 24,
+            "right": 24,
+            "bottom": 24,
+            "left": 24
+          },
+          "minLaneWidth": 800,
+          "minLaneHeight": 160
+        },
+        "titlePosition": "left-center"
+      },
+      "draggable": true,
+      "style": {
+        "width": 1168,
+        "height": 160
+      },
+      "measured": {
+        "width": 1168,
+        "height": 160
+      },
+      "selected": false,
+      "resizing": false,
+      "dragging": false,
+      "zIndex": 2,
+      "parentId": "g-1774496625603-6ed6dbe61ee538"
+    },
+    {
+      "id": "n-1774494458006-692a060d95cfb8",
+      "type": "quad",
+      "position": {
+        "x": 512,
+        "y": 48
+      },
+      "width": 160,
+      "height": 48,
+      "style": {
+        "width": 160,
+        "height": 48
+      },
+      "data": {
+        "label": "Finished",
+        "shape": "circle",
+        "laneId": "g-1774494235894-08b4e51c9215f",
+        "labelFontWeight": "600",
+        "labelFontSize": 11,
+        "title": "Finished",
+        "labelColor": "#64748b",
+        "stroke": "#94a3b8",
+        "strokeWidth": 2,
+        "color": "#e2e8f0"
+      },
+      "measured": {
+        "width": 160,
+        "height": 48
+      },
+      "selected": false,
+      "resizing": false,
+      "dragging": false,
+      "zIndex": 5,
+      "parentId": "g-1774494235894-08b4e51c9215f"
+    },
+    {
+      "id": "n-1774494481564-6c6dd07d92f55",
+      "type": "quad",
+      "position": {
+        "x": 704,
+        "y": 48
+      },
+      "width": 160,
+      "height": 48,
+      "style": {
+        "width": 160,
+        "height": 48
+      },
+      "data": {
+        "label": "More feedback",
+        "laneId": "g-1774494235894-08b4e51c9215f",
+        "title": "More feedback",
+        "color": "#ffffff",
+        "stroke": "#94a3b8",
+        "strokeWidth": 2
+      },
+      "measured": {
+        "width": 160,
         "height": 48
       },
       "selected": false,
       "dragging": false,
-      "resizing": false,
-      "parentId": "g-1774336217366-cdff85f32f6fc8",
-      "zIndex": 3
+      "parentId": "g-1774494235894-08b4e51c9215f",
+      "zIndex": 5
     },
     {
-      "id": "n-1774336227334-1124354f3765b8",
+      "id": "n-1774495625993-512557f5706318",
       "type": "quad",
       "position": {
-        "x": 1984,
-        "y": -704
+        "x": 904,
+        "y": 48
       },
-      "width": 544,
-      "height": 76,
+      "width": 160,
+      "height": 48,
       "style": {
         "width": 160,
-        "height": 44
+        "height": 48
       },
       "data": {
-        "label": "节点",
-        "title": "节点",
-        "stroke": "#31C262",
-        "labelColor": "#31C262",
-        "labelFontSize": 16
+        "label": "Finished",
+        "shape": "circle",
+        "laneId": "g-1774494235894-08b4e51c9215f",
+        "labelFontWeight": "600",
+        "labelFontSize": 11,
+        "title": "Finished",
+        "labelColor": "#64748b",
+        "stroke": "#94a3b8",
+        "strokeWidth": 2,
+        "color": "#e2e8f0"
       },
       "measured": {
-        "width": 544,
-        "height": 76
+        "width": 160,
+        "height": 48
+      },
+      "selected": false,
+      "resizing": false,
+      "dragging": false,
+      "zIndex": 5,
+      "parentId": "g-1774494235894-08b4e51c9215f"
+    },
+    {
+      "id": "g-1774495701655-c983a0fe9f0838",
+      "type": "group",
+      "position": {
+        "x": 32,
+        "y": 384
+      },
+      "width": 1168,
+      "height": 160,
+      "data": {
+        "title": "Technical Support",
+        "stroke": "#e2e8f0",
+        "strokeWidth": 1.5,
+        "fill": "rgba(241, 245, 249, 0.5)",
+        "titleFontSize": 14,
+        "titleColor": "#334155",
+        "role": "lane",
+        "laneMeta": {
+          "laneId": "g-1774494235894-08b4e51c9215f",
+          "laneIndex": 0,
+          "laneAxis": "row",
+          "headerSize": 48,
+          "padding": {
+            "top": 24,
+            "right": 24,
+            "bottom": 24,
+            "left": 24
+          },
+          "minLaneWidth": 800,
+          "minLaneHeight": 160
+        },
+        "titlePosition": "left-center"
+      },
+      "draggable": true,
+      "style": {
+        "width": 1168,
+        "height": 160
+      },
+      "measured": {
+        "width": 1168,
+        "height": 160
+      },
+      "selected": false,
+      "resizing": false,
+      "dragging": false,
+      "zIndex": 2,
+      "parentId": "g-1774496625603-6ed6dbe61ee538"
+    },
+    {
+      "id": "n-1774495737289-d1ae024cc11568",
+      "type": "quad",
+      "position": {
+        "x": 96,
+        "y": 56
+      },
+      "width": 160,
+      "height": 48,
+      "style": {
+        "width": 160,
+        "height": 48
+      },
+      "data": {
+        "label": "Sales issue",
+        "shape": "diamond",
+        "laneId": "g-1774494264633-42376afd8e96a",
+        "labelFontWeight": "600",
+        "labelFontSize": 11,
+        "title": "Sales issue",
+        "labelColor": "#ffffff",
+        "stroke": "#C059FF",
+        "strokeWidth": 0,
+        "color": "#FFB100"
+      },
+      "measured": {
+        "width": 160,
+        "height": 48
+      },
+      "selected": false,
+      "resizing": false,
+      "dragging": false,
+      "zIndex": 5,
+      "parentId": "g-1774494264633-42376afd8e96a"
+    },
+    {
+      "id": "n-1774495765056-cc2ddbb7b902b8",
+      "type": "quad",
+      "position": {
+        "x": 512,
+        "y": 56
+      },
+      "width": 160,
+      "height": 48,
+      "style": {
+        "width": 160,
+        "height": 48
+      },
+      "data": {
+        "label": "Confirm with customer",
+        "laneId": "g-1774494264633-42376afd8e96a",
+        "title": "Confirm with customer",
+        "color": "#ffffff",
+        "stroke": "#94a3b8",
+        "strokeWidth": 2
+      },
+      "measured": {
+        "width": 160,
+        "height": 48
       },
       "selected": false,
       "dragging": false,
-      "zIndex": 1,
+      "zIndex": 5,
+      "parentId": "g-1774494264633-42376afd8e96a"
+    },
+    {
+      "id": "n-1774495770363-f1dd99ee3c82e8",
+      "type": "quad",
+      "position": {
+        "x": 312,
+        "y": 56
+      },
+      "width": 160,
+      "height": 48,
+      "style": {
+        "width": 160,
+        "height": 48
+      },
+      "data": {
+        "label": "Resolve and respond",
+        "laneId": "g-1774494264633-42376afd8e96a",
+        "title": "Resolve and respond",
+        "color": "#ffffff",
+        "stroke": "#94a3b8",
+        "strokeWidth": 2
+      },
+      "measured": {
+        "width": 160,
+        "height": 48
+      },
+      "selected": false,
+      "dragging": false,
+      "zIndex": 5,
+      "parentId": "g-1774494264633-42376afd8e96a"
+    },
+    {
+      "id": "n-1774495778506-86c52944564fd8",
+      "type": "quad",
+      "position": {
+        "x": 96,
+        "y": 56
+      },
+      "width": 160,
+      "height": 48,
+      "style": {
+        "width": 160,
+        "height": 48
+      },
+      "data": {
+        "label": "New issue",
+        "shape": "diamond",
+        "laneId": "g-1774495701655-c983a0fe9f0838",
+        "labelFontWeight": "600",
+        "labelFontSize": 11,
+        "title": "New issue",
+        "labelColor": "#ffffff",
+        "stroke": "#C059FF",
+        "strokeWidth": 0,
+        "color": "#FFB100"
+      },
+      "measured": {
+        "width": 160,
+        "height": 48
+      },
+      "selected": false,
+      "resizing": false,
+      "dragging": false,
+      "zIndex": 5,
+      "parentId": "g-1774495701655-c983a0fe9f0838"
+    },
+    {
+      "id": "n-1774495801079-bd0023afba349",
+      "type": "quad",
+      "position": {
+        "x": 312,
+        "y": 56
+      },
+      "width": 160,
+      "height": 48,
+      "style": {
+        "width": 160,
+        "height": 48
+      },
+      "data": {
+        "label": "Resolve issue",
+        "laneId": "g-1774495701655-c983a0fe9f0838",
+        "title": "Resolve issue",
+        "color": "#ffffff",
+        "stroke": "#94a3b8",
+        "strokeWidth": 2
+      },
+      "measured": {
+        "width": 160,
+        "height": 48
+      },
+      "selected": false,
+      "dragging": false,
+      "zIndex": 5,
+      "parentId": "g-1774495701655-c983a0fe9f0838"
+    },
+    {
+      "id": "n-1774495806807-9664ba3facb9e8",
+      "type": "quad",
+      "position": {
+        "x": 704,
+        "y": 56
+      },
+      "width": 160,
+      "height": 48,
+      "style": {
+        "width": 160,
+        "height": 48
+      },
+      "data": {
+        "label": "Get more detials",
+        "laneId": "g-1774495701655-c983a0fe9f0838",
+        "title": "Get more detials",
+        "color": "#ffffff",
+        "stroke": "#94a3b8",
+        "strokeWidth": 2
+      },
+      "measured": {
+        "width": 160,
+        "height": 48
+      },
+      "selected": false,
+      "dragging": false,
+      "zIndex": 5,
+      "parentId": "g-1774495701655-c983a0fe9f0838"
+    },
+    {
+      "id": "n-1774495821560-7e3f1435b4ec28",
+      "type": "quad",
+      "position": {
+        "x": 904,
+        "y": 56
+      },
+      "width": 160,
+      "height": 48,
+      "style": {
+        "width": 160,
+        "height": 48
+      },
+      "data": {
+        "label": "Confirm with customer",
+        "laneId": "g-1774494264633-42376afd8e96a",
+        "title": "Confirm with customer",
+        "color": "#ffffff",
+        "stroke": "#94a3b8",
+        "strokeWidth": 2
+      },
+      "measured": {
+        "width": 160,
+        "height": 48
+      },
+      "selected": false,
+      "dragging": false,
+      "zIndex": 5,
+      "parentId": "g-1774494264633-42376afd8e96a"
+    },
+    {
+      "id": "n-1774495824807-1443ffa82c6d68",
+      "type": "quad",
+      "position": {
+        "x": 904,
+        "y": 56
+      },
+      "width": 160,
+      "height": 48,
+      "style": {
+        "width": 160,
+        "height": 48
+      },
+      "data": {
+        "label": "Resolve solution",
+        "laneId": "g-1774495701655-c983a0fe9f0838",
+        "title": "Resolve solution",
+        "color": "#ffffff",
+        "stroke": "#94a3b8",
+        "strokeWidth": 2
+      },
+      "measured": {
+        "width": 160,
+        "height": 48
+      },
+      "selected": false,
+      "dragging": false,
+      "zIndex": 5,
+      "parentId": "g-1774495701655-c983a0fe9f0838"
+    },
+    {
+      "id": "g-1774495836221-89290c09c78fc",
+      "type": "group",
+      "position": {
+        "x": 32,
+        "y": 552
+      },
+      "width": 1168,
+      "height": 160,
+      "data": {
+        "title": "Tester",
+        "stroke": "#e2e8f0",
+        "strokeWidth": 1.5,
+        "fill": "rgba(241, 245, 249, 0.5)",
+        "titleFontSize": 14,
+        "titleColor": "#334155",
+        "role": "lane",
+        "laneMeta": {
+          "laneId": "g-1774494235894-08b4e51c9215f",
+          "laneIndex": 0,
+          "laneAxis": "row",
+          "headerSize": 48,
+          "padding": {
+            "top": 24,
+            "right": 24,
+            "bottom": 24,
+            "left": 24
+          },
+          "minLaneWidth": 800,
+          "minLaneHeight": 160
+        },
+        "titlePosition": "left-center"
+      },
+      "draggable": true,
+      "style": {
+        "width": 1168,
+        "height": 160
+      },
+      "measured": {
+        "width": 1168,
+        "height": 160
+      },
+      "selected": false,
+      "resizing": false,
+      "dragging": false,
+      "zIndex": 2,
+      "parentId": "g-1774496625603-6ed6dbe61ee538"
+    },
+    {
+      "id": "n-1774495836221-af76731a796608",
+      "type": "quad",
+      "position": {
+        "x": 96,
+        "y": 56
+      },
+      "width": 160,
+      "height": 48,
+      "style": {
+        "width": 160,
+        "height": 48
+      },
+      "data": {
+        "label": "Test the issue",
+        "laneId": "g-1774495836221-89290c09c78fc",
+        "title": "Test the issue",
+        "color": "#ffffff",
+        "stroke": "#94a3b8",
+        "strokeWidth": 2
+      },
+      "measured": {
+        "width": 160,
+        "height": 48
+      },
+      "selected": false,
+      "dragging": false,
+      "zIndex": 5,
+      "parentId": "g-1774495836221-89290c09c78fc"
+    },
+    {
+      "id": "n-1774495866012-7d369f5f3c5168",
+      "type": "quad",
+      "position": {
+        "x": 312,
+        "y": 56
+      },
+      "width": 160,
+      "height": 48,
+      "style": {
+        "width": 160,
+        "height": 48
+      },
+      "data": {
+        "label": "Reproduce",
+        "shape": "diamond",
+        "laneId": "g-1774495836221-89290c09c78fc",
+        "labelFontWeight": "600",
+        "labelFontSize": 11,
+        "title": "Reproduce",
+        "labelColor": "#ffffff",
+        "stroke": "#C059FF",
+        "strokeWidth": 0,
+        "color": "#FFB100"
+      },
+      "measured": {
+        "width": 160,
+        "height": 48
+      },
+      "selected": false,
+      "resizing": false,
+      "dragging": false,
+      "zIndex": 5,
+      "parentId": "g-1774495836221-89290c09c78fc"
+    },
+    {
+      "id": "n-1774495881295-c18152f4881788",
+      "type": "quad",
+      "position": {
+        "x": 904,
+        "y": 56
+      },
+      "width": 160,
+      "height": 48,
+      "style": {
+        "width": 160,
+        "height": 48
+      },
+      "data": {
+        "label": "Resolvee？",
+        "shape": "diamond",
+        "laneId": "g-1774495836221-89290c09c78fc",
+        "labelFontWeight": "600",
+        "labelFontSize": 11,
+        "title": "Resolvee？",
+        "labelColor": "#ffffff",
+        "stroke": "#C059FF",
+        "strokeWidth": 0,
+        "color": "#FFB100"
+      },
+      "measured": {
+        "width": 160,
+        "height": 48
+      },
+      "selected": false,
+      "resizing": false,
+      "dragging": false,
+      "zIndex": 5,
+      "parentId": "g-1774495836221-89290c09c78fc"
+    },
+    {
+      "id": "n-1774495887961-6f2e53cd3f29b8",
+      "type": "quad",
+      "position": {
+        "x": 312,
+        "y": 56
+      },
+      "width": 160,
+      "height": 48,
+      "style": {
+        "width": 160,
+        "height": 48
+      },
+      "data": {
+        "label": "Error report",
+        "laneId": "g-1774495887961-0d4f2171f728b",
+        "title": "Error report",
+        "color": "#e2e8f0",
+        "stroke": "#94a3b8",
+        "strokeWidth": 2,
+        "labelColor": "#64748b"
+      },
+      "measured": {
+        "width": 160,
+        "height": 48
+      },
+      "selected": false,
+      "dragging": false,
+      "zIndex": 5,
+      "parentId": "g-1774495887961-0d4f2171f728b"
+    },
+    {
+      "id": "n-1774495920413-915f190228c0a8",
+      "type": "quad",
+      "position": {
+        "x": 904,
+        "y": 56
+      },
+      "width": 160,
+      "height": 48,
+      "style": {
+        "width": 160,
+        "height": 48
+      },
+      "data": {
+        "label": "Fix the issue",
+        "laneId": "g-1774495887961-0d4f2171f728b",
+        "title": "Fix the issue",
+        "color": "#ffffff",
+        "stroke": "#94a3b8",
+        "strokeWidth": 2
+      },
+      "measured": {
+        "width": 160,
+        "height": 48
+      },
+      "selected": false,
+      "dragging": false,
+      "zIndex": 5,
+      "parentId": "g-1774495887961-0d4f2171f728b"
+    },
+    {
+      "id": "n-1774495925138-5673d2ed7f409",
+      "type": "quad",
+      "position": {
+        "x": 712,
+        "y": 56
+      },
+      "width": 160,
+      "height": 48,
+      "style": {
+        "width": 160,
+        "height": 48
+      },
+      "data": {
+        "label": "Technical Analysis",
+        "laneId": "g-1774495887961-0d4f2171f728b",
+        "title": "Technical Analysis",
+        "color": "#ffffff",
+        "stroke": "#94a3b8",
+        "strokeWidth": 2
+      },
+      "measured": {
+        "width": 160,
+        "height": 48
+      },
+      "selected": false,
+      "dragging": false,
+      "zIndex": 5,
+      "parentId": "g-1774495887961-0d4f2171f728b"
+    },
+    {
+      "id": "n-1774496694846-d4f1e96b222d1",
+      "type": "quad",
+      "position": {
+        "x": 88,
+        "y": 192
+      },
+      "width": 160,
+      "height": 48,
+      "style": {
+        "width": 160,
+        "height": 48
+      },
+      "data": {
+        "label": "语义解析",
+        "title": "语义解析",
+        "stroke": "#33D8EA",
+        "strokeWidth": 2
+      },
+      "measured": {
+        "width": 160,
+        "height": 48
+      },
+      "selected": false,
+      "dragging": false,
+      "zIndex": 3,
+      "parentId": "g-1774496661571-ac13054f3aaf5"
+    },
+    {
+      "id": "n-1774496735227-965894efcd2388",
+      "type": "quad",
+      "position": {
+        "x": 88,
+        "y": 720
+      },
+      "width": 160,
+      "height": 48,
+      "style": {
+        "width": 160,
+        "height": 48
+      },
+      "data": {
+        "label": "产品逻辑表达",
+        "title": "产品逻辑表达",
+        "stroke": "#33D8EA",
+        "strokeWidth": 2
+      },
+      "measured": {
+        "width": 160,
+        "height": 48
+      },
+      "selected": false,
+      "dragging": false,
+      "zIndex": 3,
+      "parentId": "g-1774496661571-ac13054f3aaf5"
+    },
+    {
+      "id": "g-1774496776028-e9eb9d86fa24a8",
+      "type": "group",
+      "position": {
+        "x": 704,
+        "y": -968
+      },
+      "width": 1368,
+      "height": 904,
+      "data": {
+        "title": "业务结构大图",
+        "stroke": "#e2e8f0",
+        "strokeWidth": 1,
+        "fill": "#ffffff",
+        "titleFontSize": 14,
+        "titleColor": "#64748b",
+        "role": "frame"
+      },
+      "draggable": true,
+      "style": {
+        "width": 1368,
+        "height": 904
+      },
+      "measured": {
+        "width": 1368,
+        "height": 904
+      },
+      "selected": false,
+      "dragging": false,
+      "resizing": false,
+      "zIndex": 0
+    },
+    {
+      "id": "g-1774496840817-1bba8224d32b9",
+      "type": "group",
+      "position": {
+        "x": 208,
+        "y": 232
+      },
+      "parentId": "g-1774496776028-e9eb9d86fa24a8",
+      "width": 392,
+      "height": 256,
+      "data": {
+        "title": "编组",
+        "stroke": "#3b82f6",
+        "strokeWidth": 1,
+        "fill": "rgba(59, 130, 246, 0.10)"
+      },
+      "draggable": true,
+      "style": {
+        "width": 392,
+        "height": 256
+      },
+      "zIndex": 2,
+      "measured": {
+        "width": 392,
+        "height": 256
+      },
+      "selected": false,
+      "dragging": false
+    },
+    {
+      "id": "g-1774496834646-11bf25294e772",
+      "type": "group",
+      "position": {
+        "x": 216,
+        "y": 272
+      },
+      "width": 168,
+      "height": 208,
+      "data": {
+        "title": "编组",
+        "stroke": "#3b82f6",
+        "strokeWidth": 1,
+        "fill": "rgba(59, 130, 246, 0.10)"
+      },
+      "draggable": true,
+      "style": {
+        "width": 168,
+        "height": 208
+      },
+      "zIndex": 2,
+      "measured": {
+        "width": 168,
+        "height": 208
+      },
+      "selected": false,
+      "dragging": false,
+      "parentId": "g-1774496776028-e9eb9d86fa24a8",
+      "resizing": false
+    },
+    {
+      "id": "n-1774496820711-3b01ed704f332",
+      "type": "quad",
+      "position": {
+        "x": 224,
+        "y": 312
+      },
+      "width": 152,
+      "height": 48,
+      "style": {
+        "width": 152,
+        "height": 48
+      },
+      "data": {
+        "label": "节点"
+      },
+      "measured": {
+        "width": 152,
+        "height": 48
+      },
+      "selected": false,
+      "dragging": false,
+      "zIndex": 3,
+      "resizing": false,
+      "parentId": "g-1774496776028-e9eb9d86fa24a8"
+    },
+    {
+      "id": "n-1774496827207-46886cd31a86e8",
+      "type": "quad",
+      "position": {
+        "x": 224,
+        "y": 368
+      },
+      "width": 152,
+      "height": 48,
+      "style": {
+        "width": 152,
+        "height": 48
+      },
+      "data": {
+        "label": "节点"
+      },
+      "measured": {
+        "width": 152,
+        "height": 48
+      },
+      "selected": false,
+      "dragging": false,
+      "zIndex": 3,
+      "resizing": false,
+      "parentId": "g-1774496776028-e9eb9d86fa24a8"
+    },
+    {
+      "id": "n-1774496829926-c50f0f72ccebe",
+      "type": "quad",
+      "position": {
+        "x": 224,
+        "y": 424
+      },
+      "width": 152,
+      "height": 48,
+      "style": {
+        "width": 152,
+        "height": 48
+      },
+      "data": {
+        "label": "节点"
+      },
+      "measured": {
+        "width": 152,
+        "height": 48
+      },
+      "selected": false,
+      "dragging": false,
+      "zIndex": 3,
+      "resizing": false,
+      "parentId": "g-1774496776028-e9eb9d86fa24a8"
+    },
+    {
+      "id": "g-1774496837729-db32a95af2679",
+      "type": "group",
+      "position": {
+        "x": 616,
+        "y": 232
+      },
+      "width": 336,
+      "height": 256,
+      "data": {
+        "title": "编组",
+        "stroke": "#3b82f6",
+        "strokeWidth": 1,
+        "fill": "rgba(59, 130, 246, 0.10)"
+      },
+      "draggable": true,
+      "style": {
+        "width": 336,
+        "height": 256
+      },
+      "zIndex": 2,
+      "measured": {
+        "width": 336,
+        "height": 256
+      },
+      "selected": false,
+      "dragging": false,
+      "resizing": false,
+      "parentId": "g-1774496776028-e9eb9d86fa24a8"
+    },
+    {
+      "id": "n-1774496837729-22b108ce7aeef",
+      "type": "quad",
+      "position": {
+        "x": 624,
+        "y": 272
+      },
+      "width": 168,
+      "height": 64,
+      "style": {
+        "width": 168,
+        "height": 64
+      },
+      "data": {
+        "label": "节点"
+      },
+      "measured": {
+        "width": 168,
+        "height": 64
+      },
+      "selected": false,
+      "dragging": false,
+      "zIndex": 3,
+      "resizing": false,
+      "parentId": "g-1774496776028-e9eb9d86fa24a8"
+    },
+    {
+      "id": "g-1774496846011-4d1aea7769b5c8",
+      "type": "group",
+      "position": {
+        "x": 424,
+        "y": 272
+      },
+      "width": 168,
+      "height": 208,
+      "data": {
+        "title": "编组",
+        "stroke": "#3b82f6",
+        "strokeWidth": 1,
+        "fill": "rgba(59, 130, 246, 0.10)"
+      },
+      "draggable": true,
+      "style": {
+        "width": 168,
+        "height": 208
+      },
+      "zIndex": 2,
+      "measured": {
+        "width": 168,
+        "height": 208
+      },
+      "selected": false,
+      "dragging": false,
+      "parentId": "g-1774496776028-e9eb9d86fa24a8",
+      "resizing": false
+    },
+    {
+      "id": "n-1774496846011-b22bfcdbd90a68",
+      "type": "quad",
+      "position": {
+        "x": 432,
+        "y": 312
+      },
+      "width": 152,
+      "height": 48,
+      "style": {
+        "width": 152,
+        "height": 48
+      },
+      "data": {
+        "label": "节点"
+      },
+      "measured": {
+        "width": 152,
+        "height": 48
+      },
+      "selected": false,
+      "dragging": false,
+      "zIndex": 3,
+      "resizing": false,
+      "parentId": "g-1774496776028-e9eb9d86fa24a8"
+    },
+    {
+      "id": "n-1774496846011-f8a509d948d95",
+      "type": "quad",
+      "position": {
+        "x": 432,
+        "y": 368
+      },
+      "width": 152,
+      "height": 48,
+      "style": {
+        "width": 152,
+        "height": 48
+      },
+      "data": {
+        "label": "节点"
+      },
+      "measured": {
+        "width": 152,
+        "height": 48
+      },
+      "selected": false,
+      "dragging": false,
+      "zIndex": 3,
+      "resizing": false,
+      "parentId": "g-1774496776028-e9eb9d86fa24a8"
+    },
+    {
+      "id": "n-1774496846011-6d0765dd1f0b68",
+      "type": "quad",
+      "position": {
+        "x": 432,
+        "y": 424
+      },
+      "width": 152,
+      "height": 48,
+      "style": {
+        "width": 152,
+        "height": 48
+      },
+      "data": {
+        "label": "节点"
+      },
+      "measured": {
+        "width": 152,
+        "height": 48
+      },
+      "selected": false,
+      "dragging": false,
+      "zIndex": 3,
+      "resizing": false,
+      "parentId": "g-1774496776028-e9eb9d86fa24a8"
+    },
+    {
+      "id": "n-1774496893674-e2fcbfc2c8a948",
+      "type": "quad",
+      "position": {
+        "x": 624,
+        "y": 344
+      },
+      "width": 168,
+      "height": 64,
+      "style": {
+        "width": 168,
+        "height": 64
+      },
+      "data": {
+        "label": "节点"
+      },
+      "measured": {
+        "width": 168,
+        "height": 64
+      },
+      "selected": false,
+      "dragging": false,
+      "zIndex": 3,
+      "resizing": false,
+      "parentId": "g-1774496776028-e9eb9d86fa24a8"
+    },
+    {
+      "id": "n-1774496895927-e992cd2201811",
+      "type": "quad",
+      "position": {
+        "x": 624,
+        "y": 416
+      },
+      "width": 168,
+      "height": 64,
+      "style": {
+        "width": 168,
+        "height": 64
+      },
+      "data": {
+        "label": "节点"
+      },
+      "measured": {
+        "width": 168,
+        "height": 64
+      },
+      "selected": false,
+      "dragging": false,
+      "zIndex": 3,
+      "resizing": false,
+      "parentId": "g-1774496776028-e9eb9d86fa24a8"
+    },
+    {
+      "id": "n-1774496899011-ab9c4a6e2b7f18",
+      "type": "quad",
+      "position": {
+        "x": 840,
+        "y": 272
+      },
+      "width": 104,
+      "height": 208,
+      "style": {
+        "width": 104,
+        "height": 208
+      },
+      "data": {
+        "label": "节点"
+      },
+      "measured": {
+        "width": 104,
+        "height": 208
+      },
+      "selected": false,
+      "dragging": false,
+      "zIndex": 3,
+      "resizing": false,
+      "parentId": "g-1774496776028-e9eb9d86fa24a8"
+    },
+    {
+      "id": "g-1774496974384-155831805f7188",
+      "type": "group",
+      "position": {
+        "x": 208,
+        "y": 528
+      },
+      "parentId": "g-1774496776028-e9eb9d86fa24a8",
+      "width": 952,
+      "height": 96,
+      "data": {
+        "title": "编组",
+        "stroke": "#C059FF",
+        "strokeWidth": 1,
+        "fill": "rgba(192,89,255,0.09)",
+        "titleColor": "#C059FF"
+      },
+      "draggable": true,
+      "style": {
+        "width": 952,
+        "height": 96
+      },
+      "zIndex": 2,
+      "measured": {
+        "width": 952,
+        "height": 96
+      },
+      "selected": false,
+      "resizing": false,
+      "dragging": false
+    },
+    {
+      "id": "n-1774497026042-f4d1ccdcaa3a",
+      "type": "quad",
+      "position": {
+        "x": 208,
+        "y": 160
+      },
+      "width": 744,
+      "height": 56,
+      "style": {
+        "width": 744,
+        "height": 56
+      },
+      "data": {
+        "label": "节点",
+        "stroke": "#FFB100",
+        "color": "rgba(255,177,0,0.14)",
+        "labelColor": "#FFB100",
+        "labelFontSize": 16,
+        "title": "节点"
+      },
+      "measured": {
+        "width": 744,
+        "height": 56
+      },
+      "selected": false,
+      "dragging": false,
+      "parentId": "g-1774496776028-e9eb9d86fa24a8",
+      "zIndex": 3,
+      "resizing": false
+    },
+    {
+      "id": "g-1774497158507-4d2b104dd8d7b",
+      "type": "group",
+      "position": {
+        "x": 992,
+        "y": 160
+      },
+      "parentId": "g-1774496776028-e9eb9d86fa24a8",
+      "width": 168,
+      "height": 328,
+      "data": {
+        "title": "编组",
+        "stroke": "#31C262",
+        "strokeWidth": 1,
+        "fill": "rgba(49,194,98,0.13)",
+        "titleColor": "#31C262"
+      },
+      "draggable": true,
+      "style": {
+        "width": 168,
+        "height": 328
+      },
+      "zIndex": 2,
+      "measured": {
+        "width": 168,
+        "height": 328
+      },
+      "selected": false,
+      "dragging": false,
+      "resizing": false
+    },
+    {
+      "id": "n-1774497130949-90dffc8758842",
+      "type": "quad",
+      "position": {
+        "x": 8,
+        "y": 40
+      },
+      "width": 152,
+      "height": 64,
+      "style": {
+        "width": 152,
+        "height": 64
+      },
+      "data": {
+        "label": "节点"
+      },
+      "measured": {
+        "width": 152,
+        "height": 64
+      },
+      "selected": false,
+      "dragging": false,
+      "zIndex": 5,
+      "resizing": false,
+      "parentId": "g-1774497158507-4d2b104dd8d7b"
+    },
+    {
+      "id": "n-1774497135182-f1f196a8474278",
+      "type": "quad",
+      "position": {
+        "x": 8,
+        "y": 112
+      },
+      "width": 152,
+      "height": 64,
+      "style": {
+        "width": 152,
+        "height": 64
+      },
+      "data": {
+        "label": "节点"
+      },
+      "measured": {
+        "width": 152,
+        "height": 64
+      },
+      "selected": false,
+      "dragging": false,
+      "zIndex": 5,
+      "resizing": false,
+      "parentId": "g-1774497158507-4d2b104dd8d7b"
+    },
+    {
+      "id": "n-1774497138066-b0bbe520e53378",
+      "type": "quad",
+      "position": {
+        "x": 8,
+        "y": 184
+      },
+      "width": 152,
+      "height": 64,
+      "style": {
+        "width": 152,
+        "height": 64
+      },
+      "data": {
+        "label": "节点"
+      },
+      "measured": {
+        "width": 152,
+        "height": 64
+      },
+      "selected": false,
+      "dragging": false,
+      "zIndex": 5,
+      "resizing": false,
+      "parentId": "g-1774497158507-4d2b104dd8d7b"
+    },
+    {
+      "id": "n-1774497140304-37ea9d11c06408",
+      "type": "quad",
+      "position": {
+        "x": 8,
+        "y": 256
+      },
+      "width": 152,
+      "height": 64,
+      "style": {
+        "width": 152,
+        "height": 64
+      },
+      "data": {
+        "label": "节点"
+      },
+      "measured": {
+        "width": 152,
+        "height": 64
+      },
+      "selected": false,
+      "dragging": false,
+      "zIndex": 5,
+      "resizing": false,
+      "parentId": "g-1774497158507-4d2b104dd8d7b"
+    },
+    {
+      "id": "n-1774497177556-eb9625b2a97718",
+      "type": "quad",
+      "position": {
+        "x": 448,
+        "y": 568
+      },
+      "width": 224,
+      "height": 48,
+      "style": {
+        "width": 224,
+        "height": 48
+      },
+      "data": {
+        "label": "节点"
+      },
+      "measured": {
+        "width": 224,
+        "height": 48
+      },
+      "selected": false,
+      "dragging": false,
+      "zIndex": 3,
+      "resizing": false,
+      "parentId": "g-1774496776028-e9eb9d86fa24a8"
+    },
+    {
+      "id": "n-1774497180868-da48077835c2d8",
+      "type": "quad",
+      "position": {
+        "x": 680,
+        "y": 568
+      },
+      "width": 224,
+      "height": 48,
+      "style": {
+        "width": 224,
+        "height": 48
+      },
+      "data": {
+        "label": "节点"
+      },
+      "measured": {
+        "width": 224,
+        "height": 48
+      },
+      "selected": false,
+      "dragging": false,
+      "zIndex": 3,
+      "resizing": false,
+      "parentId": "g-1774496776028-e9eb9d86fa24a8"
+    },
+    {
+      "id": "n-1774497183585-66e0bcf0a1b888",
+      "type": "quad",
+      "position": {
+        "x": 912,
+        "y": 568
+      },
+      "width": 240,
+      "height": 48,
+      "style": {
+        "width": 240,
+        "height": 48
+      },
+      "data": {
+        "label": "节点"
+      },
+      "measured": {
+        "width": 240,
+        "height": 48
+      },
+      "selected": false,
+      "dragging": false,
+      "zIndex": 3,
+      "resizing": false,
+      "parentId": "g-1774496776028-e9eb9d86fa24a8"
+    },
+    {
+      "id": "n-1774497194805-d6be1684304fe",
+      "type": "quad",
+      "position": {
+        "x": 216,
+        "y": 568
+      },
+      "width": 224,
+      "height": 48,
+      "style": {
+        "width": 224,
+        "height": 48
+      },
+      "data": {
+        "label": "节点"
+      },
+      "measured": {
+        "width": 224,
+        "height": 48
+      },
+      "selected": false,
+      "dragging": false,
+      "zIndex": 3,
+      "resizing": false,
+      "parentId": "g-1774496776028-e9eb9d86fa24a8"
+    },
+    {
+      "id": "n-1774497260203-72c74e8a34a2a8",
+      "type": "quad",
+      "position": {
+        "x": 208,
+        "y": 664
+      },
+      "width": 952,
+      "height": 48,
+      "style": {
+        "width": 952,
+        "height": 48
+      },
+      "data": {
+        "label": "节点",
+        "stroke": "#4D9EF5",
+        "color": "rgba(77,158,245,0.1)",
+        "labelColor": "#175fab",
+        "labelFontSize": 16,
+        "title": "节点",
+        "shape": "circle"
+      },
+      "measured": {
+        "width": 952,
+        "height": 48
+      },
+      "selected": false,
+      "dragging": false,
+      "parentId": "g-1774496776028-e9eb9d86fa24a8",
+      "zIndex": 3,
+      "resizing": false
+    },
+    {
+      "id": "n-1774500678865-b4911727cfcd6",
+      "type": "asset",
+      "position": {
+        "x": 152,
+        "y": 120
+      },
+      "data": {
+        "assetUrl": "data:image/svg+xml;base64,PHN2ZyB3aWR0aD0iMTgiIGhlaWdodD0iMzQiIHZpZXdCb3g9IjAgMCAxOCAzNCIgZmlsbD0ibm9uZSIgeG1sbnM9Imh0dHA6Ly93d3cudzMub3JnLzIwMDAvc3ZnIj4KPHBhdGggZD0iTTAgOS41TDggMFYzMy41SDQuNVY5LjVIMFoiIGZpbGw9InVybCgjcGFpbnQwX2xpbmVhcl8xXzE1KSIvPgo8cGF0aCBkPSJNMTcuNSAyNEw5LjUgMzMuNUw5LjUgLTYuOTkzODJlLTA3TDEzIC0zLjkzNDAyZS0wN0wxMyAyNEwxNy41IDI0WiIgZmlsbD0idXJsKCNwYWludDFfbGluZWFyXzFfMTUpIi8+CjxkZWZzPgo8bGluZWFyR3JhZGllbnQgaWQ9InBhaW50MF9saW5lYXJfMV8xNSIgeDE9IjQiIHkxPSIwIiB4Mj0iNCIgeTI9IjMzLjUiIGdyYWRpZW50VW5pdHM9InVzZXJTcGFjZU9uVXNlIj4KPHN0b3Agc3RvcC1jb2xvcj0iIzNBOTBGRiIvPgo8c3RvcCBvZmZzZXQ9IjEiIHN0b3AtY29sb3I9IiMzRUE1RkYiIHN0b3Atb3BhY2l0eT0iMCIvPgo8L2xpbmVhckdyYWRpZW50Pgo8bGluZWFyR3JhZGllbnQgaWQ9InBhaW50MV9saW5lYXJfMV8xNSIgeDE9IjEzLjUiIHkxPSIzMy41IiB4Mj0iMTMuNSIgeTI9Ii0zLjQ5NjkxZS0wNyIgZ3JhZGllbnRVbml0cz0idXNlclNwYWNlT25Vc2UiPgo8c3RvcCBzdG9wLWNvbG9yPSIjM0E5MEZGIi8+CjxzdG9wIG9mZnNldD0iMSIgc3RvcC1jb2xvcj0iIzNFQTVGRiIgc3RvcC1vcGFjaXR5PSIwIi8+CjwvbGluZWFyR3JhZGllbnQ+CjwvZGVmcz4KPC9zdmc+Cg==",
+        "assetName": "Group 1.svg",
+        "assetType": "svg",
+        "assetWidth": 84,
+        "assetHeight": 52,
+        "flipX": false,
+        "rotation": 90
+      },
+      "measured": {
+        "width": 84,
+        "height": 52
+      },
+      "selected": false,
+      "resizing": false,
+      "dragging": false,
+      "parentId": "g-1774496840817-1bba8224d32b9",
+      "zIndex": 5
+    },
+    {
+      "id": "n-1774500911394-6a762555e8c25",
+      "type": "asset",
+      "position": {
+        "x": 768,
+        "y": 496
+      },
+      "data": {
+        "assetUrl": "data:image/svg+xml;base64,PHN2ZyB3aWR0aD0iMTYiIGhlaWdodD0iMzQiIHZpZXdCb3g9IjAgMCAxNiAzNCIgZmlsbD0ibm9uZSIgeG1sbnM9Imh0dHA6Ly93d3cudzMub3JnLzIwMDAvc3ZnIj4KPHBhdGggZD0iTTE2IDkuNUgxMS41VjMzLjVINC41VjkuNUgwTDggMEwxNiA5LjVaIiBmaWxsPSJ1cmwoI3BhaW50MF9saW5lYXJfMV8xMSkiLz4KPGRlZnM+CjxsaW5lYXJHcmFkaWVudCBpZD0icGFpbnQwX2xpbmVhcl8xXzExIiB4MT0iMTIiIHkxPSIwIiB4Mj0iMTIiIHkyPSIzMy41IiBncmFkaWVudFVuaXRzPSJ1c2VyU3BhY2VPblVzZSI+CjxzdG9wIHN0b3AtY29sb3I9IiMzQTkwRkYiLz4KPHN0b3Agb2Zmc2V0PSIxIiBzdG9wLWNvbG9yPSIjM0VBNUZGIiBzdG9wLW9wYWNpdHk9IjAiLz4KPC9saW5lYXJHcmFkaWVudD4KPC9kZWZzPgo8L3N2Zz4K",
+        "assetName": "短箭头.svg",
+        "assetType": "svg",
+        "assetWidth": 56,
+        "assetHeight": 68,
+        "colorOverride": {
+          "type": "solid",
+          "color": "#C059FF",
+          "alpha": 100
+        },
+        "assetBuiltinId": "builtin-arrow-short"
+      },
+      "measured": {
+        "width": 56,
+        "height": 68
+      },
+      "selected": false,
+      "dragging": false,
+      "zIndex": 3,
+      "resizing": false,
+      "parentId": "g-1774496776028-e9eb9d86fa24a8"
+    },
+    {
+      "id": "n-1774506550766-117df810ff1aa",
+      "type": "asset",
+      "position": {
+        "x": 352,
+        "y": 632
+      },
+      "data": {
+        "assetUrl": "data:image/svg+xml;utf8,%3Csvg%20width%3D%2253%22%20height%3D%2230%22%20viewBox%3D%220%200%2053%2030%22%20fill%3D%22none%22%20xmlns%3D%22http%3A%2F%2Fwww.w3.org%2F2000%2Fsvg%22%3E%3Cpath%20d%3D%22M35%209.5H30C31.3333%2016%2037.8%2029.2%2053%2030H0C15.2%2029.2%2021.6667%2016%2023%209.5H18L26.5%200L35%209.5Z%22%20fill%3D%22url(%23paint0_linear_arc)%22%2F%3E%3Cdefs%3E%3ClinearGradient%20id%3D%22paint0_linear_arc%22%20x1%3D%2233.125%22%20y1%3D%220%22%20x2%3D%2233.125%22%20y2%3D%2230%22%20gradientUnits%3D%22userSpaceOnUse%22%3E%3Cstop%20stop-color%3D%22%233A90FF%22%2F%3E%3Cstop%20offset%3D%221%22%20stop-color%3D%22%233EA5FF%22%20stop-opacity%3D%220%22%2F%3E%3C%2FlinearGradient%3E%3C%2Fdefs%3E%3C%2Fsvg%3E",
+        "assetName": "弧线箭头",
+        "assetType": "svg",
+        "assetBuiltinId": "builtin-arrow-arc",
+        "assetWidth": 144,
+        "assetHeight": 56,
+        "colorOverride": {
+          "type": "solid",
+          "color": "#4d9ef5",
+          "alpha": 46
+        }
+      },
+      "selected": false,
+      "measured": {
+        "width": 144,
+        "height": 56
+      },
+      "dragging": false,
+      "parentId": "g-1774496776028-e9eb9d86fa24a8",
+      "zIndex": 3,
+      "resizing": false
+    },
+    {
+      "id": "n-1774506709672-12093e9379ed7",
+      "type": "asset",
+      "position": {
+        "x": 1048,
+        "y": 496
+      },
+      "data": {
+        "assetUrl": "data:image/svg+xml;base64,PHN2ZyB3aWR0aD0iMTYiIGhlaWdodD0iMzQiIHZpZXdCb3g9IjAgMCAxNiAzNCIgZmlsbD0ibm9uZSIgeG1sbnM9Imh0dHA6Ly93d3cudzMub3JnLzIwMDAvc3ZnIj4KPHBhdGggZD0iTTE2IDkuNUgxMS41VjMzLjVINC41VjkuNUgwTDggMEwxNiA5LjVaIiBmaWxsPSJ1cmwoI3BhaW50MF9saW5lYXJfMV8xMSkiLz4KPGRlZnM+CjxsaW5lYXJHcmFkaWVudCBpZD0icGFpbnQwX2xpbmVhcl8xXzExIiB4MT0iMTIiIHkxPSIwIiB4Mj0iMTIiIHkyPSIzMy41IiBncmFkaWVudFVuaXRzPSJ1c2VyU3BhY2VPblVzZSI+CjxzdG9wIHN0b3AtY29sb3I9IiMzQTkwRkYiLz4KPHN0b3Agb2Zmc2V0PSIxIiBzdG9wLWNvbG9yPSIjM0VBNUZGIiBzdG9wLW9wYWNpdHk9IjAiLz4KPC9saW5lYXJHcmFkaWVudD4KPC9kZWZzPgo8L3N2Zz4K",
+        "assetName": "短箭头.svg",
+        "assetType": "svg",
+        "assetWidth": 56,
+        "assetHeight": 68,
+        "colorOverride": {
+          "type": "solid",
+          "color": "#C059FF",
+          "alpha": 100
+        },
+        "assetBuiltinId": "builtin-arrow-short"
+      },
+      "measured": {
+        "width": 56,
+        "height": 68
+      },
+      "selected": false,
+      "dragging": false,
+      "zIndex": 3,
+      "resizing": false,
+      "parentId": "g-1774496776028-e9eb9d86fa24a8"
+    },
+    {
+      "id": "n-1774506719730-63e5e98dbd862",
+      "type": "asset",
+      "position": {
+        "x": 376,
+        "y": 496
+      },
+      "data": {
+        "assetUrl": "data:image/svg+xml;base64,PHN2ZyB3aWR0aD0iMTYiIGhlaWdodD0iMzQiIHZpZXdCb3g9IjAgMCAxNiAzNCIgZmlsbD0ibm9uZSIgeG1sbnM9Imh0dHA6Ly93d3cudzMub3JnLzIwMDAvc3ZnIj4KPHBhdGggZD0iTTE2IDkuNUgxMS41VjMzLjVINC41VjkuNUgwTDggMEwxNiA5LjVaIiBmaWxsPSJ1cmwoI3BhaW50MF9saW5lYXJfMV8xMSkiLz4KPGRlZnM+CjxsaW5lYXJHcmFkaWVudCBpZD0icGFpbnQwX2xpbmVhcl8xXzExIiB4MT0iMTIiIHkxPSIwIiB4Mj0iMTIiIHkyPSIzMy41IiBncmFkaWVudFVuaXRzPSJ1c2VyU3BhY2VPblVzZSI+CjxzdG9wIHN0b3AtY29sb3I9IiMzQTkwRkYiLz4KPHN0b3Agb2Zmc2V0PSIxIiBzdG9wLWNvbG9yPSIjM0VBNUZGIiBzdG9wLW9wYWNpdHk9IjAiLz4KPC9saW5lYXJHcmFkaWVudD4KPC9kZWZzPgo8L3N2Zz4K",
+        "assetName": "短箭头.svg",
+        "assetType": "svg",
+        "assetWidth": 56,
+        "assetHeight": 68,
+        "colorOverride": {
+          "type": "solid",
+          "color": "#C059FF",
+          "alpha": 100
+        },
+        "assetBuiltinId": "builtin-arrow-short"
+      },
+      "measured": {
+        "width": 56,
+        "height": 68
+      },
+      "selected": false,
+      "dragging": false,
+      "zIndex": 3,
+      "resizing": false,
+      "parentId": "g-1774496776028-e9eb9d86fa24a8"
+    },
+    {
+      "id": "n-1774506735448-0026ad1313fb8",
+      "type": "asset",
+      "position": {
+        "x": 960,
+        "y": 304
+      },
+      "data": {
+        "assetUrl": "data:image/svg+xml;utf8,%3Csvg%20width%3D%2234%22%20height%3D%2234%22%20viewBox%3D%220%200%2034%2034%22%20fill%3D%22none%22%20xmlns%3D%22http%3A%2F%2Fwww.w3.org%2F2000%2Fsvg%22%3E%3Cpath%20d%3D%22M33.3828%202.13086L18.8223%2016.6914L33.3828%2031.252L31.252%2033.3828L16.6914%2018.8223L2.13086%2033.3828L0%2031.252L14.5605%2016.6914L0%202.13086L2.13086%200L16.6914%2014.5605L31.252%200L33.3828%202.13086Z%22%20fill%3D%22%2355A0FE%22%2F%3E%3C%2Fsvg%3E",
+        "assetName": "交叉符号",
+        "assetType": "svg",
+        "assetBuiltinId": "builtin-symbol-cross",
+        "assetWidth": 24,
+        "assetHeight": 32,
+        "colorOverride": {
+          "type": "solid",
+          "color": "#94a3b8",
+          "alpha": 100
+        }
+      },
+      "selected": false,
+      "measured": {
+        "width": 24,
+        "height": 32
+      },
+      "dragging": false,
+      "zIndex": 3,
+      "resizing": false,
+      "parentId": "g-1774496776028-e9eb9d86fa24a8"
+    },
+    {
+      "id": "n-1774506859488-b5a6632a6b807",
+      "type": "asset",
+      "position": {
+        "x": 608,
+        "y": 632
+      },
+      "data": {
+        "assetUrl": "data:image/svg+xml;utf8,%3Csvg%20width%3D%2253%22%20height%3D%2230%22%20viewBox%3D%220%200%2053%2030%22%20fill%3D%22none%22%20xmlns%3D%22http%3A%2F%2Fwww.w3.org%2F2000%2Fsvg%22%3E%3Cpath%20d%3D%22M35%209.5H30C31.3333%2016%2037.8%2029.2%2053%2030H0C15.2%2029.2%2021.6667%2016%2023%209.5H18L26.5%200L35%209.5Z%22%20fill%3D%22url(%23paint0_linear_arc)%22%2F%3E%3Cdefs%3E%3ClinearGradient%20id%3D%22paint0_linear_arc%22%20x1%3D%2233.125%22%20y1%3D%220%22%20x2%3D%2233.125%22%20y2%3D%2230%22%20gradientUnits%3D%22userSpaceOnUse%22%3E%3Cstop%20stop-color%3D%22%233A90FF%22%2F%3E%3Cstop%20offset%3D%221%22%20stop-color%3D%22%233EA5FF%22%20stop-opacity%3D%220%22%2F%3E%3C%2FlinearGradient%3E%3C%2Fdefs%3E%3C%2Fsvg%3E",
+        "assetName": "弧线箭头",
+        "assetType": "svg",
+        "assetBuiltinId": "builtin-arrow-arc",
+        "assetWidth": 144,
+        "assetHeight": 56,
+        "colorOverride": {
+          "type": "solid",
+          "color": "#4d9ef5",
+          "alpha": 46
+        }
+      },
+      "selected": false,
+      "measured": {
+        "width": 144,
+        "height": 56
+      },
+      "dragging": false,
+      "parentId": "g-1774496776028-e9eb9d86fa24a8",
+      "zIndex": 3,
+      "resizing": false
+    },
+    {
+      "id": "n-1774506864769-a56638f4b1703",
+      "type": "asset",
+      "position": {
+        "x": 864,
+        "y": 632
+      },
+      "data": {
+        "assetUrl": "data:image/svg+xml;utf8,%3Csvg%20width%3D%2253%22%20height%3D%2230%22%20viewBox%3D%220%200%2053%2030%22%20fill%3D%22none%22%20xmlns%3D%22http%3A%2F%2Fwww.w3.org%2F2000%2Fsvg%22%3E%3Cpath%20d%3D%22M35%209.5H30C31.3333%2016%2037.8%2029.2%2053%2030H0C15.2%2029.2%2021.6667%2016%2023%209.5H18L26.5%200L35%209.5Z%22%20fill%3D%22url(%23paint0_linear_arc)%22%2F%3E%3Cdefs%3E%3ClinearGradient%20id%3D%22paint0_linear_arc%22%20x1%3D%2233.125%22%20y1%3D%220%22%20x2%3D%2233.125%22%20y2%3D%2230%22%20gradientUnits%3D%22userSpaceOnUse%22%3E%3Cstop%20stop-color%3D%22%233A90FF%22%2F%3E%3Cstop%20offset%3D%221%22%20stop-color%3D%22%233EA5FF%22%20stop-opacity%3D%220%22%2F%3E%3C%2FlinearGradient%3E%3C%2Fdefs%3E%3C%2Fsvg%3E",
+        "assetName": "弧线箭头",
+        "assetType": "svg",
+        "assetBuiltinId": "builtin-arrow-arc",
+        "assetWidth": 144,
+        "assetHeight": 56,
+        "colorOverride": {
+          "type": "solid",
+          "color": "#4d9ef5",
+          "alpha": 46
+        }
+      },
+      "selected": false,
+      "measured": {
+        "width": 144,
+        "height": 56
+      },
+      "dragging": false,
+      "parentId": "g-1774496776028-e9eb9d86fa24a8",
+      "zIndex": 3,
+      "resizing": false
+    },
+    {
+      "id": "n-1774508350037-090ef80f87c0e8",
+      "type": "quad",
+      "position": {
+        "x": 184,
+        "y": 672
+      },
+      "width": 992,
+      "height": 56,
+      "style": {
+        "width": 992,
+        "height": 56
+      },
+      "data": {
+        "label": "",
+        "stroke": "rgba(77,158,245,0.73)",
+        "color": "rgba(77,158,245,0)",
+        "labelColor": "#175fab",
+        "labelFontSize": 16,
+        "title": "",
+        "shape": "circle"
+      },
+      "measured": {
+        "width": 992,
+        "height": 56
+      },
+      "selected": false,
+      "dragging": false,
+      "parentId": "g-1774496776028-e9eb9d86fa24a8",
+      "zIndex": 3,
       "resizing": false
     }
   ],
@@ -759,15 +2748,21 @@
         "arrowStyle": "end",
         "waypoints": [
           {
-            "x": 2723.9999263351574,
-            "y": -1196.0000548318417
+            "x": 2712,
+            "y": -1288
           },
           {
-            "x": 2452.0000425353883,
-            "y": -1196.0000548318417
+            "x": 2448,
+            "y": -1288
           }
         ],
-        "editingLabel": false
+        "editingLabel": false,
+        "routeRef": {
+          "sourceX": 2715.99560546875,
+          "sourceY": -1323.9973907470703,
+          "targetX": 2388.0025634765625,
+          "targetY": -1251.9974060058594
+        }
       },
       "id": "xy-edge__g-1773732012659-2b6423a0d32858s-bottom-n-1773731856895-899aeac91549bt-top",
       "selected": false,
@@ -815,15 +2810,21 @@
         "arrowStyle": "end",
         "waypoints": [
           {
-            "x": 2723.9999263351574,
-            "y": -1196.0000548318417
+            "x": 2712,
+            "y": -1288
           },
           {
-            "x": 2995.999900188967,
-            "y": -1196.0000548318417
+            "x": 2984,
+            "y": -1288
           }
         ],
-        "editingLabel": false
+        "editingLabel": false,
+        "routeRef": {
+          "sourceX": 2715.99560546875,
+          "sourceY": -1323.9973907470703,
+          "targetX": 3047.9957275390625,
+          "targetY": -1251.9974060058594
+        }
       },
       "id": "xy-edge__g-1773732012659-2b6423a0d32858s-bottom-n-1773731998309-f280cb2636e86t-top",
       "selected": false,
@@ -832,182 +2833,1199 @@
     {
       "type": "bezier",
       "style": {
-        "stroke": "#C059FF",
-        "strokeWidth": 2,
-        "--xy-edge-stroke": "#C059FF"
+        "stroke": "#33D8EA",
+        "strokeWidth": 1.5,
+        "--xy-edge-stroke": "#33D8EA"
       },
-      "markerEnd": {
-        "type": "arrowclosed",
-        "color": "#C059FF"
-      },
-      "source": "n-1774335967534-ee81ac2d6128b8",
-      "sourceHandle": "s-left",
-      "target": "n-1774335964217-a2fe5be2debde",
-      "targetHandle": "t-right",
+      "source": "n-1774493491004-20b90cc1800378",
+      "sourceHandle": "s-right",
+      "target": "n-1774493578660-2878fd015168b8",
+      "targetHandle": "t-left",
       "data": {
-        "arrowStyle": "end",
+        "arrowStyle": "none",
         "editingLabel": false
       },
-      "id": "xy-edge__n-1774335967534-ee81ac2d6128b8s-left-n-1774335964217-a2fe5be2debdet-right",
+      "id": "xy-edge__n-1774493491004-20b90cc1800378s-right-n-1774493578660-2878fd015168b8t-left",
+      "selected": false
+    },
+    {
+      "type": "bezier",
+      "style": {
+        "stroke": "#33D8EA",
+        "strokeWidth": 1.5,
+        "--xy-edge-stroke": "#33D8EA"
+      },
+      "source": "n-1774493491004-20b90cc1800378",
+      "sourceHandle": "s-right",
+      "target": "n-1774493581555-19a71a2b5e4bd",
+      "targetHandle": "t-left",
+      "data": {
+        "arrowStyle": "none",
+        "waypoints": [
+          {
+            "x": 5568,
+            "y": -200
+          },
+          {
+            "x": 5568,
+            "y": -176
+          }
+        ],
+        "routeRef": {
+          "sourceX": 5516.002325946867,
+          "sourceY": -200.00436851987365,
+          "targetX": 5612.00278486018,
+          "targetY": -176.00436851987365
+        },
+        "editingLabel": false
+      },
+      "id": "xy-edge__n-1774493491004-20b90cc1800378s-right-n-1774493581555-19a71a2b5e4bdt-left",
+      "selected": false
+    },
+    {
+      "type": "bezier",
+      "style": {
+        "stroke": "#33D8EA",
+        "strokeWidth": 1.5,
+        "--xy-edge-stroke": "#33D8EA"
+      },
+      "source": "n-1774493491004-20b90cc1800378",
+      "sourceHandle": "s-right",
+      "target": "n-1774493543046-ca20e7e22142a",
+      "targetHandle": "t-left",
+      "data": {
+        "arrowStyle": "none",
+        "editingLabel": false
+      },
+      "id": "xy-edge__n-1774493491004-20b90cc1800378s-right-n-1774493543046-ca20e7e22142at-left",
+      "selected": false
+    },
+    {
+      "type": "bezier",
+      "style": {
+        "stroke": "#33D8EA",
+        "strokeWidth": 1.5,
+        "--xy-edge-stroke": "#33D8EA"
+      },
+      "source": "n-1774493491004-20b90cc1800378",
+      "sourceHandle": "s-right",
+      "target": "n-1774493586619-fc55afa6d0ede",
+      "targetHandle": "t-left",
+      "data": {
+        "arrowStyle": "none",
+        "waypoints": [
+          {
+            "x": 5568,
+            "y": -200
+          },
+          {
+            "x": 5568,
+            "y": -120
+          }
+        ],
+        "routeRef": {
+          "sourceX": 5516.002325946867,
+          "sourceY": -200.00436851987365,
+          "targetX": 5612.00278486018,
+          "targetY": -120.00436851987365
+        },
+        "editingLabel": false
+      },
+      "id": "xy-edge__n-1774493491004-20b90cc1800378s-right-n-1774493586619-fc55afa6d0edet-left",
+      "selected": false
+    },
+    {
+      "type": "bezier",
+      "style": {
+        "stroke": "#33D8EA",
+        "strokeWidth": 2,
+        "--xy-edge-stroke": "#33D8EA"
+      },
+      "source": "n-1774493698321-97baa602ab56e",
+      "sourceHandle": "s-right",
+      "target": "n-1774493698321-cc33d232b495e",
+      "targetHandle": "t-left",
+      "data": {
+        "arrowStyle": "none",
+        "editingLabel": false
+      },
+      "id": "e-1774493698321-0391e8bfe0887",
       "selected": false,
-      "animated": true,
-      "label": "贝塞尔曲线边"
+      "animated": true
+    },
+    {
+      "type": "bezier",
+      "style": {
+        "stroke": "#33D8EA",
+        "strokeWidth": 2,
+        "--xy-edge-stroke": "#33D8EA"
+      },
+      "source": "n-1774493698321-97baa602ab56e",
+      "sourceHandle": "s-right",
+      "target": "n-1774493698321-d62d90f794b7d8",
+      "targetHandle": "t-left",
+      "data": {
+        "arrowStyle": "none",
+        "waypoints": [
+          {
+            "x": 5488,
+            "y": -584
+          },
+          {
+            "x": 5488,
+            "y": -560
+          }
+        ],
+        "routeRef": {
+          "sourceX": 5436.002325946867,
+          "sourceY": -584.0043685198737,
+          "targetX": 5532.00278486018,
+          "targetY": -560.0043685198737
+        },
+        "editingLabel": false
+      },
+      "id": "e-1774493698321-25e4c958722",
+      "selected": false,
+      "animated": true
+    },
+    {
+      "type": "bezier",
+      "style": {
+        "stroke": "#33D8EA",
+        "strokeWidth": 2,
+        "--xy-edge-stroke": "#33D8EA"
+      },
+      "source": "n-1774493698321-97baa602ab56e",
+      "sourceHandle": "s-right",
+      "target": "n-1774493698321-7ab84cbc841928",
+      "targetHandle": "t-left",
+      "data": {
+        "arrowStyle": "none",
+        "editingLabel": false
+      },
+      "id": "e-1774493698321-8a3e64b0590d48",
+      "selected": false,
+      "animated": true
+    },
+    {
+      "type": "bezier",
+      "style": {
+        "stroke": "#33D8EA",
+        "strokeWidth": 2,
+        "--xy-edge-stroke": "#33D8EA"
+      },
+      "source": "n-1774493698321-97baa602ab56e",
+      "sourceHandle": "s-right",
+      "target": "n-1774493698321-39cfe260240988",
+      "targetHandle": "t-left",
+      "data": {
+        "arrowStyle": "none",
+        "waypoints": [
+          {
+            "x": 5488,
+            "y": -584
+          },
+          {
+            "x": 5488,
+            "y": -504
+          }
+        ],
+        "routeRef": {
+          "sourceX": 5436.002325946867,
+          "sourceY": -584.0043685198737,
+          "targetX": 5532.00278486018,
+          "targetY": -504.00436851987365
+        },
+        "editingLabel": false
+      },
+      "id": "e-1774493698321-f71242d9904ad8",
+      "selected": false,
+      "animated": true
+    },
+    {
+      "type": "bezier",
+      "style": {
+        "stroke": "#4D9EF5",
+        "strokeWidth": 2,
+        "--xy-edge-stroke": "#4D9EF5"
+      },
+      "source": "n-1774493318691-0e512682658f98",
+      "sourceHandle": "s-right",
+      "target": "n-1774493698321-97baa602ab56e",
+      "targetHandle": "t-left",
+      "data": {
+        "arrowStyle": "none",
+        "editingLabel": false
+      },
+      "id": "xy-edge__n-1774493318691-0e512682658f98s-right-n-1774493698321-97baa602ab56et-left",
+      "selected": false,
+      "animated": true
+    },
+    {
+      "type": "bezier",
+      "style": {
+        "stroke": "#4D9EF5",
+        "strokeWidth": 1.5,
+        "--xy-edge-stroke": "#4D9EF5"
+      },
+      "source": "n-1774493318691-0e512682658f98",
+      "sourceHandle": "s-right",
+      "target": "n-1774493491004-20b90cc1800378",
+      "targetHandle": "t-left",
+      "data": {
+        "arrowStyle": "none",
+        "editingLabel": false
+      },
+      "id": "xy-edge__n-1774493318691-0e512682658f98s-right-n-1774493491004-20b90cc1800378t-left",
+      "selected": false
+    },
+    {
+      "type": "bezier",
+      "style": {
+        "stroke": "#33D8EA",
+        "strokeWidth": 1.5,
+        "--xy-edge-stroke": "#33D8EA"
+      },
+      "source": "n-1774493885542-140fbc364ed518",
+      "sourceHandle": "s-right",
+      "target": "n-1774493899495-64e75d68206958",
+      "targetHandle": "t-left",
+      "data": {
+        "arrowStyle": "none",
+        "editingLabel": false
+      },
+      "id": "xy-edge__n-1774493885542-140fbc364ed518s-right-n-1774493899495-64e75d68206958t-left",
+      "selected": false
+    },
+    {
+      "type": "bezier",
+      "style": {
+        "stroke": "#33D8EA",
+        "strokeWidth": 1.5,
+        "--xy-edge-stroke": "#33D8EA"
+      },
+      "source": "n-1774493885542-fd062c3c19db28",
+      "sourceHandle": "s-right",
+      "target": "n-1774493899495-64e75d68206958",
+      "targetHandle": "t-left",
+      "data": {
+        "arrowStyle": "none",
+        "editingLabel": false
+      },
+      "id": "xy-edge__n-1774493885542-fd062c3c19db28s-right-n-1774493899495-64e75d68206958t-left",
+      "selected": false
+    },
+    {
+      "type": "bezier",
+      "style": {
+        "stroke": "#33D8EA",
+        "strokeWidth": 1.5,
+        "--xy-edge-stroke": "#33D8EA"
+      },
+      "source": "n-1774493885542-552ba957eb6648",
+      "sourceHandle": "s-right",
+      "target": "n-1774493899495-64e75d68206958",
+      "targetHandle": "t-left",
+      "data": {
+        "arrowStyle": "none",
+        "editingLabel": false
+      },
+      "id": "xy-edge__n-1774493885542-552ba957eb6648s-right-n-1774493899495-64e75d68206958t-left",
+      "selected": false
+    },
+    {
+      "type": "bezier",
+      "style": {
+        "stroke": "#33D8EA",
+        "strokeWidth": 1.5,
+        "--xy-edge-stroke": "#33D8EA"
+      },
+      "source": "n-1774493885542-2462483a768da",
+      "sourceHandle": "s-right",
+      "target": "n-1774493899495-64e75d68206958",
+      "targetHandle": "t-left",
+      "data": {
+        "arrowStyle": "none",
+        "editingLabel": false
+      },
+      "id": "xy-edge__n-1774493885542-2462483a768das-right-n-1774493899495-64e75d68206958t-left",
+      "selected": false
+    },
+    {
+      "type": "bezier",
+      "style": {
+        "stroke": "#33D8EA",
+        "strokeWidth": 1.5,
+        "--xy-edge-stroke": "#33D8EA"
+      },
+      "source": "n-1774493966203-347bd5bac5bec8",
+      "sourceHandle": "s-right",
+      "target": "n-1774493966203-56fcf6454ecf9",
+      "targetHandle": "t-left",
+      "data": {
+        "arrowStyle": "none",
+        "editingLabel": false
+      },
+      "id": "e-1774493966203-640906a14d79d8",
+      "selected": false
+    },
+    {
+      "type": "bezier",
+      "style": {
+        "stroke": "#33D8EA",
+        "strokeWidth": 1.5,
+        "--xy-edge-stroke": "#33D8EA"
+      },
+      "source": "n-1774493966203-4bb1b8f5c22308",
+      "sourceHandle": "s-right",
+      "target": "n-1774493966203-56fcf6454ecf9",
+      "targetHandle": "t-left",
+      "data": {
+        "arrowStyle": "none",
+        "editingLabel": false
+      },
+      "id": "e-1774493966203-26f949fbe27f6",
+      "selected": false
+    },
+    {
+      "type": "bezier",
+      "style": {
+        "stroke": "#33D8EA",
+        "strokeWidth": 1.5,
+        "--xy-edge-stroke": "#33D8EA"
+      },
+      "source": "n-1774493966203-8187f6eb63deb8",
+      "sourceHandle": "s-right",
+      "target": "n-1774493966203-56fcf6454ecf9",
+      "targetHandle": "t-left",
+      "data": {
+        "arrowStyle": "none",
+        "editingLabel": false
+      },
+      "id": "e-1774493966203-7dfadd85f505a",
+      "selected": false
+    },
+    {
+      "type": "bezier",
+      "style": {
+        "stroke": "#33D8EA",
+        "strokeWidth": 1.5,
+        "--xy-edge-stroke": "#33D8EA"
+      },
+      "source": "n-1774493966203-043c185ad4aaf",
+      "sourceHandle": "s-right",
+      "target": "n-1774493966203-56fcf6454ecf9",
+      "targetHandle": "t-left",
+      "data": {
+        "arrowStyle": "none",
+        "editingLabel": false
+      },
+      "id": "e-1774493966203-1f24486fad415",
+      "selected": false
+    },
+    {
+      "type": "bezier",
+      "style": {
+        "stroke": "#4D9EF5",
+        "strokeWidth": 1.5,
+        "--xy-edge-stroke": "#4D9EF5"
+      },
+      "source": "n-1774493899495-64e75d68206958",
+      "sourceHandle": "s-right",
+      "target": "n-1774493318691-0e512682658f98",
+      "targetHandle": "t-left",
+      "data": {
+        "arrowStyle": "none",
+        "waypoints": [
+          {
+            "x": 5016,
+            "y": -592
+          },
+          {
+            "x": 5016,
+            "y": -456
+          }
+        ],
+        "routeRef": {
+          "sourceX": 4956.002645596802,
+          "sourceY": -592.0043142494371,
+          "targetX": 5068.0027989404625,
+          "targetY": -456.0043472885254
+        },
+        "editingLabel": false
+      },
+      "id": "xy-edge__n-1774493899495-64e75d68206958s-right-n-1774493318691-0e512682658f98t-left",
+      "selected": false
+    },
+    {
+      "type": "bezier",
+      "style": {
+        "stroke": "#4D9EF5",
+        "strokeWidth": 1.5,
+        "--xy-edge-stroke": "#4D9EF5"
+      },
+      "source": "n-1774493966203-56fcf6454ecf9",
+      "sourceHandle": "s-right",
+      "target": "n-1774493318691-0e512682658f98",
+      "targetHandle": "t-left",
+      "data": {
+        "arrowStyle": "none",
+        "waypoints": [
+          {
+            "x": 5016,
+            "y": -336
+          },
+          {
+            "x": 5016,
+            "y": -456
+          }
+        ],
+        "routeRef": {
+          "sourceX": 4956.002645596802,
+          "sourceY": -336.0044133667021,
+          "targetX": 5068.0027989404625,
+          "targetY": -456.0043472885254
+        },
+        "editingLabel": false
+      },
+      "id": "xy-edge__n-1774493966203-56fcf6454ecf9s-right-n-1774493318691-0e512682658f98t-left",
+      "selected": false
     },
     {
       "type": "smoothstep",
       "style": {
-        "stroke": "#C059FF",
-        "strokeWidth": 2,
-        "--xy-edge-stroke": "#C059FF"
+        "stroke": "#94a3b8",
+        "strokeWidth": 1
       },
       "markerEnd": {
         "type": "arrowclosed",
-        "color": "#C059FF"
+        "color": "#94a3b8"
       },
-      "source": "n-1774335964217-a2fe5be2debde",
+      "source": "n-1774494177802-70004cacb96598",
       "sourceHandle": "s-bottom",
-      "target": "n-1774336036736-196bbbbc37b288",
+      "target": "n-1774495737289-d1ae024cc11568",
+      "targetHandle": "t-top",
+      "data": {
+        "arrowStyle": "end",
+        "semanticType": "normal",
+        "sourceLaneId": "g-1774494235894-08b4e51c9215f",
+        "targetLaneId": "g-1774494235894-08b4e51c9215f",
+        "editingLabel": false
+      },
+      "id": "xy-edge__n-1774494177802-70004cacb96598s-bottom-n-1774495737289-d1ae024cc11568t-top",
+      "selected": false
+    },
+    {
+      "type": "smoothstep",
+      "style": {
+        "stroke": "#94a3b8",
+        "strokeWidth": 1
+      },
+      "markerEnd": {
+        "type": "arrowclosed",
+        "color": "#94a3b8"
+      },
+      "source": "n-1774495765056-cc2ddbb7b902b8",
+      "sourceHandle": "s-top",
+      "target": "n-1774494458006-692a060d95cfb8",
+      "targetHandle": "t-bottom",
+      "data": {
+        "arrowStyle": "end",
+        "semanticType": "normal",
+        "sourceLaneId": "g-1774494235894-08b4e51c9215f",
+        "targetLaneId": "g-1774494235894-08b4e51c9215f",
+        "editingLabel": false
+      },
+      "id": "xy-edge__n-1774495765056-cc2ddbb7b902b8s-top-n-1774494458006-692a060d95cfb8t-bottom",
+      "selected": false
+    },
+    {
+      "type": "smoothstep",
+      "style": {
+        "stroke": "#94a3b8",
+        "strokeWidth": 1
+      },
+      "markerEnd": {
+        "type": "arrowclosed",
+        "color": "#94a3b8"
+      },
+      "source": "n-1774495770363-f1dd99ee3c82e8",
+      "sourceHandle": "s-right",
+      "target": "n-1774495765056-cc2ddbb7b902b8",
       "targetHandle": "t-left",
       "data": {
         "arrowStyle": "end",
+        "semanticType": "normal",
+        "sourceLaneId": "g-1774494235894-08b4e51c9215f",
+        "targetLaneId": "g-1774494235894-08b4e51c9215f",
         "editingLabel": false
       },
-      "id": "xy-edge__n-1774335964217-a2fe5be2debdes-bottom-n-1774336036736-196bbbbc37b288t-left",
-      "selected": false,
-      "label": "直角边"
+      "id": "xy-edge__n-1774495770363-f1dd99ee3c82e8s-right-n-1774495765056-cc2ddbb7b902b8t-left",
+      "selected": false
     },
     {
       "type": "smoothstep",
       "style": {
-        "stroke": "#FF6A00",
-        "strokeWidth": 1,
-        "--xy-edge-stroke": "#FF6A00"
+        "stroke": "#94a3b8",
+        "strokeWidth": 1
       },
       "markerEnd": {
         "type": "arrowclosed",
-        "color": "#FF6A00"
+        "color": "#94a3b8"
       },
-      "source": "n-1774336100867-60a7aa3c84064",
-      "sourceHandle": "s-top",
-      "target": "n-1774336119418-353f51abf86fe8",
+      "source": "n-1774495737289-d1ae024cc11568",
+      "sourceHandle": "s-right",
+      "target": "n-1774495770363-f1dd99ee3c82e8",
+      "targetHandle": "t-left",
+      "data": {
+        "arrowStyle": "end",
+        "semanticType": "normal",
+        "sourceLaneId": "g-1774494235894-08b4e51c9215f",
+        "targetLaneId": "g-1774494235894-08b4e51c9215f",
+        "editingLabel": false,
+        "labelSettingsUnlocked": true,
+        "labelTextOnly": true
+      },
+      "id": "xy-edge__n-1774495737289-d1ae024cc11568s-right-n-1774495770363-f1dd99ee3c82e8t-left",
+      "selected": false,
+      "label": "Yes"
+    },
+    {
+      "type": "smoothstep",
+      "style": {
+        "stroke": "#94a3b8",
+        "strokeWidth": 1
+      },
+      "markerEnd": {
+        "type": "arrowclosed",
+        "color": "#94a3b8"
+      },
+      "source": "n-1774495778506-86c52944564fd8",
+      "sourceHandle": "s-right",
+      "target": "n-1774495801079-bd0023afba349",
+      "targetHandle": "t-left",
+      "data": {
+        "arrowStyle": "end",
+        "semanticType": "normal",
+        "sourceLaneId": "g-1774494235894-08b4e51c9215f",
+        "targetLaneId": "g-1774494235894-08b4e51c9215f",
+        "editingLabel": false,
+        "labelSettingsUnlocked": true
+      },
+      "id": "xy-edge__n-1774495778506-86c52944564fd8s-right-n-1774495801079-bd0023afba349t-left",
+      "selected": false,
+      "label": "No"
+    },
+    {
+      "type": "smoothstep",
+      "style": {
+        "stroke": "#94a3b8",
+        "strokeWidth": 1
+      },
+      "markerEnd": {
+        "type": "arrowclosed",
+        "color": "#94a3b8"
+      },
+      "source": "n-1774495778506-86c52944564fd8",
+      "sourceHandle": "s-bottom",
+      "target": "n-1774495836221-af76731a796608",
       "targetHandle": "t-top",
       "data": {
-        "arrowStyle": "end"
+        "arrowStyle": "end",
+        "semanticType": "normal",
+        "sourceLaneId": "g-1774494235894-08b4e51c9215f",
+        "targetLaneId": "g-1774494235894-08b4e51c9215f",
+        "editingLabel": false,
+        "labelSettingsUnlocked": true
       },
-      "id": "xy-edge__n-1774336100867-60a7aa3c84064s-top-n-1774336119418-353f51abf86fe8t-top",
+      "id": "xy-edge__n-1774495778506-86c52944564fd8s-bottom-n-1774495836221-af76731a796608t-top",
+      "selected": false,
+      "label": "Yes"
+    },
+    {
+      "type": "smoothstep",
+      "style": {
+        "stroke": "#94a3b8",
+        "strokeWidth": 1
+      },
+      "markerEnd": {
+        "type": "arrowclosed",
+        "color": "#94a3b8"
+      },
+      "source": "n-1774495737289-d1ae024cc11568",
+      "sourceHandle": "s-bottom",
+      "target": "n-1774495778506-86c52944564fd8",
+      "targetHandle": "t-top",
+      "data": {
+        "arrowStyle": "end",
+        "semanticType": "normal",
+        "sourceLaneId": "g-1774494235894-08b4e51c9215f",
+        "targetLaneId": "g-1774494235894-08b4e51c9215f",
+        "editingLabel": false,
+        "labelSettingsUnlocked": true
+      },
+      "id": "xy-edge__n-1774495737289-d1ae024cc11568s-bottom-n-1774495778506-86c52944564fd8t-top",
+      "selected": false,
+      "label": "No"
+    },
+    {
+      "type": "smoothstep",
+      "style": {
+        "stroke": "#94a3b8",
+        "strokeWidth": 1
+      },
+      "markerEnd": {
+        "type": "arrowclosed",
+        "color": "#94a3b8"
+      },
+      "source": "n-1774495801079-bd0023afba349",
+      "sourceHandle": "s-right",
+      "target": "n-1774495765056-cc2ddbb7b902b8",
+      "targetHandle": "t-bottom",
+      "data": {
+        "arrowStyle": "end",
+        "semanticType": "normal",
+        "sourceLaneId": "g-1774494235894-08b4e51c9215f",
+        "targetLaneId": "g-1774494235894-08b4e51c9215f",
+        "waypoints": [
+          {
+            "x": 1680,
+            "y": -504
+          },
+          {
+            "x": 1680,
+            "y": -616
+          },
+          {
+            "x": 1712,
+            "y": -616
+          }
+        ],
+        "routeRef": {
+          "sourceX": 1596.002242642226,
+          "sourceY": -504.0044072791168,
+          "targetX": 1712.0022346050418,
+          "targetY": -644.0026690594851
+        },
+        "editingLabel": false
+      },
+      "id": "xy-edge__n-1774495801079-bd0023afba349s-right-n-1774495765056-cc2ddbb7b902b8t-bottom",
       "selected": false
+    },
+    {
+      "type": "smoothstep",
+      "style": {
+        "stroke": "#94a3b8",
+        "strokeWidth": 1
+      },
+      "markerEnd": {
+        "type": "arrowclosed",
+        "color": "#94a3b8"
+      },
+      "source": "n-1774495806807-9664ba3facb9e8",
+      "sourceHandle": "s-left",
+      "target": "n-1774495765056-cc2ddbb7b902b8",
+      "targetHandle": "t-bottom",
+      "data": {
+        "arrowStyle": "end",
+        "semanticType": "normal",
+        "sourceLaneId": "g-1774494235894-08b4e51c9215f",
+        "targetLaneId": "g-1774494235894-08b4e51c9215f",
+        "waypoints": [
+          {
+            "x": 1744,
+            "y": -504
+          },
+          {
+            "x": 1744,
+            "y": -616
+          },
+          {
+            "x": 1712,
+            "y": -616
+          }
+        ],
+        "routeRef": {
+          "sourceX": 1804.0027288918545,
+          "sourceY": -504.0044072791168,
+          "targetX": 1712.0022346050418,
+          "targetY": -644.0026690594851
+        },
+        "editingLabel": false
+      },
+      "id": "xy-edge__n-1774495806807-9664ba3facb9e8s-left-n-1774495765056-cc2ddbb7b902b8t-bottom",
+      "selected": false
+    },
+    {
+      "type": "smoothstep",
+      "style": {
+        "stroke": "#94a3b8",
+        "strokeWidth": 1
+      },
+      "markerEnd": {
+        "type": "arrowclosed",
+        "color": "#94a3b8"
+      },
+      "source": "n-1774495836221-af76731a796608",
+      "sourceHandle": "s-right",
+      "target": "n-1774495866012-7d369f5f3c5168",
+      "targetHandle": "t-left",
+      "data": {
+        "arrowStyle": "end",
+        "semanticType": "normal",
+        "sourceLaneId": "g-1774494235894-08b4e51c9215f",
+        "targetLaneId": "g-1774494235894-08b4e51c9215f",
+        "editingLabel": false
+      },
+      "id": "xy-edge__n-1774495836221-af76731a796608s-right-n-1774495866012-7d369f5f3c5168t-left",
+      "selected": false
+    },
+    {
+      "type": "smoothstep",
+      "style": {
+        "stroke": "#94a3b8",
+        "strokeWidth": 1
+      },
+      "markerEnd": {
+        "type": "arrowclosed",
+        "color": "#94a3b8"
+      },
+      "source": "n-1774495866012-7d369f5f3c5168",
+      "sourceHandle": "s-right",
+      "target": "n-1774495806807-9664ba3facb9e8",
+      "targetHandle": "t-bottom",
+      "data": {
+        "arrowStyle": "end",
+        "semanticType": "normal",
+        "sourceLaneId": "g-1774494235894-08b4e51c9215f",
+        "targetLaneId": "g-1774494235894-08b4e51c9215f",
+        "waypoints": [
+          {
+            "x": 1600,
+            "y": -336
+          },
+          {
+            "x": 1888,
+            "y": -336
+          }
+        ],
+        "routeRef": {
+          "sourceX": 1596.0023781004834,
+          "sourceY": -336.00432514070695,
+          "targetX": 1888.0023855901727,
+          "targetY": -476.0026204420325
+        },
+        "editingLabel": false,
+        "labelSettingsUnlocked": true
+      },
+      "id": "xy-edge__n-1774495866012-7d369f5f3c5168s-right-n-1774495806807-9664ba3facb9e8t-bottom",
+      "selected": false,
+      "label": "No"
+    },
+    {
+      "type": "smoothstep",
+      "style": {
+        "stroke": "#94a3b8",
+        "strokeWidth": 1
+      },
+      "markerEnd": {
+        "type": "arrowclosed",
+        "color": "#94a3b8"
+      },
+      "source": "n-1774495866012-7d369f5f3c5168",
+      "sourceHandle": "s-bottom",
+      "target": "n-1774495887961-6f2e53cd3f29b8",
+      "targetHandle": "t-top",
+      "data": {
+        "arrowStyle": "end",
+        "semanticType": "normal",
+        "sourceLaneId": "g-1774494235894-08b4e51c9215f",
+        "targetLaneId": "g-1774494235894-08b4e51c9215f",
+        "editingLabel": false,
+        "labelSettingsUnlocked": true
+      },
+      "id": "xy-edge__n-1774495866012-7d369f5f3c5168s-bottom-n-1774495887961-6f2e53cd3f29b8t-top",
+      "selected": false,
+      "label": "Yes"
+    },
+    {
+      "type": "smoothstep",
+      "style": {
+        "stroke": "#94a3b8",
+        "strokeWidth": 1
+      },
+      "markerEnd": {
+        "type": "arrowclosed",
+        "color": "#94a3b8"
+      },
+      "source": "n-1774495887961-6f2e53cd3f29b8",
+      "sourceHandle": "s-right",
+      "target": "n-1774495925138-5673d2ed7f409",
+      "targetHandle": "t-left",
+      "data": {
+        "arrowStyle": "end",
+        "semanticType": "normal",
+        "sourceLaneId": "g-1774494235894-08b4e51c9215f",
+        "targetLaneId": "g-1774494235894-08b4e51c9215f",
+        "editingLabel": false
+      },
+      "id": "xy-edge__n-1774495887961-6f2e53cd3f29b8s-right-n-1774495925138-5673d2ed7f409t-left",
+      "selected": false
+    },
+    {
+      "type": "smoothstep",
+      "style": {
+        "stroke": "#94a3b8",
+        "strokeWidth": 1
+      },
+      "markerEnd": {
+        "type": "arrowclosed",
+        "color": "#94a3b8"
+      },
+      "source": "n-1774495925138-5673d2ed7f409",
+      "sourceHandle": "s-right",
+      "target": "n-1774495920413-915f190228c0a8",
+      "targetHandle": "t-left",
+      "data": {
+        "arrowStyle": "end",
+        "semanticType": "normal",
+        "sourceLaneId": "g-1774494235894-08b4e51c9215f",
+        "targetLaneId": "g-1774494235894-08b4e51c9215f",
+        "editingLabel": false
+      },
+      "id": "xy-edge__n-1774495925138-5673d2ed7f409s-right-n-1774495920413-915f190228c0a8t-left",
+      "selected": false
+    },
+    {
+      "type": "smoothstep",
+      "style": {
+        "stroke": "#94a3b8",
+        "strokeWidth": 1
+      },
+      "markerEnd": {
+        "type": "arrowclosed",
+        "color": "#94a3b8"
+      },
+      "source": "n-1774495920413-915f190228c0a8",
+      "sourceHandle": "s-top",
+      "target": "n-1774495881295-c18152f4881788",
+      "targetHandle": "t-bottom",
+      "data": {
+        "arrowStyle": "end",
+        "semanticType": "normal",
+        "sourceLaneId": "g-1774494235894-08b4e51c9215f",
+        "targetLaneId": "g-1774494235894-08b4e51c9215f",
+        "editingLabel": false
+      },
+      "id": "xy-edge__n-1774495920413-915f190228c0a8s-top-n-1774495881295-c18152f4881788t-bottom",
+      "selected": false
+    },
+    {
+      "type": "smoothstep",
+      "style": {
+        "stroke": "#94a3b8",
+        "strokeWidth": 1
+      },
+      "markerEnd": {
+        "type": "arrowclosed",
+        "color": "#94a3b8"
+      },
+      "source": "n-1774495881295-c18152f4881788",
+      "sourceHandle": "s-left",
+      "target": "n-1774495925138-5673d2ed7f409",
+      "targetHandle": "t-top",
+      "data": {
+        "arrowStyle": "end",
+        "semanticType": "normal",
+        "sourceLaneId": "g-1774494235894-08b4e51c9215f",
+        "targetLaneId": "g-1774494235894-08b4e51c9215f",
+        "waypoints": [
+          {
+            "x": 1968,
+            "y": -336
+          },
+          {
+            "x": 1968,
+            "y": -272
+          },
+          {
+            "x": 1896,
+            "y": -272
+          }
+        ],
+        "routeRef": {
+          "sourceX": 2020.0027159719957,
+          "sourceY": -336.00438305415815,
+          "targetX": 1896.0025989834076,
+          "targetY": -195.99741447915054
+        },
+        "editingLabel": false,
+        "labelSettingsUnlocked": true
+      },
+      "id": "xy-edge__n-1774495881295-c18152f4881788s-left-n-1774495925138-5673d2ed7f409t-top",
+      "selected": false,
+      "label": "No"
+    },
+    {
+      "type": "smoothstep",
+      "style": {
+        "stroke": "#94a3b8",
+        "strokeWidth": 1
+      },
+      "markerEnd": {
+        "type": "arrowclosed",
+        "color": "#94a3b8"
+      },
+      "source": "n-1774495881295-c18152f4881788",
+      "sourceHandle": "s-top",
+      "target": "n-1774495824807-1443ffa82c6d68",
+      "targetHandle": "t-bottom",
+      "data": {
+        "arrowStyle": "end",
+        "semanticType": "normal",
+        "sourceLaneId": "g-1774494235894-08b4e51c9215f",
+        "targetLaneId": "g-1774494235894-08b4e51c9215f",
+        "editingLabel": false,
+        "labelSettingsUnlocked": true
+      },
+      "id": "xy-edge__n-1774495881295-c18152f4881788s-top-n-1774495824807-1443ffa82c6d68t-bottom",
+      "selected": false,
+      "label": "Yes"
+    },
+    {
+      "type": "smoothstep",
+      "style": {
+        "stroke": "#94a3b8",
+        "strokeWidth": 1
+      },
+      "markerEnd": {
+        "type": "arrowclosed",
+        "color": "#94a3b8"
+      },
+      "source": "n-1774495824807-1443ffa82c6d68",
+      "sourceHandle": "s-top",
+      "target": "n-1774495821560-7e3f1435b4ec28",
+      "targetHandle": "t-bottom",
+      "data": {
+        "arrowStyle": "end",
+        "semanticType": "normal",
+        "sourceLaneId": "g-1774494235894-08b4e51c9215f",
+        "targetLaneId": "g-1774494235894-08b4e51c9215f",
+        "editingLabel": false
+      },
+      "id": "xy-edge__n-1774495824807-1443ffa82c6d68s-top-n-1774495821560-7e3f1435b4ec28t-bottom",
+      "selected": false
+    },
+    {
+      "type": "smoothstep",
+      "style": {
+        "stroke": "#94a3b8",
+        "strokeWidth": 1
+      },
+      "markerEnd": {
+        "type": "arrowclosed",
+        "color": "#94a3b8"
+      },
+      "source": "n-1774495806807-9664ba3facb9e8",
+      "sourceHandle": "s-top",
+      "target": "n-1774494481564-6c6dd07d92f55",
+      "targetHandle": "t-bottom",
+      "data": {
+        "arrowStyle": "end",
+        "semanticType": "normal",
+        "sourceLaneId": "g-1774494235894-08b4e51c9215f",
+        "targetLaneId": "g-1774494235894-08b4e51c9215f",
+        "editingLabel": false
+      },
+      "id": "xy-edge__n-1774495806807-9664ba3facb9e8s-top-n-1774494481564-6c6dd07d92f55t-bottom",
+      "selected": false
+    },
+    {
+      "type": "smoothstep",
+      "style": {
+        "stroke": "#94a3b8",
+        "strokeWidth": 1
+      },
+      "markerEnd": {
+        "type": "arrowclosed",
+        "color": "#94a3b8"
+      },
+      "source": "n-1774495821560-7e3f1435b4ec28",
+      "sourceHandle": "s-top",
+      "target": "n-1774495625993-512557f5706318",
+      "targetHandle": "t-bottom",
+      "data": {
+        "arrowStyle": "end",
+        "semanticType": "crossLane",
+        "sourceLaneId": "g-1774494264633-42376afd8e96a",
+        "targetLaneId": "g-1774494235894-08b4e51c9215f"
+      },
+      "id": "xy-edge__n-1774495821560-7e3f1435b4ec28s-top-n-1774495625993-512557f5706318t-bottom",
+      "selected": false
+    },
+    {
+      "type": "bezier",
+      "style": {
+        "stroke": "#33D8EA",
+        "strokeWidth": 1.5,
+        "--xy-edge-stroke": "#33D8EA"
+      },
+      "source": "n-1774496694846-d4f1e96b222d1",
+      "sourceHandle": "s-right",
+      "target": "n-1774493899495-64e75d68206958",
+      "targetHandle": "t-left",
+      "data": {
+        "arrowStyle": "none",
+        "semanticType": "normal",
+        "sourceLaneId": "g-1774496661571-ac13054f3aaf5",
+        "targetLaneId": "g-1774496661571-ac13054f3aaf5"
+      },
+      "id": "xy-edge__n-1774496694846-d4f1e96b222d1s-right-n-1774493899495-64e75d68206958t-left",
+      "selected": false
+    },
+    {
+      "type": "bezier",
+      "style": {
+        "stroke": "#33D8EA",
+        "strokeWidth": 1,
+        "--xy-edge-stroke": "#33D8EA"
+      },
+      "source": "n-1774496735227-965894efcd2388",
+      "sourceHandle": "s-right",
+      "target": "n-1774493966203-56fcf6454ecf9",
+      "targetHandle": "t-left",
+      "data": {
+        "arrowStyle": "none",
+        "semanticType": "normal",
+        "sourceLaneId": "g-1774496661571-ac13054f3aaf5",
+        "targetLaneId": "g-1774496661571-ac13054f3aaf5"
+      },
+      "id": "xy-edge__n-1774496735227-965894efcd2388s-right-n-1774493966203-56fcf6454ecf9t-left",
+      "selected": false
+    },
+    {
+      "type": "bezier",
+      "style": {
+        "stroke": "#4D9EF5",
+        "strokeWidth": 1,
+        "--xy-edge-stroke": "#4D9EF5"
+      },
+      "markerEnd": {
+        "type": "arrowclosed",
+        "color": "#4D9EF5"
+      },
+      "source": "n-1774496837729-22b108ce7aeef",
+      "sourceHandle": "s-right",
+      "target": "n-1774496899011-ab9c4a6e2b7f18",
+      "targetHandle": "t-left",
+      "data": {
+        "arrowStyle": "end",
+        "semanticType": "normal",
+        "sourceLaneId": "g-1774496776028-e9eb9d86fa24a8",
+        "targetLaneId": "g-1774496776028-e9eb9d86fa24a8"
+      },
+      "id": "xy-edge__n-1774496837729-22b108ce7aeefs-right-n-1774496899011-ab9c4a6e2b7f18t-left",
+      "selected": false,
+      "animated": true
+    },
+    {
+      "type": "bezier",
+      "style": {
+        "stroke": "#4D9EF5",
+        "strokeWidth": 1,
+        "--xy-edge-stroke": "#4D9EF5"
+      },
+      "markerEnd": {
+        "type": "arrowclosed",
+        "color": "#4D9EF5"
+      },
+      "source": "n-1774496893674-e2fcbfc2c8a948",
+      "sourceHandle": "s-right",
+      "target": "n-1774496899011-ab9c4a6e2b7f18",
+      "targetHandle": "t-left",
+      "data": {
+        "arrowStyle": "end",
+        "semanticType": "normal",
+        "sourceLaneId": "g-1774496776028-e9eb9d86fa24a8",
+        "targetLaneId": "g-1774496776028-e9eb9d86fa24a8"
+      },
+      "id": "xy-edge__n-1774496893674-e2fcbfc2c8a948s-right-n-1774496899011-ab9c4a6e2b7f18t-left",
+      "selected": false,
+      "animated": true
+    },
+    {
+      "type": "bezier",
+      "style": {
+        "stroke": "#4D9EF5",
+        "strokeWidth": 1,
+        "--xy-edge-stroke": "#4D9EF5"
+      },
+      "markerEnd": {
+        "type": "arrowclosed",
+        "color": "#4D9EF5"
+      },
+      "source": "n-1774496895927-e992cd2201811",
+      "sourceHandle": "s-right",
+      "target": "n-1774496899011-ab9c4a6e2b7f18",
+      "targetHandle": "t-left",
+      "data": {
+        "arrowStyle": "end",
+        "semanticType": "normal",
+        "sourceLaneId": "g-1774496776028-e9eb9d86fa24a8",
+        "targetLaneId": "g-1774496776028-e9eb9d86fa24a8"
+      },
+      "id": "xy-edge__n-1774496895927-e992cd2201811s-right-n-1774496899011-ab9c4a6e2b7f18t-left",
+      "selected": false,
+      "animated": true
     }
   ],
   "viewport": {
-    "x": -1679.4825159921857,
-    "y": 1358.626412337623,
-    "zoom": 0.9333018389193255
+    "x": -301.1840906833853,
+    "y": 996.5688140882833,
+    "zoom": 0.5
   },
   "assets": [
     {
-      "id": "asset-1773627654343-0",
-      "name": "ChatGPT Image 2026年3月13日 17_28_13 1.png",
-      "type": "png",
-      "fileName": "asset-1773627654343-0.png",
-      "path": "assets/asset-1773627654343-0.png"
-    },
-    {
-      "id": "asset-1773652422323-0",
-      "name": "双向箭头.png",
-      "type": "png",
-      "fileName": "asset-1773652422323-0.png",
-      "path": "assets/asset-1773652422323-0.png"
-    },
-    {
-      "id": "asset-1773804890758-0",
-      "name": "箭头.svg",
+      "id": "builtin-arrow-short",
+      "name": "短箭头",
       "type": "svg",
-      "fileName": "asset-1773804890758-0.svg",
-      "path": "assets/asset-1773804890758-0.svg"
+      "fileName": "builtin-arrow-short.svg",
+      "path": "assets/builtin-arrow-short.svg"
     },
     {
-      "id": "asset-1773811577254-0",
-      "name": "截屏2026-03-18 13.26.05.png",
-      "type": "png",
-      "fileName": "asset-1773811577254-0.png",
-      "path": "assets/asset-1773811577254-0.png"
-    },
-    {
-      "id": "asset-1773627598239-3",
-      "name": "箭头.svg",
+      "id": "builtin-arrow-double",
+      "name": "双向箭头",
       "type": "svg",
-      "fileName": "asset-1773627598239-3.svg",
-      "path": "assets/asset-1773627598239-3.svg"
+      "fileName": "builtin-arrow-double.svg",
+      "path": "assets/builtin-arrow-double.svg"
     },
     {
-      "id": "asset-1773974121246-0",
-      "name": "截屏2026-03-20 10.35.07.png",
-      "type": "png",
-      "fileName": "asset-1773974121246-0.png",
-      "path": "assets/asset-1773974121246-0.png"
-    },
-    {
-      "id": "asset-1773975041043-0",
-      "name": "直线 1（边框）.svg",
+      "id": "builtin-arrow-long",
+      "name": "长箭头",
       "type": "svg",
-      "fileName": "asset-1773975041043-0.svg",
-      "path": "assets/asset-1773975041043-0.svg"
+      "fileName": "builtin-arrow-long.svg",
+      "path": "assets/builtin-arrow-long.svg"
     },
     {
-      "id": "asset-1773975695091-0",
-      "name": "3E01872A-4E5E-404E-BEFD-9DCF4AED23E3.png",
-      "type": "png",
-      "fileName": "asset-1773975695091-0.png",
-      "path": "assets/asset-1773975695091-0.png"
+      "id": "builtin-arrow-arc",
+      "name": "弧线箭头",
+      "type": "svg",
+      "fileName": "builtin-arrow-arc.svg",
+      "path": "assets/builtin-arrow-arc.svg"
     },
     {
-      "id": "asset-1773811673306-1",
-      "name": "截屏2026-03-18 13.27.19.png",
-      "type": "png",
-      "fileName": "asset-1773811673306-1.png",
-      "path": "assets/asset-1773811673306-1.png"
+      "id": "builtin-symbol-plus",
+      "name": "加号",
+      "type": "svg",
+      "fileName": "builtin-symbol-plus.svg",
+      "path": "assets/builtin-symbol-plus.svg"
     },
     {
-      "id": "asset-1773811673306-2",
-      "name": "截屏2026-03-18 13.27.30.png",
-      "type": "png",
-      "fileName": "asset-1773811673306-2.png",
-      "path": "assets/asset-1773811673306-2.png"
-    },
-    {
-      "id": "asset-1773811673306-0",
-      "name": "截屏2026-03-18 13.26.05.png",
-      "type": "png",
-      "fileName": "asset-1773811673306-0.png",
-      "path": "assets/asset-1773811673306-0.png"
-    },
-    {
-      "id": "asset-1773811721143-0",
-      "name": "A6359877-BE20-4BD8-B7CF-4B497045769C.png",
-      "type": "png",
-      "fileName": "asset-1773811721143-0.png",
-      "path": "assets/asset-1773811721143-0.png"
-    },
-    {
-      "id": "asset-1773811810116-0",
-      "name": "截屏2026-03-18 13.29.23.png",
-      "type": "png",
-      "fileName": "asset-1773811810116-0.png",
-      "path": "assets/asset-1773811810116-0.png"
-    },
-    {
-      "id": "asset-1773811863192-0",
-      "name": "截屏2026-03-18 13.30.51.png",
-      "type": "png",
-      "fileName": "asset-1773811863192-0.png",
-      "path": "assets/asset-1773811863192-0.png"
-    },
-    {
-      "id": "asset-1773812101622-0",
-      "name": "截屏2026-03-18 13.34.26.png",
-      "type": "png",
-      "fileName": "asset-1773812101622-0.png",
-      "path": "assets/asset-1773812101622-0.png"
+      "id": "builtin-symbol-cross",
+      "name": "交叉符号",
+      "type": "svg",
+      "fileName": "builtin-symbol-cross.svg",
+      "path": "assets/builtin-symbol-cross.svg"
     }
   ]
 }

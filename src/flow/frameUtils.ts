@@ -15,8 +15,8 @@ export function getNodeSizeLike(node: AnyNode & { measured?: any; style?: any })
   height: number
 } {
   const w = (node.measured as any)?.width ?? (node as any).width ?? (node.style as any)?.width ?? 160
-  const h = (node.measured as any)?.height ?? (node as any).height ?? (node.style as any)?.height ?? 44
-  return { width: Number(w) || 160, height: Number(h) || 44 }
+  const h = (node.measured as any)?.height ?? (node as any).height ?? (node.style as any)?.height ?? 48
+  return { width: Number(w) || 160, height: Number(h) || 48 }
 }
 
 /** 由 parentId 链向上累加得到节点全局坐标（仅依赖 position/parentId，不依赖 ReactFlow 内部测量） */
@@ -110,4 +110,3 @@ export function shouldDetachFromParent(
   const center = getRectCenter(childRect)
   return !isPointInsideRect(center.x, center.y, parentRect)
 }
-

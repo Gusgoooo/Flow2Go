@@ -59,9 +59,18 @@ B --> C{菱形}`)
 A -->|提交| B`)
     const out = transpileMermaidFlowIR(parsed.ir!, 'raw', parsed.warnings)
     const edgeOp = (out.data!.operations as GraphOperation[]).find((o: GraphOperation) => o.op === 'graph.createEdge') as any
-    expect(edgeOp.params.type).toBe('bezier')
+    expect(edgeOp.params.type).toBe('smoothstep')
     expect(edgeOp.params.arrowStyle).toBe('end')
     expect(edgeOp.params.label).toBe('提交')
+  })
+
+  it('infers decision nodes (diamond) from title', () => {
+    const parsed = parseMermaidFlowchart(`flowchart LR
+d[是否支付成功] --> a[继续支付]`)
+    const out = transpileMermaidFlowIR(parsed.ir!, 'raw', parsed.warnings)
+    const nodeOps = out.data!.operations.filter((o) => o.op === 'graph.createNodeQuad') as any[]
+    const byId = new Map(nodeOps.map((o) => [o.params.id, o.params]))
+    expect(byId.get('d')!.shape).toBe('diamond')
   })
 
   it('implicitly creates missing nodes referenced by edges', () => {

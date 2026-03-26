@@ -233,6 +233,92 @@ describe('swimlane routing - normal chain regression', () => {
       expect((e.data as any)?.semanticType).toBe('normal')
     }
   })
+
+  it('uses smoothedge for same-row skip edges to avoid intermediate nodes', () => {
+    const lane: Node<any> = {
+      id: 'lane-system',
+      type: 'group',
+      position: { x: 100, y: 100 },
+      width: 700,
+      height: 180,
+      data: { role: 'lane', laneMeta: { laneAxis: 'row' } },
+    } as any
+    const a: Node<any> = {
+      id: 'A',
+      type: 'quad',
+      parentId: lane.id,
+      position: { x: 20, y: 60 },
+      width: 140,
+      height: 56,
+      data: { laneId: lane.id, semanticType: 'task', nodeOrder: 1 },
+    } as any
+    const b: Node<any> = {
+      id: 'B',
+      type: 'quad',
+      parentId: lane.id,
+      position: { x: 220, y: 60 },
+      width: 140,
+      height: 56,
+      data: { laneId: lane.id, semanticType: 'task', nodeOrder: 2 },
+    } as any
+    const c: Node<any> = {
+      id: 'C',
+      type: 'quad',
+      parentId: lane.id,
+      position: { x: 420, y: 60 },
+      width: 140,
+      height: 56,
+      data: { laneId: lane.id, semanticType: 'task', nodeOrder: 3 },
+    } as any
+
+    const edges: Edge<any>[] = [{ id: 'e-ac', source: 'A', target: 'C', type: 'bezier', data: {} } as any]
+
+    const routed = rerouteSwimlaneEdges([lane, a, b, c], edges)
+    const [edge] = routed
+
+    expect(edge.type).toBe('smoothstep')
+    expect(edge.sourceHandle).toBe('s-right')
+    expect(edge.targetHandle).toBe('t-left')
+    expect((edge.data as any)?.semanticType).toBe('normal')
+  })
+})
+
+describe('swimlane routing - decision handles', () => {
+  it('uses left/right handles and smoothstep for edges from a diamond decision node', () => {
+    const lane: Node<any> = {
+      id: 'lane-system',
+      type: 'group',
+      position: { x: 100, y: 100 },
+      width: 700,
+      height: 180,
+      data: { role: 'lane', laneMeta: { laneAxis: 'row' } },
+    } as any
+    const decision: Node<any> = {
+      id: 'D',
+      type: 'quad',
+      parentId: lane.id,
+      position: { x: 220, y: 60 },
+      width: 140,
+      height: 56,
+      data: { laneId: lane.id, semanticType: 'decision', nodeOrder: 1 },
+    } as any
+    const task: Node<any> = {
+      id: 'T',
+      type: 'quad',
+      parentId: lane.id,
+      position: { x: 20, y: 60 },
+      width: 140,
+      height: 56,
+      data: { laneId: lane.id, semanticType: 'task', nodeOrder: 2 },
+    } as any
+
+    const edges: Edge<any>[] = [{ id: 'e-dt', source: 'D', target: 'T', type: 'bezier', data: {} } as any]
+    const [edge] = rerouteSwimlaneEdges([lane, decision, task], edges)
+
+    // target 在左侧，所以 decision 应该从左侧输出
+    expect(edge.type).toBe('smoothstep')
+    expect(edge.sourceHandle).toBe('s-left')
+  })
 })
 
 describe('swimlane routing - return flow handles', () => {
@@ -285,14 +371,14 @@ describe('swimlane routing - return flow handles', () => {
     expect((edge.data as any)?.autoReturnFlowAnimated).toBe(true)
   })
 
-  it('uses vertical loop for long backward edge to avoid horizontal folding', () => {
+  it('avoids in/out same handle for long backward edge', () => {
     const edges: Edge<any>[] = [
       { id: 'e-ca', source: 'C', target: 'A', type: 'bezier', data: {} } as any,
     ]
 
     const [edge] = rerouteSwimlaneEdges([lane, a, b, c], edges)
-    expect(edge.sourceHandle).toBe('s-bottom')
-    expect(edge.targetHandle).toBe('t-bottom')
+    expect(edge.sourceHandle).toBe('s-left')
+    expect(edge.targetHandle).toBe('t-right')
     expect((edge.data as any)?.semanticType).toBe('returnFlow')
     expect(edge.animated).toBe(true)
     expect((edge.data as any)?.autoReturnFlowAnimated).toBe(true)

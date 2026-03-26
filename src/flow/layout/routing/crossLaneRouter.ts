@@ -4,6 +4,7 @@ import {
   getNodeExclusionBoxes,
 } from './exclusion'
 import { buildPolylineSignature } from './polylineUtils'
+import { snapPointToGrid } from '../../grid'
 
 type Point = { x: number; y: number }
 type LaneAxis = 'row' | 'column'
@@ -20,8 +21,8 @@ export type RouteCrossLaneArgs = {
   occupiedRouteSignatures?: Set<string>
 }
 
-const SOURCE_LEAD = 20
-const TARGET_LEAD = 20
+const SOURCE_LEAD = 24
+const TARGET_LEAD = 24
 const CORRIDOR_SHIFT_STEP = 24
 const MAX_CORRIDOR_SHIFT_TRIES = 12
 
@@ -97,7 +98,7 @@ export function routeCrossLaneEdge(args: RouteCrossLaneArgs): {
     let firstNodeSafe: Point[] | null = null
     let selectedUnique = false
     for (const corridorY of candidateYs) {
-      const polyline = buildRowCorridorPolyline(src, tgt, sourceLeadY, targetLeadY, corridorY)
+      const polyline = buildRowCorridorPolyline(src, tgt, sourceLeadY, targetLeadY, corridorY).map((p) => snapPointToGrid(p))
       bestPoints = polyline
       const hasCollision = doesPolylineIntersectAnyExclusionBox(
         polyline,
@@ -129,7 +130,7 @@ export function routeCrossLaneEdge(args: RouteCrossLaneArgs): {
     let firstNodeSafe: Point[] | null = null
     let selectedUnique = false
     for (let i = 0; i <= MAX_CORRIDOR_SHIFT_TRIES; i++) {
-      const polyline = buildColumnCorridorPolyline(src, tgt, moveRight, corridorX)
+      const polyline = buildColumnCorridorPolyline(src, tgt, moveRight, corridorX).map((p) => snapPointToGrid(p))
       bestPoints = polyline
       const hasCollision = doesPolylineIntersectAnyExclusionBox(
         polyline,

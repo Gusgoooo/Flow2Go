@@ -36,6 +36,7 @@ import {
   AlignHorizontalDistributeCenter,
   KeyRound,
   InspectionPanel,
+  MessageCircleQuestion,
   Settings2,
   SquareDashedKanban,
   Square,
@@ -71,6 +72,15 @@ import {
 } from './aiDiagram'
 import { AI_SCENE_CAPSULE_PRESETS } from './aiPromptPresets'
 import { AiSceneCapsules } from './AiSceneCapsules'
+import { BUILTIN_ASSETS } from './builtinAssets'
+import {
+  GRID_UNIT,
+  HANDLE_ALIGN_UNIT,
+  normalizeNodeGeometryToGrid,
+  normalizeWaypointsToGrid,
+  snapSizeByNodeType,
+  snapPointToGrid,
+} from './grid'
 // overview 示例入口已移除
 
 export type AssetItem = {
@@ -119,9 +129,102 @@ type FlowEdge = Edge<{
 }> & { labelStyle?: EdgeLabelStyle }
 
 const DND_MIME = 'application/flow2go-node'
-const GRID: [number, number] = [8, 8]
+const GRID: [number, number] = [GRID_UNIT, GRID_UNIT]
 const GROUP_PADDING = GRID[0] // 群组内边距跟随网格
 const GROUP_TITLE_H = GRID[1] * 4 // 标题高度为网格的4倍 (32px)
+const DEFAULT_QUAD_SIZE = { w: 160, h: 48 }
+const DEFAULT_TEXT_SIZE = { w: 64, h: 32 }
+const DEFAULT_GROUP_SIZE = { w: 640, h: 416 }
+
+function normalizeNodesToGrid(nodeList: FlowNode[]): FlowNode[] {
+  return nodeList.map((node) => normalizeNodeGeometryToGrid(node) as FlowNode)
+}
+
+const BUILTIN_ASSET_SIZE_BY_ID = new Map(
+  BUILTIN_ASSETS.map((asset) => [
+    asset.id,
+    {
+      width: asset.width ?? HANDLE_ALIGN_UNIT * 2,
+      height: asset.height ?? HANDLE_ALIGN_UNIT * 2,
+      name: asset.name,
+    },
+  ]),
+)
+
+function normalizeBuiltinAssetName(name: string): string {
+  return name.trim().toLowerCase().replace(/\.(svg|png)$/i, '')
+}
+
+const BUILTIN_ASSET_ID_BY_NAME = new Map(
+  BUILTIN_ASSETS.map((asset) => [normalizeBuiltinAssetName(asset.name), asset.id]),
+)
+
+function normalizeBuiltinAssetNodeSizes(nodeList: FlowNode[]): FlowNode[] {
+  return nodeList.map((node) => {
+    if (node.type !== 'asset') return node
+    const dataAny = (node.data ?? {}) as any
+    const byId = typeof dataAny.assetBuiltinId === 'string' ? BUILTIN_ASSET_SIZE_BY_ID.get(dataAny.assetBuiltinId) : undefined
+    const inferredBuiltinId =
+      typeof dataAny.assetBuiltinId === 'string'
+        ? dataAny.assetBuiltinId
+        : typeof dataAny.assetName === 'string'
+          ? BUILTIN_ASSET_ID_BY_NAME.get(normalizeBuiltinAssetName(dataAny.assetName))
+          : undefined
+    const byName = inferredBuiltinId ? BUILTIN_ASSET_SIZE_BY_ID.get(inferredBuiltinId) : undefined
+    const builtinMeta = byId ?? byName
+    const widthRaw = Number(dataAny.assetWidth)
+    const heightRaw = Number(dataAny.assetHeight)
+    const minWidth = GRID_UNIT
+    const minHeight = GRID_UNIT
+    const nextWidth = Number.isFinite(widthRaw)
+      ? Math.max(widthRaw, builtinMeta?.width ?? minWidth, minWidth)
+      : (builtinMeta?.width ?? minWidth)
+    const nextHeight = Number.isFinite(heightRaw)
+      ? Math.max(heightRaw, builtinMeta?.height ?? minHeight, minHeight)
+      : (builtinMeta?.height ?? minHeight)
+    const nextBuiltinId = inferredBuiltinId ?? dataAny.assetBuiltinId
+
+    if (
+      nextWidth === widthRaw &&
+      nextHeight === heightRaw &&
+      (nextBuiltinId == null || nextBuiltinId === dataAny.assetBuiltinId)
+    ) {
+      return node
+    }
+
+    return {
+      ...node,
+      data: {
+        ...dataAny,
+        ...(nextBuiltinId ? { assetBuiltinId: nextBuiltinId } : {}),
+        assetWidth: nextWidth,
+        assetHeight: nextHeight,
+      },
+    }
+  })
+}
+
+function mergeBuiltinAssets(existing: AssetItem[]): AssetItem[] {
+  const builtinIds = new Set(BUILTIN_ASSETS.map((a) => a.id))
+  const customAssets = existing.filter((a) => !builtinIds.has(a.id))
+  return [...BUILTIN_ASSETS, ...customAssets]
+}
+
+function normalizeEdgesToGrid(edgeList: FlowEdge[]): FlowEdge[] {
+  return edgeList.map((edge) => {
+    const dataAny = (edge.data ?? {}) as any
+    const waypoints = dataAny.waypoints as Array<{ x: number; y: number }> | undefined
+    if (!Array.isArray(waypoints) || waypoints.length === 0) return edge
+    const snapped = normalizeWaypointsToGrid(waypoints)
+    return {
+      ...edge,
+      data: {
+        ...(edge.data ?? {}),
+        waypoints: snapped,
+      },
+    }
+  })
+}
 
 function hexToRgbColor(hex: string): { r: number; g: number; b: number } | null {
   const t = hex.replace(/^#/, '').trim()
@@ -532,6 +635,7 @@ function EditorInner({ onBackHome, source, previewSnapshot, readOnly: _readOnly 
   const [aiGenElapsedSec, setAiGenElapsedSec] = useState(0)
   const [aiModalError, setAiModalError] = useState<string | null>(null)
   const aiModalAbortRef = useRef<AbortController | null>(null)
+  const [handleLimitNotices, setHandleLimitNotices] = useState<Array<{ id: string; message: string }>>([])
   const [aiModalModel, setAiModalModel] = useState<string>(() => {
     try {
       return localStorage.getItem('flow2go-openrouter-model') || 'qwen/qwen3-max-thinking'
@@ -601,8 +705,10 @@ function EditorInner({ onBackHome, source, previewSnapshot, readOnly: _readOnly 
   const initial = useMemo(() => {
     // 预览模式：使用 previewSnapshot
     if (previewSnapshot) {
-      const nodes = (previewSnapshot.nodes as FlowNode[]) ?? []
-      const edges = (previewSnapshot.edges as FlowEdge[]) ?? []
+      const nodes = normalizeBuiltinAssetNodeSizes(
+        normalizeNodesToGrid(((previewSnapshot.nodes as FlowNode[]) ?? [])),
+      )
+      const edges = normalizeEdgesToGrid(((previewSnapshot.edges as FlowEdge[]) ?? []))
       return {
         nodes,
         edges,
@@ -620,8 +726,10 @@ function EditorInner({ onBackHome, source, previewSnapshot, readOnly: _readOnly 
       (snap.nodes.length > 0 || snap.edges.length > 0)
     if (!hasValidSnapshot) {
       // 用户第一次打开产品：使用默认示例并居中展示
-      const nodes = (defaultExample.nodes as FlowNode[]) ?? []
-      const edges = (defaultExample.edges as FlowEdge[]) ?? []
+      const nodes = normalizeBuiltinAssetNodeSizes(
+        normalizeNodesToGrid(((defaultExample.nodes as FlowNode[]) ?? [])),
+      )
+      const edges = normalizeEdgesToGrid(((defaultExample.edges as FlowEdge[]) ?? []))
       return {
         nodes,
         edges,
@@ -631,8 +739,10 @@ function EditorInner({ onBackHome, source, previewSnapshot, readOnly: _readOnly 
       }
     }
     const snap2 = (proj as any).snapshot
-    const nodes = (snap2.nodes as FlowNode[]) ?? []
-    const edges = (snap2.edges as FlowEdge[]) ?? []
+    const nodes = normalizeBuiltinAssetNodeSizes(
+      normalizeNodesToGrid(((snap2.nodes as FlowNode[]) ?? [])),
+    )
+    const edges = normalizeEdgesToGrid(((snap2.edges as FlowEdge[]) ?? []))
     return {
       nodes,
       edges,
@@ -660,7 +770,7 @@ function EditorInner({ onBackHome, source, previewSnapshot, readOnly: _readOnly 
       const hasH = typeof h === 'number' && h > 0
       if (hasW && hasH) return n
       const safeW = hasW ? w! : 160
-      const safeH = hasH ? h! : 120
+      const safeH = hasH ? h! : 128
       return {
         ...n,
         width: safeW,
@@ -685,11 +795,12 @@ function EditorInner({ onBackHome, source, previewSnapshot, readOnly: _readOnly 
     if (typeof window === 'undefined') return []
     try {
       const raw = window.localStorage.getItem('flow2go-assets')
-      if (!raw) return []
+      if (!raw) return [...BUILTIN_ASSETS]
       const parsed = JSON.parse(raw) as AssetItem[]
-      return Array.isArray(parsed) ? parsed : []
+      if (!Array.isArray(parsed)) return [...BUILTIN_ASSETS]
+      return mergeBuiltinAssets(parsed)
     } catch {
-      return []
+      return [...BUILTIN_ASSETS]
     }
   })
 
@@ -798,8 +909,8 @@ function EditorInner({ onBackHome, source, previewSnapshot, readOnly: _readOnly 
   const applyAiDraftDirect = useCallback(
     (draft: AiDiagramDraft) => {
       const snap = normalizeAiDiagramToSnapshot(draft)
-      const nextNodes = (snap.nodes ?? []) as FlowNode[]
-      const nextEdges = (snap.edges ?? []) as FlowEdge[]
+      const nextNodes = normalizeNodesToGrid(((snap.nodes ?? []) as FlowNode[]))
+      const nextEdges = normalizeEdgesToGrid(((snap.edges ?? []) as FlowEdge[]))
       setNodes(nextNodes)
       setEdges(nextEdges)
       pushHistory(nextNodes, nextEdges, 'ai-apply')
@@ -819,7 +930,7 @@ function EditorInner({ onBackHome, source, previewSnapshot, readOnly: _readOnly 
     historyRef.current.future.push(current)
     setNodes(prev.nodes)
     setEdges(prev.edges)
-    rf.setViewport(prev.viewport, { duration: 0 })
+    // 仅撤销图内容，不干预当前视角（缩放/平移不计入撤销体验）
   }, [edges, nodes, rf])
 
   const redo = useCallback(() => {
@@ -830,7 +941,7 @@ function EditorInner({ onBackHome, source, previewSnapshot, readOnly: _readOnly 
     historyRef.current.past.push(current)
     setNodes(next.nodes)
     setEdges(next.edges)
-    rf.setViewport(next.viewport, { duration: 0 })
+    // 仅重做图内容，不干预当前视角（缩放/平移不计入撤销体验）
   }, [edges, nodes, rf])
 
   // ---------- Context Menu ----------
@@ -933,10 +1044,54 @@ function EditorInner({ onBackHome, source, previewSnapshot, readOnly: _readOnly 
       setEdges((eds) => {
         const srcNode = nodes.find((n) => n.id === conn.source)
         const tgtNode = nodes.find((n) => n.id === conn.target)
+        const byId = new Map(nodes.map((n) => [n.id, n]))
+        const absolutePosition = (node: FlowNode): { x: number; y: number } => {
+          let x = node.position?.x ?? 0
+          let y = node.position?.y ?? 0
+          let cur = node
+          const seen = new Set<string>()
+          while (cur.parentId) {
+            if (seen.has(cur.id)) break
+            seen.add(cur.id)
+            const parent = byId.get(cur.parentId)
+            if (!parent) break
+            x += parent.position?.x ?? 0
+            y += parent.position?.y ?? 0
+            cur = parent
+          }
+          return { x, y }
+        }
+        const nodeSize = (n: FlowNode) => {
+          const style = (n.style ?? {}) as any
+          const width = n.measured?.width ?? n.width ?? (typeof style?.width === 'number' ? style.width : 140)
+          const height = n.measured?.height ?? n.height ?? (typeof style?.height === 'number' ? style.height : 56)
+          return { width, height }
+        }
+        const centerX = (n: FlowNode) => {
+          const abs = absolutePosition(n)
+          const s = nodeSize(n)
+          return abs.x + s.width / 2
+        }
+        const isDecisionNode = (n: FlowNode | undefined) => {
+          const semantic = String((n?.data as any)?.semanticType ?? '')
+          const shape = String((n?.data as any)?.shape ?? '')
+          return semantic === 'decision' || shape === 'diamond'
+        }
+        const decisionBranchFromLabel = (text: unknown): 'yes' | 'no' | null => {
+          const raw = typeof text === 'string' ? text.trim() : ''
+          if (!raw) return null
+          const lower = raw.toLowerCase()
+          if (lower === 'yes' || /\byes\b/i.test(lower) || /(是|通过|同意|成功|允许|确认)/.test(raw)) return 'yes'
+          if (lower === 'no' || /\bno\b/i.test(lower) || /(否|不通过|不同意|失败|拒绝|取消)/.test(raw)) return 'no'
+          return null
+        }
         const srcLaneId = ((srcNode?.data as any)?.laneId ?? srcNode?.parentId) as string | undefined
         const tgtLaneId = ((tgtNode?.data as any)?.laneId ?? tgtNode?.parentId) as string | undefined
         const inSwimlane = Boolean(srcLaneId || tgtLaneId)
         const isCrossLane = Boolean(srcLaneId && tgtLaneId && srcLaneId !== tgtLaneId)
+        const srcMindSide = ((srcNode?.data as any)?.mindMapSide ?? null) as 'L' | 'R' | null
+        const tgtMindSide = ((tgtNode?.data as any)?.mindMapSide ?? null) as 'L' | 'R' | null
+        const inMindMap = Boolean(srcMindSide || tgtMindSide)
         let defaultSourceHandle: string = 's-right'
         let defaultTargetHandle: string = 't-left'
 
@@ -945,12 +1100,6 @@ function EditorInner({ onBackHome, source, previewSnapshot, readOnly: _readOnly 
           const tgtLane = nodes.find((n) => n.id === tgtLaneId)
 
           if (srcLane && tgtLane) {
-            const nodeSize = (n: FlowNode) => {
-              const style = (n.style ?? {}) as any
-              const width = n.measured?.width ?? n.width ?? (typeof style?.width === 'number' ? style.width : 140)
-              const height = n.measured?.height ?? n.height ?? (typeof style?.height === 'number' ? style.height : 56)
-              return { width, height }
-            }
             const center = (n: FlowNode) => {
               const s = nodeSize(n)
               return { x: (n.position?.x ?? 0) + s.width / 2, y: (n.position?.y ?? 0) + s.height / 2 }
@@ -975,20 +1124,105 @@ function EditorInner({ onBackHome, source, previewSnapshot, readOnly: _readOnly 
             }
           }
         }
+
+        if (!inSwimlane && inMindMap && srcNode && tgtNode) {
+          if (srcMindSide && tgtMindSide) {
+            defaultSourceHandle = srcMindSide === 'R' ? 's-right' : 's-left'
+            defaultTargetHandle = tgtMindSide === 'R' ? 't-left' : 't-right'
+          } else {
+            const rightward = centerX(tgtNode) >= centerX(srcNode)
+            defaultSourceHandle = rightward ? 's-right' : 's-left'
+            defaultTargetHandle = rightward ? 't-left' : 't-right'
+          }
+        }
+        const parseSideFromHandle = (handleId: unknown): 'top' | 'right' | 'bottom' | 'left' | null => {
+          if (typeof handleId !== 'string') return null
+          if (handleId.endsWith('-top')) return 'top'
+          if (handleId.endsWith('-right')) return 'right'
+          if (handleId.endsWith('-bottom')) return 'bottom'
+          if (handleId.endsWith('-left')) return 'left'
+          return null
+        }
+
+        const countEdgesOnNodeSide = (nodeId: string, side: 'top' | 'right' | 'bottom' | 'left'): number => {
+          let c = 0
+          for (const e of eds) {
+            if ((e as any).source === nodeId) {
+              const s = parseSideFromHandle((e as any).sourceHandle)
+              if (s === side) c += 1
+            }
+            if ((e as any).target === nodeId) {
+              const t = parseSideFromHandle((e as any).targetHandle)
+              if (t === side) c += 1
+            }
+          }
+          return c
+        }
+
+        if (srcNode && tgtNode && isDecisionNode(srcNode)) {
+          const outgoing = eds.filter((e) => String((e as any).source) === String(conn.source))
+          const outLeft = outgoing.filter((e) => parseSideFromHandle((e as any).sourceHandle) === 'left').length
+          const outRight = outgoing.filter((e) => parseSideFromHandle((e as any).sourceHandle) === 'right').length
+          const branchHint =
+            decisionBranchFromLabel((conn as any)?.label) ??
+            decisionBranchFromLabel((conn as any)?.data?.label) ??
+            decisionBranchFromLabel((conn as any)?.data?.condition)
+
+          let chosen: 'left' | 'right'
+          if (branchHint === 'yes') chosen = 'right'
+          else if (branchHint === 'no') chosen = 'left'
+          else if (outLeft === 0 && outRight > 0) chosen = 'left'
+          else if (outRight === 0 && outLeft > 0) chosen = 'right'
+          else chosen = centerX(tgtNode) >= centerX(srcNode) ? 'right' : 'left'
+
+          defaultSourceHandle = `s-${chosen}`
+          defaultTargetHandle = centerX(tgtNode) >= centerX(srcNode) ? 't-left' : 't-right'
+        }
+
+        const effectiveSourceHandle = conn.sourceHandle ?? defaultSourceHandle
+        const effectiveTargetHandle = conn.targetHandle ?? defaultTargetHandle
+        const srcSide = parseSideFromHandle(effectiveSourceHandle)
+        const tgtSide = parseSideFromHandle(effectiveTargetHandle)
+
+        const MAX_USER_EDGES_PER_HANDLE = 5
+        if (inSwimlane && srcSide && tgtSide) {
+          const srcCount = countEdgesOnNodeSide(String(conn.source), srcSide)
+          const tgtCount = countEdgesOnNodeSide(String(conn.target), tgtSide)
+          if (srcCount >= MAX_USER_EDGES_PER_HANDLE || tgtCount >= MAX_USER_EDGES_PER_HANDLE) {
+            const sideLabel = `${srcSide}/${tgtSide}`
+            const most = Math.max(srcCount, tgtCount)
+            const id = `${Date.now()}-${Math.random().toString(16).slice(2)}`
+            setHandleLimitNotices((prev) => {
+              const nextNotices = [...prev, { id, message: `该 handle 最多允许 ${MAX_USER_EDGES_PER_HANDLE} 条边（已达 ${most}，${sideLabel}），无法再连接` }]
+              return nextNotices.slice(-5)
+            })
+            window.setTimeout(() => {
+              setHandleLimitNotices((prev) => prev.filter((n) => n.id !== id))
+            }, 3500)
+            return eds
+          }
+        }
+
         const next = addEdge(
           {
             ...conn,
-            ...(inSwimlane
+            ...(inSwimlane || inMindMap
               ? {
                   sourceHandle: conn.sourceHandle ?? defaultSourceHandle,
                   targetHandle: conn.targetHandle ?? defaultTargetHandle,
                 }
               : {}),
-            type: inSwimlane ? (isCrossLane ? 'smoothstep' : 'bezier') : 'bezier',
-            style: { stroke: DEFAULT_EDGE_COLOR, strokeWidth: 2 },
+            // 思维导图沿用 bezier；其它默认正交 smoothstep。
+            type: inMindMap ? 'bezier' : 'smoothstep',
+            style: { stroke: DEFAULT_EDGE_COLOR, strokeWidth: 1 },
             markerEnd: { type: MarkerType.ArrowClosed, color: DEFAULT_EDGE_COLOR },
             data: {
               arrowStyle: 'end',
+              ...(inMindMap
+                ? {
+                    layoutProfile: 'mind-map',
+                  }
+                : {}),
               ...(inSwimlane
                 ? {
                     semanticType: isCrossLane ? 'crossLane' : 'normal',
@@ -1019,10 +1253,7 @@ function EditorInner({ onBackHome, source, previewSnapshot, readOnly: _readOnly 
   const isGroupNode = useCallback((n: FlowNode) => n.type === 'group', [])
 
   const snapPos = useCallback(
-    (pos: { x: number; y: number }) => ({
-      x: Math.round(pos.x / GRID[0]) * GRID[0],
-      y: Math.round(pos.y / GRID[1]) * GRID[1],
-    }),
+    (pos: { x: number; y: number }) => snapPointToGrid(pos),
     [],
   )
 
@@ -1206,21 +1437,61 @@ function EditorInner({ onBackHome, source, previewSnapshot, readOnly: _readOnly 
       // 否则 edge 的可拖拽段会“留在原地”，表现为只能上下调整、无法左右跟随整体移动。
       const currentNodes = nodesEdgesRef.current.nodes
       const oldById = new Map(currentNodes.map((n) => [n.id, n]))
+      const normalizedChanges = changes.map((change) => {
+        const ch = change as any
+        if (ch?.type === 'position' && ch.position) {
+          return {
+            ...ch,
+            position: snapPointToGrid(ch.position),
+          } as NodeChange<FlowNode>
+        }
+        if (ch?.type === 'dimensions' && ch.dimensions) {
+          const nodeType = oldById.get(ch.id as string)?.type
+          const widthRaw = Number(ch.dimensions.width)
+          const heightRaw = Number(ch.dimensions.height)
+          const width = Number.isFinite(widthRaw) ? snapSizeByNodeType(widthRaw, nodeType) : ch.dimensions.width
+          const height = Number.isFinite(heightRaw) ? snapSizeByNodeType(heightRaw, nodeType) : ch.dimensions.height
+          return {
+            ...ch,
+            dimensions: {
+              ...ch.dimensions,
+              width,
+              height,
+            },
+          } as NodeChange<FlowNode>
+        }
+        return change
+      })
+      const selectionOnly = (normalizedChanges as any[]).length > 0 && (normalizedChanges as any[]).every((ch) => ch?.type === 'select')
       
       // Resize（拖拽左上角/边缘把手）时，React Flow 往往会同时发 position + dimensions 变更。
       // 这时不应该平移 edge.waypoints，否则会出现边的折线“诡异变化/抖动”。
       const resizingIds = new Set<string>()
-      for (const ch of changes as any[]) {
+      for (const ch of normalizedChanges as any[]) {
         if (ch?.type !== 'dimensions') continue
         if (typeof ch.id === 'string') resizingIds.add(ch.id)
       }
 
       const deltaById = new Map<string, { dx: number; dy: number }>()
-      for (const ch of changes as any[]) {
+      const isDescendantOfAnyResizingGroup = (nodeId: string): boolean => {
+        if (!resizingIds.size) return false
+        let cur = oldById.get(nodeId)
+        const seen = new Set<string>()
+        while (cur?.parentId && !seen.has(cur.parentId)) {
+          if (resizingIds.has(cur.parentId)) return true
+          seen.add(cur.parentId)
+          cur = oldById.get(cur.parentId)
+        }
+        return false
+      }
+      for (const ch of normalizedChanges as any[]) {
         if (ch?.type !== 'position') continue
         const id = ch.id as string | undefined
         if (!id) continue
         if (resizingIds.has(id)) continue
+        // Group resize from top/left emits synthetic child position updates to keep absolute position fixed.
+        // Those deltas are local-space only and must not drive edge waypoint translation.
+        if (isDescendantOfAnyResizingGroup(id)) continue
         const old = oldById.get(id)
         const nextPos = ch.position as { x: number; y: number } | undefined
         if (!old || !nextPos) continue
@@ -1275,7 +1546,7 @@ function EditorInner({ onBackHome, source, previewSnapshot, readOnly: _readOnly 
             const wps = dataAny.waypoints as Array<{ x: number; y: number }> | undefined
             if (!wps || wps.length === 0) return e
             changed = true
-            const moved = wps.map((p) => ({ x: p.x + dx, y: p.y + dy }))
+            const moved = normalizeWaypointsToGrid(wps.map((p) => ({ x: p.x + dx, y: p.y + dy })))
             const routeRef = dataAny.routeRef as
               | { sourceX: number; sourceY: number; targetX: number; targetY: number }
               | undefined
@@ -1301,41 +1572,10 @@ function EditorInner({ onBackHome, source, previewSnapshot, readOnly: _readOnly 
       }
 
       setNodes((prev) => {
-        let next = applyNodeChanges(changes, prev)
+        let next = applyNodeChanges(normalizedChanges, prev)
+        next = normalizeNodesToGrid(next)
 
-        // 群组 resize（尤其拖左上角把手）时，React Flow 会改变群组的 position。
-        // 为了实现“调整群组大小不影响内部边/节点位置”，需要把群组的位移反向分摊给【直接子节点】，
-        // 让子树整体绝对位置不变（只改变群组边框）。注意：不能对所有子孙都反向移动，否则嵌套群组会被重复补偿而错位。
-        if (resizingIds.size) {
-          const prevById = new Map(prev.map((n) => [n.id, n]))
-          const nextById = new Map(next.map((n) => [n.id, n]))
-
-          // 只处理群组节点的 resize
-          const groupDeltaById = new Map<string, { dx: number; dy: number }>()
-          for (const id of resizingIds) {
-            const before = prevById.get(id)
-            const after = nextById.get(id)
-            if (!before || !after) continue
-            if (before.type !== 'group' || after.type !== 'group') continue
-            const dx = after.position.x - before.position.x
-            const dy = after.position.y - before.position.y
-            if (dx !== 0 || dy !== 0) groupDeltaById.set(id, { dx, dy })
-          }
-
-          if (groupDeltaById.size) {
-            next = next.map((n) => {
-              // 只对被 resize 群组的【直接子节点】做反向移动；群组自身保持变更后的 position/dimensions
-              const pid = n.parentId
-              if (pid && groupDeltaById.has(pid)) {
-                const d = groupDeltaById.get(pid)!
-                return { ...n, position: { x: n.position.x - d.dx, y: n.position.y - d.dy } }
-              }
-              return n
-            })
-          }
-        }
-
-        pushHistory(next, edges, 'nodes')
+        if (!selectionOnly) pushHistory(next, edges, 'nodes')
         return next
       })
     },
@@ -1344,9 +1584,10 @@ function EditorInner({ onBackHome, source, previewSnapshot, readOnly: _readOnly 
 
   const onEdgesChange = useCallback(
     (changes: EdgeChange<FlowEdge>[]) => {
+      const selectionOnly = (changes as any[]).length > 0 && (changes as any[]).every((ch) => ch?.type === 'select')
       setEdges((eds) => {
-        const next = applyEdgeChanges(changes, eds)
-        pushHistory(nodes, next, 'edges')
+        const next = normalizeEdgesToGrid(applyEdgeChanges(changes, eds))
+        if (!selectionOnly) pushHistory(nodes, next, 'edges')
         return next
       })
     },
@@ -1381,16 +1622,21 @@ function EditorInner({ onBackHome, source, previewSnapshot, readOnly: _readOnly 
       return children.concat(children.flatMap((c) => collectDescendants(c.id)))
     }
 
-    const toCopy: FlowNode[] = []
+    const toCopyMap = new Map<string, FlowNode>()
+    const addUniqueNode = (n: FlowNode) => {
+      if (!toCopyMap.has(n.id)) toCopyMap.set(n.id, n)
+    }
+
     for (const n of selectedNodesNow) {
-      toCopy.push(n)
+      addUniqueNode(n)
       if (isGroupNode(n)) {
         const desc = collectDescendants(n.id)
         for (const d of desc) {
-          if (!toCopy.find((x) => x.id === d.id)) toCopy.push(d)
+          addUniqueNode(d)
         }
       }
     }
+    const toCopy = Array.from(toCopyMap.values())
 
     // 复制相关的边
     const nodeIds = new Set(toCopy.map((n) => n.id))
@@ -1403,10 +1649,12 @@ function EditorInner({ onBackHome, source, previewSnapshot, readOnly: _readOnly 
     if (!clipboardRef.current || clipboardRef.current.nodes.length === 0) return
 
     const { nodes: clipNodes, edges: clipEdges } = clipboardRef.current
+    const uniqueClipNodes = Array.from(new Map(clipNodes.map((n) => [n.id, n])).values())
+    const uniqueClipEdges = Array.from(new Map(clipEdges.map((e) => [e.id, e])).values())
     const idMap = new Map<string, string>()
 
     // 生成新 ID
-    clipNodes.forEach((nd) => {
+    uniqueClipNodes.forEach((nd) => {
       idMap.set(nd.id, isGroupNode(nd) ? nowId('g') : nowId('n'))
     })
 
@@ -1414,7 +1662,7 @@ function EditorInner({ onBackHome, source, previewSnapshot, readOnly: _readOnly 
     const offset = { x: GRID[0] * 10, y: GRID[1] * 10 }
 
     // 创建新节点
-    const newNodes: FlowNode[] = clipNodes.map((nd) => {
+    const newNodes: FlowNode[] = uniqueClipNodes.map((nd) => {
       const newId = idMap.get(nd.id)!
       // 如果父节点也在剪贴板中，使用新的父 ID；否则保留原父 ID（粘贴到同一群组内）
       const newParentId = nd.parentId
@@ -1435,13 +1683,20 @@ function EditorInner({ onBackHome, source, previewSnapshot, readOnly: _readOnly 
     })
 
     // 创建新边
-    const newEdges: FlowEdge[] = clipEdges.map((e) => ({
-      ...e,
-      id: nowId('e'),
-      source: idMap.get(e.source) ?? e.source,
-      target: idMap.get(e.target) ?? e.target,
-      selected: false,
-    }))
+    const newEdges: FlowEdge[] = uniqueClipEdges
+      .map((e) => {
+        const nextSource = idMap.get(e.source)
+        const nextTarget = idMap.get(e.target)
+        if (!nextSource || !nextTarget) return null
+        return {
+          ...e,
+          id: nowId('e'),
+          source: nextSource,
+          target: nextTarget,
+          selected: false,
+        } as FlowEdge
+      })
+      .filter((e): e is FlowEdge => Boolean(e))
 
     // 取消当前选中，添加新节点
     setNodes((nds) => {
@@ -1615,17 +1870,18 @@ function EditorInner({ onBackHome, source, previewSnapshot, readOnly: _readOnly 
             return {
               ...rest,
               parentId: cursorTargetFrame.id,
-              position: { x: absPos.x - cursorFrameAbs.x, y: absPos.y - cursorFrameAbs.y },
+              position: snapPos({ x: absPos.x - cursorFrameAbs.x, y: absPos.y - cursorFrameAbs.y }),
             }
           }
 
           // 否则脱离到根层（全局坐标）
-          return { ...rest, parentId: undefined, position: absPos }
+          return { ...rest, parentId: undefined, position: snapPos(absPos) }
         })
 
         if (changed) {
           next = sortNodesParentFirst(next)
           next = assignZIndex(next)
+          next = normalizeNodesToGrid(next)
           pushHistory(next, edges, movedIds.size > 1 ? 'drag-out-multi' : 'drag-out')
           return next
         }
@@ -1706,7 +1962,7 @@ function EditorInner({ onBackHome, source, previewSnapshot, readOnly: _readOnly 
               ...nd,
               parentId: bestFrame.id,
               // 只建立真实父子关系（局部坐标系）；不要用 extent 约束，否则会无法拖出画框
-              position: { x: abs.x - frameRect.x, y: abs.y - frameRect.y },
+              position: snapPos({ x: abs.x - frameRect.x, y: abs.y - frameRect.y }),
             } as any
           })
 
@@ -1728,6 +1984,7 @@ function EditorInner({ onBackHome, source, previewSnapshot, readOnly: _readOnly 
             })
             nextIn = sortNodesParentFirst(nextIn)
             nextIn = assignZIndex(nextIn)
+            nextIn = normalizeNodesToGrid(nextIn)
             pushHistory(nextIn, edges, movedTopSet.size > 1 ? 'drag-in-multi' : 'drag-in')
             return nextIn
           }
@@ -1858,7 +2115,7 @@ function EditorInner({ onBackHome, source, previewSnapshot, readOnly: _readOnly 
   const addNodeAtPosition = useCallback(
     (nodeType: 'quad' | 'text', flowPos: { x: number; y: number }) => {
       const id = nowId('n')
-      const defaultSize = nodeType === 'quad' ? { w: 160, h: 44 } : { w: 60, h: 28 }
+      const defaultSize = nodeType === 'quad' ? DEFAULT_QUAD_SIZE : DEFAULT_TEXT_SIZE
       const currentNodes = nodesEdgesRef.current.nodes
       const position = findNonOverlappingPosition(flowPos, currentNodes, defaultSize.w, defaultSize.h)
       const base: FlowNode = {
@@ -1872,7 +2129,7 @@ function EditorInner({ onBackHome, source, previewSnapshot, readOnly: _readOnly 
         height: defaultSize.h,
         style: { width: defaultSize.w, height: defaultSize.h },
         // 文本节点空标签：立即进入编辑态，并由 TextNode 按内容自适应宽高（类 Figma）
-        data: { label: nodeType === 'quad' ? `节点 ${id.slice(-4)}` : '' },
+        data: { label: nodeType === 'quad' ? '节点' : '' },
       }
       setNodes((nds) => {
         const next = nds.concat(base)
@@ -1887,8 +2144,8 @@ function EditorInner({ onBackHome, source, previewSnapshot, readOnly: _readOnly 
   const addFrameAtPosition = useCallback(
     (flowPos: { x: number; y: number }) => {
       const id = nowId('g')
-      const w = 640
-      const h = 420
+      const w = DEFAULT_GROUP_SIZE.w
+      const h = DEFAULT_GROUP_SIZE.h
       // 让鼠标点落在 frame 的左上内侧一点，符合 figma “创建 frame” 的直觉
       const pos = snapPos({ x: flowPos.x - 24, y: flowPos.y - 24 })
       const frameNode: FlowNode = {
@@ -1898,8 +2155,9 @@ function EditorInner({ onBackHome, source, previewSnapshot, readOnly: _readOnly 
         width: w,
         height: h,
         data: {
-          title: '画框',
+          title: '编组',
           stroke: '#e2e8f0',
+          strokeWidth: 1,
           fill: 'rgba(226, 232, 240, 0.20)',
           titleFontSize: 14,
           titleColor: '#64748b',
@@ -1937,12 +2195,14 @@ function EditorInner({ onBackHome, source, previewSnapshot, readOnly: _readOnly 
               assetUrl: asset.dataUrl,
               assetName: asset.name,
               assetType: asset.type,
-              assetWidth: asset.width ?? 120,
-              assetHeight: asset.height ?? 80,
+              ...(asset.id.startsWith('builtin-') ? { assetBuiltinId: asset.id } : {}),
+              assetWidth: Math.max(asset.width ?? 120, GRID_UNIT),
+              assetHeight: Math.max(asset.height ?? 80, GRID_UNIT),
             },
           }
           setNodes((nds) => {
-            const next = nds.concat(base)
+            const deselected = nds.map((nd) => ({ ...nd, selected: false }))
+            const next = deselected.concat({ ...base, selected: true })
             pushHistory(next, edges, 'drop')
             return next
           })
@@ -1960,15 +2220,15 @@ function EditorInner({ onBackHome, source, previewSnapshot, readOnly: _readOnly 
         type: nodeType === 'quad' ? 'quad' : (nodeType as FlowNode['type']),
         position,
         // Explicit default sizing for consistent initial width.
-        width: nodeType === 'quad' ? 160 : nodeType === 'text' ? 60 : undefined,
-        height: nodeType === 'quad' ? 44 : nodeType === 'text' ? 28 : undefined,
+        width: nodeType === 'quad' ? DEFAULT_QUAD_SIZE.w : nodeType === 'text' ? DEFAULT_TEXT_SIZE.w : undefined,
+        height: nodeType === 'quad' ? DEFAULT_QUAD_SIZE.h : nodeType === 'text' ? DEFAULT_TEXT_SIZE.h : undefined,
         style:
           nodeType === 'quad'
-            ? { width: 160, height: 44 }
+            ? { width: DEFAULT_QUAD_SIZE.w, height: DEFAULT_QUAD_SIZE.h }
             : nodeType === 'text'
-              ? { width: 60, height: 28 }
+              ? { width: DEFAULT_TEXT_SIZE.w, height: DEFAULT_TEXT_SIZE.h }
               : undefined,
-        data: { label: nodeType === 'text' ? '' : `${nodeType} ${id.slice(-4)}` },
+        data: { label: nodeType === 'text' ? '' : '节点' },
       }
 
       setNodes((nds) => {
@@ -1983,7 +2243,7 @@ function EditorInner({ onBackHome, source, previewSnapshot, readOnly: _readOnly 
   /** 按 edgeId 更新边（供 EdgeEditPopup 使用，不依赖当前选中） */
   const updateEdgeById = useCallback(
     (edgeId: string, patch: Partial<FlowEdge>) => {
-      setEdges((eds) => eds.map((e) => (e.id === edgeId ? { ...e, ...patch } : e)))
+      setEdges((eds) => normalizeEdgesToGrid(eds.map((e) => (e.id === edgeId ? { ...e, ...patch } : e))))
     },
     [setEdges],
   )
@@ -2140,8 +2400,8 @@ function EditorInner({ onBackHome, source, previewSnapshot, readOnly: _readOnly 
         if (!Array.isArray(parsed.nodes) || !Array.isArray(parsed.edges)) return
 
         // 先还原边和节点
-        const nextNodes = parsed.nodes
-        const nextEdges = parsed.edges.map((e) => ({ ...e, type: (e.type ?? 'bezier') as any }))
+        const nextNodes = normalizeNodesToGrid(parsed.nodes)
+        const nextEdges = normalizeEdgesToGrid(parsed.edges.map((e) => ({ ...e, type: (e.type ?? 'bezier') as any })))
         setNodes(nextNodes)
         setEdges(nextEdges)
         if (parsed.viewport) rf.setViewport(parsed.viewport, { duration: 0 })
@@ -2364,7 +2624,7 @@ function EditorInner({ onBackHome, source, previewSnapshot, readOnly: _readOnly 
     }
 
     const groupId = nowId('g')
-    const title = `群组 ${groupId.slice(-4)}`
+    const title = '编组'
     const titleH = title.trim() ? GROUP_TITLE_H : 0
 
     // 计算 commonParentId 时，必须排除“父节点也在 picked 里”的情况，
@@ -2422,7 +2682,7 @@ function EditorInner({ onBackHome, source, previewSnapshot, readOnly: _readOnly 
         return {
           ...n,
           parentId: groupId,
-          position: { x: absPos.x - groupAbsX, y: absPos.y - groupAbsY },
+          position: snapPos({ x: absPos.x - groupAbsX, y: absPos.y - groupAbsY }),
         }
       })
       next = next.concat(groupNode)
@@ -2471,7 +2731,7 @@ function EditorInner({ onBackHome, source, previewSnapshot, readOnly: _readOnly 
         const oldBounds = picked.reduce(
           (acc, n) => {
             const w = n.measured?.width ?? n.width ?? 180
-            const h = n.measured?.height ?? n.height ?? 44
+            const h = n.measured?.height ?? n.height ?? DEFAULT_QUAD_SIZE.h
             return {
               minX: Math.min(acc.minX, n.position.x),
               minY: Math.min(acc.minY, n.position.y),
@@ -2488,7 +2748,7 @@ function EditorInner({ onBackHome, source, previewSnapshot, readOnly: _readOnly 
         const newBounds = laid.reduce(
           (acc, n) => {
             const w = n.measured?.width ?? n.width ?? 180
-            const h = n.measured?.height ?? n.height ?? 44
+            const h = n.measured?.height ?? n.height ?? DEFAULT_QUAD_SIZE.h
             return {
               minX: Math.min(acc.minX, n.position.x),
               minY: Math.min(acc.minY, n.position.y),
@@ -2546,7 +2806,7 @@ function EditorInner({ onBackHome, source, previewSnapshot, readOnly: _readOnly 
         let next = nds.map((n) => {
           if (n.parentId !== nodeId) return n
           const absPos = getAbsolutePosition(n, byId)
-          return { ...n, parentId: undefined, position: absPos }
+          return { ...n, parentId: undefined, position: snapPos(absPos) }
         })
         next = next.filter((n) => n.id !== nodeId)
         next = sortNodesParentFirst(next)
@@ -2576,10 +2836,10 @@ function EditorInner({ onBackHome, source, previewSnapshot, readOnly: _readOnly 
             return {
               ...n,
               parentId: newParentId,
-              position: { x: absPos.x - newParentAbs.x, y: absPos.y - newParentAbs.y },
+              position: snapPos({ x: absPos.x - newParentAbs.x, y: absPos.y - newParentAbs.y }),
             }
           }
-          return { ...n, parentId: undefined, position: absPos }
+          return { ...n, parentId: undefined, position: snapPos(absPos) }
         })
 
         next = next.filter((n) => n.id !== frameId)
@@ -2704,7 +2964,12 @@ function EditorInner({ onBackHome, source, previewSnapshot, readOnly: _readOnly 
       setEdges((eds) =>
         eds.map((e) =>
           e.id === edge.id
-            ? { ...e, data: { ...(e.data ?? {}), editingLabel: true } }
+            ? {
+                ...e,
+                // 双击边即视为“创建/编辑标签”入口：若原本无标签，先给占位文案，确保标签样式项可见。
+                label: typeof e.label === 'string' && e.label.trim().length > 0 ? e.label : '标签',
+                data: { ...(e.data ?? {}), editingLabel: true, labelSettingsUnlocked: true },
+              }
             : { ...e, data: { ...(e.data ?? {}), editingLabel: false } },
         ),
       )
@@ -2924,16 +3189,34 @@ function EditorInner({ onBackHome, source, previewSnapshot, readOnly: _readOnly 
           nodesConnectable={isPreview ? false : !spacePressed}
           elementsSelectable={isPreview ? false : !spacePressed}
           defaultEdgeOptions={{
-            type: 'bezier',
-            style: { stroke: DEFAULT_EDGE_COLOR, strokeWidth: 2 },
+            // 流程图默认使用正交 smoothstep，避免直线/弧线穿过节点导致不可读。
+            type: 'smoothstep',
+            style: { stroke: DEFAULT_EDGE_COLOR, strokeWidth: 1 },
             markerEnd: { ...DEFAULT_MARKER_END },
           }}
           proOptions={{ hideAttribution: true }}
         >
           <EdgeLabelLayoutProvider>
-            <Background variant={BackgroundVariant.Dots} gap={18} size={1} />
+            <Background variant={BackgroundVariant.Dots} gap={GRID[0]} size={0.6} color="#0f172a" />
             <MiniMap zoomable pannable />
             <Controls />
+            {!isPreview && (
+              <Panel position="bottom-right" className={styles.bottomHelpPanel}>
+                <div className={styles.bottomHelpHint} title="有疑问请钉钉咨询顾硕（寺宽）">
+                  <MessageCircleQuestion size={14} />
+                  <span>有疑问请钉钉咨询顾硕（寺宽）</span>
+                </div>
+              </Panel>
+            )}
+            {!isPreview && handleLimitNotices.length > 0 && (
+              <Panel position="top-center" className={styles.handleLimitNoticePanel} aria-live="polite">
+                {handleLimitNotices.map((n) => (
+                  <div key={n.id} className={styles.handleLimitNotice}>
+                    {n.message}
+                  </div>
+                ))}
+              </Panel>
+            )}
 
             {!isPreview && (
             <Panel position="top-right" className={styles.topPanel}>
@@ -3129,8 +3412,8 @@ function EditorInner({ onBackHome, source, previewSnapshot, readOnly: _readOnly 
                             setAiModalProgress({ phase: '生成泳道图', detail: '物化布局中…' })
                             const payload = swimlaneDraftToGraphBatchPayload(draftFromPrompt)
                             const snap = await materializeGraphBatchPayloadToSnapshot(payload)
-                            const nextNodes = (snap.nodes ?? []) as FlowNode[]
-                            const nextEdges = (snap.edges ?? []) as FlowEdge[]
+                            const nextNodes = normalizeNodesToGrid(((snap.nodes ?? []) as FlowNode[]))
+                            const nextEdges = normalizeEdgesToGrid(((snap.edges ?? []) as FlowEdge[]))
                             setNodes(nextNodes)
                             setEdges(nextEdges)
                             pushHistory(nextNodes, nextEdges, 'ai-swimlane')
@@ -3395,16 +3678,17 @@ function EditorInner({ onBackHome, source, previewSnapshot, readOnly: _readOnly 
                       const nextNode = { ...n, data: nextData }
                       if (patch.shape === 'circle') {
                         const w = (n.measured as { width?: number })?.width ?? (n as { width?: number }).width ?? (n.style as { width?: number })?.width ?? 160
-                        const h = (n.measured as { height?: number })?.height ?? (n as { height?: number }).height ?? (n.style as { height?: number })?.height ?? 44
-                        const size = Math.max(Number(w) || 160, Number(h) || 44)
+                        const h = (n.measured as { height?: number })?.height ?? (n as { height?: number }).height ?? (n.style as { height?: number })?.height ?? DEFAULT_QUAD_SIZE.h
+                        const rawSize = Math.max(Number(w) || DEFAULT_QUAD_SIZE.w, Number(h) || DEFAULT_QUAD_SIZE.h)
+                        const size = snapSizeByNodeType(rawSize, 'quad')
                         nextNode.style = { ...(n.style as object ?? {}), width: size, height: size }
                         nextNode.width = size
                         nextNode.height = size
                         // 保持中心不变：向左上偏移 (w-size)/2 和 (h-size)/2
-                        nextNode.position = {
-                          x: n.position.x + (Number(w) || 160 - size) / 2,
-                          y: n.position.y + (Number(h) || 44 - size) / 2,
-                        }
+                        nextNode.position = snapPointToGrid({
+                          x: n.position.x + ((Number(w) || DEFAULT_QUAD_SIZE.w) - size) / 2,
+                          y: n.position.y + ((Number(h) || DEFAULT_QUAD_SIZE.h) - size) / 2,
+                        })
                       }
                       return nextNode
                     }),

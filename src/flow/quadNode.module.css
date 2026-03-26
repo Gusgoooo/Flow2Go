@@ -2,7 +2,7 @@
 .node {
   /* Keep quad nodes shrinkable to compact minimum width. */
   min-width: 80px;
-  min-height: 44px;
+  min-height: 32px;
   position: relative;
   height: 100%;
   box-sizing: border-box;
@@ -93,8 +93,8 @@
 }
 
 .handle {
-  width: 14px;
-  height: 14px;
+  width: 8px;
+  height: 8px;
   border-radius: 999px;
   border: 1px solid #cbd5e1;
   background: #ffffff;

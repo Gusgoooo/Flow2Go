@@ -79,6 +79,21 @@ export function NodeEditPopup({ node, anchor, onUpdate, onClose }: Props) {
       </label>
 
       <label className={styles.item}>
+        <span className={styles.itemLabel}>粗细</span>
+        <input
+          className={styles.inputNum}
+          type="number"
+          min={0}
+          step={1}
+          value={(data.strokeWidth ?? 1) as number}
+          onChange={(e) => {
+            const num = parseFloat(e.target.value)
+            onUpdate({ strokeWidth: Number.isFinite(num) && num >= 0 ? num : 1 })
+          }}
+        />
+      </label>
+
+      <label className={styles.item}>
         <span className={styles.itemLabel}>填充</span>
         <ColorEditor
           value={(data.color ?? '#ffffff') as string}
@@ -107,21 +122,6 @@ export function NodeEditPopup({ node, anchor, onUpdate, onClose }: Props) {
       </label>
 
       <label className={styles.item}>
-        <span className={styles.itemLabel}>粗细</span>
-        <input
-          className={styles.inputNum}
-          type="number"
-          min={0}
-          step={1}
-          value={(data.strokeWidth ?? 1) as number}
-          onChange={(e) => {
-            const num = parseFloat(e.target.value)
-            onUpdate({ strokeWidth: Number.isFinite(num) && num >= 0 ? num : 1 })
-          }}
-        />
-      </label>
-
-      <label className={styles.item}>
         <span className={styles.itemLabel}>主标题字色</span>
         <ColorEditor
           value={(data.labelColor ?? 'rgba(0,0,0,0.8)') as string}
@@ -135,19 +135,21 @@ export function NodeEditPopup({ node, anchor, onUpdate, onClose }: Props) {
         />
       </label>
 
-      <label className={styles.item}>
-        <span className={styles.itemLabel}>副标题字色</span>
-        <ColorEditor
-          value={(data.subtitleColor ?? '#64748b') as string}
-          onChange={(v) => onUpdate({ subtitleColor: v })}
-          placeholder="#64748b"
-          showAlpha={true}
-          showPicker={true}
-          compact={true}
-          portalPicker={true}
-          focusRetainDataAttr="data-node-edit-popup"
-        />
-      </label>
+      {data.showSubtitle && (
+        <label className={styles.item}>
+          <span className={styles.itemLabel}>副标题字色</span>
+          <ColorEditor
+            value={(data.subtitleColor ?? '#64748b') as string}
+            onChange={(v) => onUpdate({ subtitleColor: v })}
+            placeholder="#64748b"
+            showAlpha={true}
+            showPicker={true}
+            compact={true}
+            portalPicker={true}
+            focusRetainDataAttr="data-node-edit-popup"
+          />
+        </label>
+      )}
     </div>
   )
 }
