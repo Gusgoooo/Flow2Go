@@ -1,6 +1,7 @@
 import type { Edge, Node } from '@xyflow/react'
 import ELK from 'elkjs/lib/elk.bundled.js'
 import type { ElkExtendedEdge, ElkNode } from 'elkjs/lib/elk-api'
+import { normalizeNodeGeometryToGrid, snapPointToGrid } from './grid'
 
 export type LayoutDirection = 'LR' | 'TB' | 'RL' | 'BT'
 
@@ -70,7 +71,7 @@ export async function autoLayout<NData extends Record<string, unknown>>(
 
   const elkChildren: ElkNode[] = visibleNodes.map((n) => {
     const w = n.measured?.width ?? n.width ?? 180
-    const h = n.measured?.height ?? n.height ?? 44
+    const h = n.measured?.height ?? n.height ?? 48
     return {
       id: n.id,
       width: w,
@@ -108,10 +109,11 @@ export async function autoLayout<NData extends Record<string, unknown>>(
     if (n.hidden) return n
     const p = posById.get(n.id)
     if (!p) return n
-    return {
+    const laid = {
       ...n,
-      position: { x: p.x, y: p.y },
+      position: snapPointToGrid({ x: p.x, y: p.y }),
       positionAbsolute: undefined,
     }
+    return normalizeNodeGeometryToGrid(laid) as Node<NData>
   })
 }

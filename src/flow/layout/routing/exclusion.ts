@@ -11,11 +11,12 @@ export type NodeExclusionBox = Rect & {
   nodeId: string
 }
 
-export const ROUTING_PAD_X = 20
-export const ROUTING_PAD_Y = 16
+// 路由安全区：每个节点外扩 1 个布局单位（用于“碰到安全区就触发多弯避让”）
+export const ROUTING_PAD_X = 24
+export const ROUTING_PAD_Y = 24
 
 const DEFAULT_SIZE_BY_KIND: Record<string, { width: number; height: number }> = {
-  rect: { width: 140, height: 56 },
+  rect: { width: 160, height: 48 },
   circle: { width: 64, height: 64 },
   diamond: { width: 96, height: 64 },
   text: { width: 120, height: 32 },

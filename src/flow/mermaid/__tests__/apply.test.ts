@@ -82,6 +82,24 @@ describe('materializeGraphBatchPayloadToSnapshot - handle inference', () => {
     expect(outEdge.targetHandle).toBe('t-left')
   })
 
+  it('marks generated edges as text-only label mode by default', async () => {
+    const payload: GraphBatchPayload = {
+      version: '1.0',
+      source: 'mermaid',
+      graphType: 'flowchart',
+      direction: 'LR',
+      operations: [
+        { op: 'graph.createNodeQuad', params: { id: 'A', title: 'A', shape: 'rect', position: { x: 0, y: 0 } } },
+        { op: 'graph.createNodeQuad', params: { id: 'B', title: 'B', shape: 'rect', position: { x: 240, y: 0 } } },
+        { op: 'graph.createEdge', params: { id: 'e1', source: 'A', target: 'B', label: '请求', type: 'smoothstep', arrowStyle: 'end' } },
+      ],
+    }
+
+    const snap = await materializeGraphBatchPayloadToSnapshot(payload, { replace: true })
+    const edge = snap.edges.find((e) => e.id === 'e1') as any
+    expect((edge.data ?? {}).labelTextOnly).toBe(true)
+  })
+
   it('avoids making left side both in+out: if left has in and B is left-down, prefer bottom', async () => {
     const payload: GraphBatchPayload = {
       version: '1.0',
@@ -181,6 +199,46 @@ describe('materializeGraphBatchPayloadToSnapshot - handle inference', () => {
     const w1 = JSON.stringify(((e1.data ?? {}).waypoints ?? []) as Array<{ x: number; y: number }>)
     const w2 = JSON.stringify(((e2.data ?? {}).waypoints ?? []) as Array<{ x: number; y: number }>)
     expect(w1).not.toBe(w2)
+  })
+
+  it('enforces left/right split for swimlane decision outgoing edges', async () => {
+    const payload: GraphBatchPayload = {
+      version: '1.0',
+      source: 'swimlane-draft',
+      graphType: 'swimlane',
+      direction: 'LR',
+      operations: [
+        { op: 'graph.createFrame', params: { id: 'lane-system', title: '系统' } },
+        {
+          op: 'graph.createNodeQuad',
+          params: { id: 'D', title: '是否通过', parentId: 'lane-system', style: { semanticType: 'decision', nodeOrder: 0 } },
+        },
+        {
+          op: 'graph.createNodeQuad',
+          params: { id: 'T1', title: '分支一', parentId: 'lane-system', style: { semanticType: 'task', nodeOrder: 1 } },
+        },
+        {
+          op: 'graph.createNodeQuad',
+          params: { id: 'T2', title: '分支二', parentId: 'lane-system', style: { semanticType: 'task', nodeOrder: 2 } },
+        },
+        { op: 'graph.createEdge', params: { id: 'e1', source: 'D', target: 'T1', style: { semanticType: 'normal' } } },
+        { op: 'graph.createEdge', params: { id: 'e2', source: 'D', target: 'T2', style: { semanticType: 'normal' } } },
+        { op: 'graph.autoLayout', params: { direction: 'LR', scope: 'all' } },
+      ],
+      meta: {
+        layoutProfile: 'swimlane',
+        swimlaneDirection: 'horizontal',
+      } as any,
+    }
+
+    const snap = await materializeGraphBatchPayloadToSnapshot(payload, { replace: true })
+    const e1 = snap.edges.find((e) => e.id === 'e1') as any
+    const e2 = snap.edges.find((e) => e.id === 'e2') as any
+    const outgoingHandles = new Set<string>([e1?.sourceHandle, e2?.sourceHandle].filter(Boolean))
+    expect(outgoingHandles.has('s-left')).toBe(true)
+    expect(outgoingHandles.has('s-right')).toBe(true)
+    expect((e1?.data ?? {}).labelTextOnly).toBe(true)
+    expect((e2?.data ?? {}).labelTextOnly).toBe(true)
   })
 })
 

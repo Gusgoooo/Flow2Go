@@ -5,6 +5,25 @@ import { ColorEditor } from './ColorEditor'
 import type { GroupNodeData } from './GroupNode'
 import styles from './NodeEditPopup.module.css'
 
+const FRAME_PRESET: Partial<GroupNodeData> = {
+  role: 'frame',
+  laneMeta: undefined,
+  stroke: '#e2e8f0',
+  strokeWidth: 1,
+  fill: 'rgba(226, 232, 240, 0.20)',
+  titleFontSize: 14,
+  titleColor: '#64748b',
+}
+
+const LANE_PRESET: Partial<GroupNodeData> = {
+  role: 'lane',
+  stroke: '#94a3b8',
+  strokeWidth: 1.5,
+  fill: 'rgba(241, 245, 249, 0.5)',
+  titleFontSize: 14,
+  titleColor: '#334155',
+}
+
 type Props = {
   node: Node<GroupNodeData>
   anchor: { x: number; y: number }
@@ -18,7 +37,10 @@ type Props = {
 
 export function GroupEditPopup({ node, anchor, onUpdate, onFillChange, onDeleteFrameKeepContents, onClose }: Props) {
   const data = node.data ?? {}
+  const isLane = (data as any)?.role === 'lane'
+  const isFrame = (data as any)?.role === 'frame'
   const ref = useRef<HTMLDivElement | null>(null)
+  const nodeKind = isLane ? 'lane' : 'frame'
 
   useEffect(() => {
     const handler = (e: MouseEvent) => {
@@ -36,6 +58,25 @@ export function GroupEditPopup({ node, anchor, onUpdate, onFillChange, onDeleteF
     else onUpdate({ fill: v })
   }
 
+  const handleKindChange = (next: 'frame' | 'lane') => {
+    if (next === 'lane') {
+      onUpdate({
+        ...LANE_PRESET,
+        laneMeta: {
+          laneId: node.id,
+          laneIndex: data.laneMeta?.laneIndex ?? 0,
+          laneAxis: data.laneMeta?.laneAxis ?? 'row',
+          headerSize: 48,
+          padding: { top: 24, right: 24, bottom: 24, left: 24 },
+          minLaneWidth: 800,
+          minLaneHeight: 160,
+        },
+      })
+      return
+    }
+    onUpdate({ ...FRAME_PRESET })
+  }
+
   return (
     <div
       ref={ref}
@@ -45,12 +86,24 @@ export function GroupEditPopup({ node, anchor, onUpdate, onFillChange, onDeleteF
       data-node-edit-popup
     >
       <label className={styles.item}>
+        <span className={styles.itemLabel}>类型</span>
+        <select
+          className={styles.select}
+          value={nodeKind}
+          onChange={(e) => handleKindChange(e.target.value as 'frame' | 'lane')}
+        >
+          <option value="frame">默认画框</option>
+          <option value="lane">泳道</option>
+        </select>
+      </label>
+
+      <label className={styles.item}>
         <span className={styles.itemLabel}>标题</span>
         <input
           className={styles.input}
           value={(data.title ?? '') as string}
           onChange={(e) => onUpdate({ title: e.target.value })}
-          placeholder="群组标题"
+          placeholder="编组"
         />
       </label>
 
@@ -132,10 +185,10 @@ export function GroupEditPopup({ node, anchor, onUpdate, onFillChange, onDeleteF
         />
       </label>
 
-      {(data as any)?.role === 'frame' && onDeleteFrameKeepContents && (
+      {!isLane && onDeleteFrameKeepContents && (
         <button
           type="button"
-          title="删除画框，保留画框内元素"
+          title={isFrame ? '删除画框，保留画框内元素' : '删除编组，保留编组内元素'}
           onClick={() => onDeleteFrameKeepContents()}
           style={{
             width: 28,

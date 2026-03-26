@@ -8,6 +8,15 @@ const RETURN_FLOW_AUTO_ANIMATED_KEY = 'autoReturnFlowAnimated'
 const LONG_RETURN_ORDER_GAP = 2
 const LONG_RETURN_X_GAP = 280
 
+function classifyDecisionBranch(edge: Edge<any>): 'yes' | 'no' | null {
+  const text = typeof edge.label === 'string' ? edge.label.trim() : ''
+  if (!text) return null
+  const lower = text.toLowerCase()
+  if (lower === 'yes' || /\byes\b/i.test(lower) || /(是|通过|同意|成功|允许|确认)/.test(text)) return 'yes'
+  if (lower === 'no' || /\bno\b/i.test(lower) || /(否|不通过|不同意|失败|拒绝|取消)/.test(text)) return 'no'
+  return null
+}
+
 function isLaneNode(node: Node<any> | undefined): node is Node<any> {
   return Boolean(node && node.type === 'group' && (node.data as any)?.role === 'lane')
 }
@@ -98,8 +107,9 @@ function chooseOrdinarySwimlaneHandles(
   const isLongReturn = orderGap >= LONG_RETURN_ORDER_GAP || xGap >= LONG_RETURN_X_GAP
 
   if (isLongReturn) {
-    // Long loops are routed as vertical C-shapes to avoid horizontal collapse near target nodes.
-    return { sourceHandle: 's-bottom', targetHandle: 't-bottom' }
+    // Long loops are routed to keep visual stability, but avoid "in/out on the same handle".
+    // Note: laneAxis=column is already handled above (returns s-bottom -> t-top), so here laneAxis is row/undefined.
+    return { sourceHandle: 's-left', targetHandle: 't-right' }
   }
 
   // For short backward edges, mirror handles so the arrow enters from the geometric travel side.
@@ -134,6 +144,7 @@ function applyReturnFlowAnimation(
 export function rerouteSwimlaneEdges(nodes: Node<any>[], edges: Edge<any>[]): Edge<any>[] {
   const nodeById = new Map(nodes.map((n) => [n.id, n]))
   const occupiedRouteSignatures = new Set<string>()
+  const decisionOutUsage = new Map<string, { left: number; right: number }>()
 
   return edges.map((edge) => {
     const srcNode = nodeById.get(edge.source)
@@ -158,6 +169,56 @@ export function rerouteSwimlaneEdges(nodes: Node<any>[], edges: Edge<any>[]): Ed
       ? (ordinaryPair?.targetHandle ?? 't-left')
       : (edge.targetHandle ?? 't-left')
 
+    const sideOpposite: Record<string, string> = { left: 'right', right: 'left', top: 'bottom', bottom: 'top' }
+    const sourceSide = sourceHandle.split('-')[1]
+    const targetSide = targetHandle.split('-')[1]
+    const fixedTargetHandle =
+      sourceIsOrdinarySwimlane && targetIsOrdinarySwimlane && sourceSide && targetSide && sourceSide === targetSide
+        ? `t-${sideOpposite[targetSide] ?? targetSide}`
+        : targetHandle
+
+    const srcDecision = isDecisionNode(srcNode)
+    const tgtDecision = isDecisionNode(tgtNode)
+    const decisionInvolved = srcDecision || tgtDecision
+    // decision 节点：强制使用左右句柄，且前两条出边必须分流到左右两个 handle。
+    const dx = centerX(tgtNode, nodeById) - centerX(srcNode, nodeById)
+    let forcedSourceHandle = dx >= 0 ? 's-right' : 's-left'
+    if (srcDecision) {
+      const branch = classifyDecisionBranch(edge)
+      const usage = decisionOutUsage.get(srcNode.id) ?? { left: 0, right: 0 }
+      if (branch === 'yes') {
+        forcedSourceHandle = 's-right'
+      } else if (branch === 'no') {
+        forcedSourceHandle = 's-left'
+      } else {
+        if (usage.left === 0 && usage.right === 0) {
+          forcedSourceHandle = dx >= 0 ? 's-right' : 's-left'
+        } else if (usage.left === 0) {
+          forcedSourceHandle = 's-left'
+        } else if (usage.right === 0) {
+          forcedSourceHandle = 's-right'
+        } else {
+          forcedSourceHandle = dx >= 0 ? 's-right' : 's-left'
+        }
+      }
+      const nextUsage = {
+        left: usage.left + (forcedSourceHandle === 's-left' ? 1 : 0),
+        right: usage.right + (forcedSourceHandle === 's-right' ? 1 : 0),
+      }
+      decisionOutUsage.set(srcNode.id, nextUsage)
+    }
+    const forcedTargetHandle = dx >= 0 ? 't-left' : 't-right'
+    const sourceHandle2 = srcDecision ? forcedSourceHandle : sourceHandle
+    const targetHandle2 = tgtDecision ? forcedTargetHandle : fixedTargetHandle
+
+    const laneAxis = (sourceLane?.data as any)?.laneMeta?.laneAxis as 'row' | 'column' | undefined
+    // 同一行跨节点出线（例如 A -> C 且跳过 B）：
+    // - 让它走 smoothedge（即 smoothstep），并交给正交避障保证不会穿过中间节点。
+    const srcOrder = Number((srcNode.data as any)?.nodeOrder ?? 0)
+    const tgtOrder = Number((tgtNode.data as any)?.nodeOrder ?? 0)
+    const isRowLaneSkip =
+      semantic === 'normal' && laneAxis === 'row' && sourceIsOrdinarySwimlane && targetIsOrdinarySwimlane && Math.abs(srcOrder - tgtOrder) > 1
+
     if (semantic === 'crossLane' && isLaneNode(sourceLane) && isLaneNode(targetLane)) {
       const routed = routeCrossLaneEdge({
         edge,
@@ -175,14 +236,13 @@ export function rerouteSwimlaneEdges(nodes: Node<any>[], edges: Edge<any>[]): Ed
         sourceLaneId: sourceLane.id,
         targetLaneId: targetLane.id,
         waypoints: routed.waypoints,
-        autoOffset: 0,
       }
       const animatedPatch = applyReturnFlowAnimation(edge, 'crossLane', crossLaneData)
       return {
         ...edge,
         type: routed.type,
-        sourceHandle: routed.sourceHandle ?? sourceHandle,
-        targetHandle: routed.targetHandle ?? targetHandle,
+        sourceHandle: routed.sourceHandle ?? sourceHandle2,
+        targetHandle: routed.targetHandle ?? targetHandle2,
         animated: animatedPatch.animated,
         data: animatedPatch.data,
       }
@@ -193,20 +253,26 @@ export function rerouteSwimlaneEdges(nodes: Node<any>[], edges: Edge<any>[]): Ed
       nextStyle.strokeWidth = 1
       nextStyle.opacity = 0.95
     }
+
     const normalData = {
       ...(edge.data as any),
       semanticType: semantic,
       sourceLaneId: srcLaneId,
       targetLaneId: tgtLaneId,
-      autoOffset: 0,
     }
     const animatedPatch = applyReturnFlowAnimation(edge, semantic, normalData)
     return {
       ...edge,
-      sourceHandle,
-      targetHandle,
+      sourceHandle: sourceHandle2,
+      targetHandle: targetHandle2,
       animated: animatedPatch.animated,
-      ...(semantic === 'returnFlow' ? { type: 'smoothstep', style: nextStyle } : {}),
+      ...(semantic === 'returnFlow'
+        ? { type: 'smoothstep', style: nextStyle }
+        : decisionInvolved
+          ? { type: 'smoothstep' }
+          : isRowLaneSkip
+          ? { type: 'smoothstep' }
+          : {}),
       data: animatedPatch.data,
     }
   })

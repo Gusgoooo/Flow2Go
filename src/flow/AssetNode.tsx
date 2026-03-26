@@ -1,6 +1,7 @@
 import { useCallback, useMemo } from 'react'
 import { NodeResizer, useReactFlow, type NodeProps } from '@xyflow/react'
 import { type GradientValue, gradientToCss } from './GradientColorEditor'
+import { GRID_UNIT, snapPointToGrid, snapSizeToGrid } from './grid'
 
 export type AssetNodeData = {
   assetUrl: string
@@ -24,8 +25,8 @@ const MIN_SIZE = 20
 export function AssetNode(props: NodeProps) {
   const data = (props.data ?? {}) as AssetNodeData
   const rf = useReactFlow()
-  const w = data.assetWidth ?? DEFAULT_WIDTH
-  const h = data.assetHeight ?? DEFAULT_HEIGHT
+  const w = Math.max(data.assetWidth ?? DEFAULT_WIDTH, GRID_UNIT)
+  const h = Math.max(data.assetHeight ?? DEFAULT_HEIGHT, GRID_UNIT)
   const selected = (props as any).selected
   const isSvg = data.assetType === 'svg'
   const colorOverride = data.colorOverride
@@ -46,12 +47,12 @@ export function AssetNode(props: NodeProps) {
                 // 这样拖拽哪个角，视觉上就从哪个角拉伸，而不是绕中心缩放
                 position:
                   Number.isFinite(x) && Number.isFinite(y)
-                    ? { x, y }
+                    ? snapPointToGrid({ x, y })
                     : n.position,
                 data: {
                   ...(n.data ?? {}),
-                  assetWidth: Math.round(width),
-                  assetHeight: Math.round(height),
+                  assetWidth: snapSizeToGrid(width),
+                  assetHeight: snapSizeToGrid(height),
                 },
               }
             : n,
@@ -66,13 +67,18 @@ export function AssetNode(props: NodeProps) {
     if (!isSvg || !colorOverride?.color) return null
     const bg = gradientToCss(colorOverride)
     if (!bg) return null
+    const maskUrl = `url('${data.assetUrl}')`
     return {
       background: bg,
-      WebkitMaskImage: `url(${data.assetUrl})`,
+      WebkitMaskImage: maskUrl,
+      WebkitMaskMode: 'alpha',
       WebkitMaskSize: '100% 100%',
+      WebkitMaskPosition: 'center',
       WebkitMaskRepeat: 'no-repeat',
-      maskImage: `url(${data.assetUrl})`,
+      maskImage: maskUrl,
+      maskMode: 'alpha',
       maskSize: '100% 100%',
+      maskPosition: 'center',
       maskRepeat: 'no-repeat',
     } as React.CSSProperties
   }, [isSvg, colorOverride, data.assetUrl])
@@ -95,8 +101,8 @@ export function AssetNode(props: NodeProps) {
         minHeight={MIN_SIZE}
         onResize={onResize}
         handleStyle={{
-          width: 12,
-          height: 12,
+          width: 8,
+          height: 8,
           borderRadius: 9999,
           background: '#3b82f6',
           border: '2px solid #fff',
@@ -124,6 +130,7 @@ export function AssetNode(props: NodeProps) {
             width: '100%',
             height: '100%',
             display: 'block',
+            objectFit: isSvg ? 'fill' : 'contain',
             pointerEvents: 'none',
             userSelect: 'none',
           }}

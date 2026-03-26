@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useLayoutEffect, useRef, useState } from 'react'
 import { NodeResizer, useReactFlow, useUpdateNodeInternals, type NodeProps } from '@xyflow/react'
 import { QuickTextStyleToolbar, QUICK_TOOLBAR_DATA_ATTR } from './QuickTextStyleToolbar'
+import { snapSizeToGrid } from './grid'
 
 export type TextNodeData = {
   label?: string
@@ -12,7 +13,7 @@ export type TextNodeData = {
 const DEFAULT_FONT_SIZE = 14
 const PAD = 4
 const PAD_TOTAL = PAD * 2
-const MIN_W = 60
+const MIN_W = 64
 const MIN_H = 24
 
 export function TextNode(props: NodeProps) {
@@ -140,8 +141,8 @@ export function TextNode(props: NodeProps) {
       mh = el.scrollHeight
     }
 
-    const w = Math.max(MIN_W, Math.ceil(innerW + PAD_TOTAL))
-    const h = Math.max(MIN_H, Math.ceil(mh + PAD_TOTAL))
+    const w = snapSizeToGrid(Math.max(MIN_W, Math.ceil(innerW + PAD_TOTAL)))
+    const h = snapSizeToGrid(Math.max(MIN_H, Math.ceil(mh + PAD_TOTAL)))
 
     if (Math.abs(w - lastAppliedRef.current.w) <= 1 && Math.abs(h - lastAppliedRef.current.h) <= 1) return
     lastAppliedRef.current = { w, h }
@@ -196,8 +197,8 @@ export function TextNode(props: NodeProps) {
         minWidth={MIN_W}
         minHeight={MIN_H}
         handleStyle={{
-          width: 10,
-          height: 10,
+          width: 8,
+          height: 8,
           borderRadius: 9999,
           background: '#3b82f6',
           border: '2px solid #fff',

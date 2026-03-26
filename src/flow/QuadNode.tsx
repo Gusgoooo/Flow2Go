@@ -48,9 +48,16 @@ type QuadNodeData = {
 }
 
 const DEFAULT_TITLE_FS = 12
-const DEFAULT_SUBTITLE_FS = 11
+const DEFAULT_SUBTITLE_FS = 10
 const QUAD_MIN_W = 80
-const QUAD_MIN_H = 44
+const QUAD_MIN_H = 32
+
+const COMPLETED_STROKE = '#31C262'
+const COMPLETED_FILL = 'rgba(49, 194, 98, 0.12)' // 12% 透明度
+const FAILED_STROKE = '#FF4E4E'
+const FAILED_FILL = 'rgba(255, 78, 78, 0.12)' // 12% 透明度
+const COMPLETED_KEYWORDS = ['完成', '通过']
+const FAILED_KEYWORDS = ['失败', '不通过']
 
 /** 行高 = 字号 + 8px（与主副标题各自字号同步） */
 function lineHeightForFontSizePx(fs: number) {
@@ -169,36 +176,65 @@ export function QuadNode(props: NodeProps) {
   const title = data.title ?? data.label ?? ''
   const subtitle = data.subtitle ?? ''
   const showSubtitle = !!data.showSubtitle || !!subtitle
+
+  // 自动状态配色：当节点文案包含“完成/失败”语义时，强制使用约定的绿色/红色描边与 12% 透明底色。
+  const mergedText = `${title}\n${subtitle}\n${data.label ?? ''}`.toLowerCase()
+  const semanticRaw = String((data as any)?.semanticType ?? '').toLowerCase()
+  const semanticLabelRaw = String((data as any)?.semanticLabel ?? (data as any)?.result ?? '').toLowerCase()
+
+  // 允许两种来源：
+  // - 文案（title/subtitle/label）里包含关键词（完成/通过/失败/不通过等）
+  // - 语义字段 semanticType 或 semanticLabel/result 包含 success/failed 等
+  const isFailedByText = FAILED_KEYWORDS.some((k) => mergedText.includes(k.toLowerCase()))
+  const isCompletedByText = COMPLETED_KEYWORDS.some((k) => mergedText.includes(k.toLowerCase()))
+  const isFailedBySemantic = semanticRaw.includes('fail') || semanticRaw.includes('failed') || semanticLabelRaw.includes('fail')
+  const isCompletedBySemantic = semanticRaw.includes('success') || semanticRaw.includes('complete') || semanticRaw.includes('passed') || semanticLabelRaw.includes('success')
+
+  const isFailed = isFailedByText || isFailedBySemantic
+  const isCompleted = !isFailed && (isCompletedByText || isCompletedBySemantic)
+
+  const hasUserLabelColor = typeof data.labelColor === 'string' && data.labelColor.trim().length > 0
+  const hasUserFill = typeof data.color === 'string' && data.color.trim().length > 0
+  const hasUserStroke = typeof data.stroke === 'string' && data.stroke.trim().length > 0
+  const hasUserStrokeWidth = typeof data.strokeWidth === 'number' && Number.isFinite(data.strokeWidth)
+
+  const effectiveLabelColor =
+    (isCompleted || isFailed) && !hasUserLabelColor
+      ? (isCompleted ? COMPLETED_STROKE : FAILED_STROKE)
+      : (data.labelColor ?? 'rgba(0,0,0,0.8)')
   const titleFs = data.labelFontSize ?? DEFAULT_TITLE_FS
   const subtitleFs = data.subtitleFontSize ?? DEFAULT_SUBTITLE_FS
   const labelStyle: CSSProperties = {
     fontSize: titleFs,
     fontWeight: data.labelFontWeight ?? '700',
-    color: data.labelColor ?? 'rgba(0,0,0,0.8)',
+    color: effectiveLabelColor,
     lineHeight: lineHeightForFontSizePx(titleFs),
+    letterSpacing: '0px',
   }
   const subtitleStyle: CSSProperties = {
     fontSize: subtitleFs,
     fontWeight: data.subtitleFontWeight ?? '400',
     color: data.subtitleColor ?? '#64748b',
     lineHeight: subtitleLineHeightForFontSizePx(subtitleFs),
+    letterSpacing: '0px',
   }
 
-  const nodeColor = data.color
-  const strokeColor = data.stroke
-  const strokeWidth = data.strokeWidth
+  const nodeColor =
+    (isCompleted || isFailed) && !hasUserFill
+      ? (isCompleted ? COMPLETED_FILL : FAILED_FILL)
+      : data.color
+  const strokeColor =
+    (isCompleted || isFailed) && !hasUserStroke
+      ? (isCompleted ? COMPLETED_STROKE : FAILED_STROKE)
+      : data.stroke
+  const strokeWidth =
+    (isCompleted || isFailed) && !hasUserStrokeWidth
+      ? 2
+      : data.strokeWidth
   const semanticType = data.semanticType
   const shapeHint = data.shape
-  const isSwimlaneNode = Boolean(data.laneId)
   const isDecisionNode = semanticType === 'decision' || shapeHint === 'diamond'
-  const isOrdinarySwimlaneNode = isSwimlaneNode && !isDecisionNode && (
-    (semanticType != null && ['start', 'task', 'end', 'data'].includes(semanticType)) ||
-    (shapeHint != null && (shapeHint === 'rect' || shapeHint === 'circle')) ||
-    (semanticType == null && shapeHint == null)
-  )
-  const effectiveHandleMode = isOrdinarySwimlaneNode
-    ? 'leftRight'
-    : (data.handleMode ?? (isDecisionNode ? 'all' : undefined))
+  const effectiveHandleMode = data.handleMode ?? (isDecisionNode ? 'leftRight' : undefined)
   const showLeftRightHandles = effectiveHandleMode === 'leftRight'
   const inferredShape: QuadShape = semanticType && !data.shape
     ? (semanticType === 'start' || semanticType === 'end' ? 'circle'
@@ -246,9 +282,8 @@ export function QuadNode(props: NodeProps) {
         // 允许 quad 节点继续收缩，避免最小宽度过大影响排版。
         minWidth={QUAD_MIN_W}
         minHeight={QUAD_MIN_H}
-        handleStyle={{ width: 12, height: 12, borderRadius: 9999 }}
+        handleStyle={{ width: 8, height: 8, borderRadius: 9999 }}
         isVisible={Boolean((props as any).selected)}
-        keepAspectRatio={shape === 'circle'}
       />
       <div
         className={styles.nodeInner}
@@ -262,7 +297,7 @@ export function QuadNode(props: NodeProps) {
               onRequestClose={commitTitle}
               fontSize={titleFs}
               fontWeight={data.labelFontWeight ?? '700'}
-              textColor={data.labelColor ?? 'rgba(0,0,0,0.8)'}
+              textColor={effectiveLabelColor}
               onFontSizeChange={(v) =>
                 rf.setNodes((nds) =>
                   nds.map((n) =>
