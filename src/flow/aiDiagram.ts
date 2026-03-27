@@ -15,6 +15,7 @@ export type AiDiagramSceneHint =
   | 'mind-map'
   | 'flowchart'
   | 'swimlane'
+  | 'free-layout'
 
 /** 生成进度：用于 UI 与控制台排查「慢 / 卡住 / 失败」 */
 export type AiGenerateProgressInfo = {
@@ -38,7 +39,9 @@ export type OpenRouterChatOptions = {
 
 export type OpenRouterImageToDiagramOptions = {
   apiKey: string
-  model: string
+  model?: string
+  recognitionModel?: string
+  generationModel?: string
   imageDataUrl: string
   /** 可选：用户额外补充要求（如“改成泳道图”） */
   prompt?: string
@@ -50,6 +53,7 @@ export type OpenRouterImageToDiagramOptions = {
 
 import { parseMermaidFlowchart, transpileMermaidFlowIR } from './mermaid'
 import { materializeGraphBatchPayloadToSnapshot } from './mermaid/apply'
+import { GRID_UNIT } from './grid'
 
 const DEFAULT_TIMEOUT_MS = 90_000
 
@@ -583,7 +587,17 @@ export type AiImageStructuredDraft = {
   title?: string
   sceneHint: ImageSceneHint
   lanes: string[]
-  nodes: Array<{ id: string; label: string; type: ImageStructuredNodeType; lane?: string }>
+  nodes: Array<{
+    id: string
+    label: string
+    type: ImageStructuredNodeType
+    lane?: string
+    /** 归一化到 [0,1] 的相对坐标与尺寸（左上角坐标） */
+    x?: number
+    y?: number
+    w?: number
+    h?: number
+  }>
   edges: Array<{ from: string; to: string; relation: string; label?: string }>
   rawText: string
 }
@@ -595,7 +609,7 @@ const IMAGE_TO_STRUCTURED_JSON_SYSTEM_PROMPT = [
   '输出要求（强制）：',
   '- 只能输出严格 JSON；不要 markdown，不要解释。',
   `- schema 必须为 "${IMAGE_STRUCTURE_SCHEMA}"。`,
-  '- sceneHint 只能是：mind-map | flowchart | swimlane | auto。',
+  '- sceneHint 只能是：mind-map | flowchart | swimlane | free-layout | auto。',
   '- nodes/edges 必须是数组，且 id 引用必须有效。',
   '- 节点 label 用中文短语，尽量简短。',
   '- 关系优先简化为 next / yes / no / notify / request / return_to。',
@@ -605,16 +619,23 @@ const IMAGE_TO_STRUCTURED_JSON_SYSTEM_PROMPT = [
   '{',
   `  "schema": "${IMAGE_STRUCTURE_SCHEMA}",`,
   '  "title": "可选标题",',
-  '  "sceneHint": "mind-map|flowchart|swimlane|auto",',
+  '  "sceneHint": "mind-map|flowchart|swimlane|free-layout|auto",',
   '  "lanes": ["可选泳道1", "可选泳道2"],',
   '  "nodes": [',
-  '    { "id": "n1", "label": "开始", "type": "start_end", "lane": "可选泳道" }',
+  '    { "id": "n1", "label": "开始", "type": "start_end", "lane": "可选泳道", "x": 0.12, "y": 0.20, "w": 0.14, "h": 0.07 }',
   '  ],',
   '  "edges": [',
   '    { "from": "n1", "to": "n2", "relation": "next", "label": "可选" }',
   '  ]',
   '}',
 ].join('\n')
+
+function clamp01(n: number): number {
+  if (!Number.isFinite(n)) return 0
+  if (n < 0) return 0
+  if (n > 1) return 1
+  return n
+}
 
 function toShortString(input: unknown, fallback = '', maxLen = 48): string {
   if (typeof input !== 'string') return fallback
@@ -624,7 +645,13 @@ function toShortString(input: unknown, fallback = '', maxLen = 48): string {
 }
 
 function normalizeImageSceneHint(input: unknown): ImageSceneHint {
-  if (input === 'mind-map' || input === 'flowchart' || input === 'swimlane' || input === 'auto') return input
+  if (
+    input === 'mind-map' ||
+    input === 'flowchart' ||
+    input === 'swimlane' ||
+    input === 'free-layout' ||
+    input === 'auto'
+  ) return input
   return 'auto'
 }
 
@@ -661,7 +688,20 @@ function validateImageStructuredDraft(obj: any, rawText: string): AiImageStructu
       const label = toShortString(n?.label, `步骤${idx + 1}`, 32)
       const type = normalizeImageNodeType(n?.type)
       const lane = toShortString(n?.lane, '', 24) || undefined
-      return { id, label, type, lane }
+      const x = Number(n?.x)
+      const y = Number(n?.y)
+      const w = Number(n?.w)
+      const h = Number(n?.h)
+      return {
+        id,
+        label,
+        type,
+        lane,
+        x: Number.isFinite(x) ? clamp01(x) : undefined,
+        y: Number.isFinite(y) ? clamp01(y) : undefined,
+        w: Number.isFinite(w) ? clamp01(w) : undefined,
+        h: Number.isFinite(h) ? clamp01(h) : undefined,
+      }
     })
     .filter((n) => !!n.id)
 
@@ -708,6 +748,160 @@ function buildDiagramPromptFromImageStructured(structured: AiImageStructuredDraf
   ]
     .filter(Boolean)
     .join('\n\n')
+}
+
+function inferHandlesByGeometry(
+  s: { x: number; y: number; w: number; h: number },
+  t: { x: number; y: number; w: number; h: number },
+): { sourceHandle: string; targetHandle: string } {
+  const sCx = s.x + s.w / 2
+  const sCy = s.y + s.h / 2
+  const tCx = t.x + t.w / 2
+  const tCy = t.y + t.h / 2
+  const dx = tCx - sCx
+  const dy = tCy - sCy
+  if (Math.abs(dx) >= Math.abs(dy)) {
+    return dx >= 0
+      ? { sourceHandle: 's-right', targetHandle: 't-left' }
+      : { sourceHandle: 's-left', targetHandle: 't-right' }
+  }
+  return dy >= 0
+    ? { sourceHandle: 's-bottom', targetHandle: 't-top' }
+    : { sourceHandle: 's-top', targetHandle: 't-bottom' }
+}
+
+function buildFreeLayoutDraftFromImageStructured(structured: AiImageStructuredDraft): AiDiagramDraft {
+  const CANVAS_W = 1800
+  const CANVAS_H = 1000
+  const MIN_W = 120
+  const MAX_W = 320
+  const MIN_H = 48
+  const MAX_H = 180
+  const GAP_X = 220
+  const GAP_Y = 120
+  const START_X = 120
+  const START_Y = 120
+
+  const snapToGrid = (value: number) => Math.round(value / GRID_UNIT) * GRID_UNIT
+  const snapSizeToGrid = (value: number) => Math.max(GRID_UNIT, snapToGrid(value))
+  const avoidGap = GRID_UNIT
+  const microShift = GRID_UNIT * 2
+  const maxShiftPass = 8
+
+  const intersects = (
+    a: { x: number; y: number; w: number; h: number },
+    b: { x: number; y: number; w: number; h: number },
+    gap: number,
+  ) => {
+    const ax1 = a.x - gap
+    const ay1 = a.y - gap
+    const ax2 = a.x + a.w + gap
+    const ay2 = a.y + a.h + gap
+    const bx1 = b.x - gap
+    const by1 = b.y - gap
+    const bx2 = b.x + b.w + gap
+    const by2 = b.y + b.h + gap
+    return ax1 < bx2 && ax2 > bx1 && ay1 < by2 && ay2 > by1
+  }
+
+  const nodes = structured.nodes.map((n, idx) => {
+    const hasLayout = n.x != null && n.y != null
+    const widthRaw = n.w != null ? Math.max(MIN_W, Math.min(MAX_W, Math.round(n.w * CANVAS_W))) : 180
+    const heightRaw = n.h != null ? Math.max(MIN_H, Math.min(MAX_H, Math.round(n.h * CANVAS_H))) : 56
+    const fallbackCol = idx % 6
+    const fallbackRow = Math.floor(idx / 6)
+    const xRaw = hasLayout ? Math.round((n.x as number) * CANVAS_W) : START_X + fallbackCol * GAP_X
+    const yRaw = hasLayout ? Math.round((n.y as number) * CANVAS_H) : START_Y + fallbackRow * GAP_Y
+    const width = snapSizeToGrid(widthRaw)
+    const height = snapSizeToGrid(heightRaw)
+    const x = snapToGrid(xRaw)
+    const y = snapToGrid(yRaw)
+    const shape = n.type === 'decision' ? 'diamond' : n.type === 'start_end' ? 'circle' : 'rect'
+    const semanticType =
+      n.type === 'decision' ? 'decision' : n.type === 'start_end' ? 'start' : n.type === 'io' ? 'data' : 'task'
+    return {
+      id: n.id,
+      type: 'quad',
+      position: { x, y },
+      width,
+      height,
+      style: { width, height },
+      data: {
+        title: n.label,
+        label: n.label,
+        shape,
+        semanticType,
+      },
+    }
+  })
+
+  // 实验能力：在“尽量复刻”前提下做轻微去重叠，且每次位移都严格走网格。
+  // 只做小步平移，不重排整体拓扑，不触发任何 Dagre/ELK 自动布局。
+  for (let pass = 0; pass < maxShiftPass; pass += 1) {
+    let changed = false
+    for (let i = 0; i < nodes.length; i += 1) {
+      for (let j = i + 1; j < nodes.length; j += 1) {
+        const a = nodes[i]
+        const b = nodes[j]
+        const aBox = {
+          x: a.position.x,
+          y: a.position.y,
+          w: Math.max(GRID_UNIT, Number(a.width ?? 160)),
+          h: Math.max(GRID_UNIT, Number(a.height ?? 56)),
+        }
+        const bBox = {
+          x: b.position.x,
+          y: b.position.y,
+          w: Math.max(GRID_UNIT, Number(b.width ?? 160)),
+          h: Math.max(GRID_UNIT, Number(b.height ?? 56)),
+        }
+        if (!intersects(aBox, bBox, avoidGap)) continue
+
+        const dx = (bBox.x + bBox.w / 2) - (aBox.x + aBox.w / 2)
+        const dy = (bBox.y + bBox.h / 2) - (aBox.y + aBox.h / 2)
+        if (Math.abs(dx) >= Math.abs(dy)) {
+          b.position.x = snapToGrid(b.position.x + (dx >= 0 ? microShift : -microShift))
+        } else {
+          b.position.y = snapToGrid(b.position.y + (dy >= 0 ? microShift : -microShift))
+        }
+        changed = true
+      }
+    }
+    if (!changed) break
+  }
+
+  const boxById = new Map(
+    nodes.map((n) => [n.id, { x: n.position.x, y: n.position.y, w: n.width ?? 160, h: n.height ?? 56 }]),
+  )
+  const edges = structured.edges.map((e, idx) => {
+    const s = boxById.get(e.from)
+    const t = boxById.get(e.to)
+    const handles = s && t ? inferHandlesByGeometry(s, t) : { sourceHandle: 's-right', targetHandle: 't-left' }
+    return {
+      id: `e-${idx + 1}`,
+      source: e.from,
+      target: e.to,
+      type: 'smoothstep',
+      sourceHandle: handles.sourceHandle,
+      targetHandle: handles.targetHandle,
+      ...(e.label ? { label: e.label } : {}),
+      data: {
+        relation: e.relation,
+        labelTextOnly: true,
+        layoutProfile: 'free-layout',
+      },
+      style: { strokeWidth: 1 },
+    }
+  })
+
+  return {
+    schema: 'flow2go.ai.diagram.v1',
+    title: structured.title || '自由布局（图生图）',
+    nodes,
+    edges,
+    viewport: { x: 0, y: 0, zoom: 1 },
+    rawText: structured.rawText,
+  }
 }
 
 async function openRouterSceneRoute(args: OpenRouterChatOptions): Promise<SceneRouteV2> {
@@ -1087,6 +1281,8 @@ export async function openRouterGenerateDiagramFromImage(
   const {
     apiKey,
     model,
+    recognitionModel,
+    generationModel,
     imageDataUrl,
     prompt,
     signal,
@@ -1111,10 +1307,13 @@ export async function openRouterGenerateDiagramFromImage(
     console.info(`[Flow2Go AI] +${elapsedMs}ms`, phase, detail ?? '')
   }
 
+  const recogModel = (recognitionModel ?? model ?? generationModel ?? '').trim() || 'qwen/qwen2.5-vl-72b-instruct'
+  const genModel = (generationModel ?? model ?? recognitionModel ?? '').trim() || 'qwen/qwen3-max-thinking'
+
   report('识图结构化', '请求多模态模型中…')
   const recognitionRaw = await openRouterChatCompleteByMessages({
     apiKey: key,
-    model,
+    model: recogModel,
     signal,
     timeoutMs,
     temperature: STABLE_GENERATION_TEMPERATURE,
@@ -1152,9 +1351,18 @@ export async function openRouterGenerateDiagramFromImage(
   const mergedScene = diagramScene ?? sceneFromImage
   const mergedPrompt = buildDiagramPromptFromImageStructured(structured, prompt)
 
+  // 第四种图形态：自由布局图生图（仅在用户未显式选择胶囊时触发）
+  // 直接复刻识图得到的相对位置，不走 Dagre。
+  if (diagramScene == null) {
+    report('自由布局复刻', '按识图坐标直接还原节点与连线（不走 Dagre）')
+    const draft = buildFreeLayoutDraftFromImageStructured(structured)
+    report('识图落图完成', '自由布局已生成')
+    return { draft, structured }
+  }
+
   const draft = await openRouterGenerateDiagram({
     apiKey: key,
-    model,
+    model: genModel,
     prompt: mergedPrompt,
     signal,
     timeoutMs,
