@@ -65,11 +65,29 @@ import { EdgeEditPopup } from './EdgeEditPopup'
 import { AssetEditPopup } from './AssetEditPopup'
 import {
   openRouterGenerateDiagram,
+  openRouterGenerateDiagramFromImage,
   normalizeAiDiagramToSnapshot,
   type AiDiagramDraft,
   type AiDiagramSceneHint,
   type AiGenerateProgressInfo,
 } from './aiDiagram'
+import {
+  buildSemanticRunBundle,
+  fingerprintDataUrl,
+  type SemanticPayloadFormat,
+  type SemanticPipeline,
+} from './semanticAsset'
+import {
+  getSemanticRunBundle,
+  loadSemanticRunBundles,
+  saveSemanticRunBundle,
+} from './semanticRunStorage'
+import {
+  getSemanticAssetCatalog,
+  getRulePackByPipeline,
+  validateSemanticAssetCatalog,
+} from './semanticAssetCatalog'
+import { getDiagramSpec, validateDiagramSpec } from './diagramSpec'
 import { AI_SCENE_CAPSULE_PRESETS } from './aiPromptPresets'
 import { AiSceneCapsules } from './AiSceneCapsules'
 import { BUILTIN_ASSETS } from './builtinAssets'
@@ -296,6 +314,13 @@ function persistOpenRouterKey(raw: string) {
 
 function nowId(prefix: string) {
   return `${prefix}-${Date.now()}-${Math.random().toString(16).slice(2)}`
+}
+
+function sceneHintToPipeline(scene: AiDiagramSceneHint | null): SemanticPipeline {
+  if (scene === 'swimlane') return 'swimlane-text'
+  if (scene === 'mind-map') return 'mind-map'
+  if (scene === 'flowchart') return 'flowchart'
+  return 'auto'
 }
 
 function Sidebar({
@@ -626,6 +651,9 @@ function EditorInner({ onBackHome, source, previewSnapshot, readOnly: _readOnly 
   const [aiModalOpen, setAiModalOpen] = useState(false)
   const [aiModalPrompt, setAiModalPrompt] = useState('')
   const [aiModalPromptUserEdited, setAiModalPromptUserEdited] = useState(false)
+  const [aiModalImageDataUrl, setAiModalImageDataUrl] = useState<string | null>(null)
+  const [aiModalImageName, setAiModalImageName] = useState<string | null>(null)
+  const aiModalImageInputRef = useRef<HTMLInputElement | null>(null)
   /** 与胶囊绑定：生成时传入 diagramScene；点 ✕ 取消高亮并清空输入框 */
   const [aiModalScene, setAiModalScene] = useState<AiDiagramSceneHint | null>(null)
   const [aiConfigOpen, setAiConfigOpen] = useState(false)
@@ -638,9 +666,18 @@ function EditorInner({ onBackHome, source, previewSnapshot, readOnly: _readOnly 
   const [handleLimitNotices, setHandleLimitNotices] = useState<Array<{ id: string; message: string }>>([])
   const [aiModalModel, setAiModalModel] = useState<string>(() => {
     try {
-      return localStorage.getItem('flow2go-openrouter-model') || 'qwen/qwen3-max-thinking'
+      return localStorage.getItem('flow2go-openrouter-model') || 'openai/gpt-5.4-mini'
     } catch {
-      return 'qwen/qwen3-max-thinking'
+      return 'openai/gpt-5.4-mini'
+    }
+  })
+  const [aiModalVisionModel, setAiModalVisionModel] = useState<string>(() => {
+    try {
+      const stored = localStorage.getItem('flow2go-openrouter-vision-model')
+      if (!stored || !stored.trim() || stored === 'openai/gpt-5.4-pro') return 'qwen/qwen2.5-vl-72b-instruct'
+      return stored
+    } catch {
+      return 'qwen/qwen2.5-vl-72b-instruct'
     }
   })
   const [aiModalKey, setAiModalKey] = useState<string>(() => {
@@ -918,6 +955,98 @@ function EditorInner({ onBackHome, source, previewSnapshot, readOnly: _readOnly 
     },
     [pushHistory, rf],
   )
+
+  const recordSemanticRun = useCallback((args: {
+    pipeline: SemanticPipeline
+    semanticFormat: SemanticPayloadFormat
+    semanticPayload: unknown
+    draft: AiDiagramDraft
+    sceneHint: AiDiagramSceneHint | null
+    prompt?: string
+    textModel?: string
+    visionModel?: string
+    imageDataUrl?: string | null
+  }) => {
+    const snap = normalizeAiDiagramToSnapshot(args.draft)
+    const rulePack = getRulePackByPipeline(args.pipeline)
+    const bundle = buildSemanticRunBundle({
+      pipeline: args.pipeline,
+      input: {
+        projectId,
+        prompt: args.prompt,
+        sceneHint: args.sceneHint ?? 'auto',
+        textModel: args.textModel,
+        visionModel: args.visionModel,
+        imageFingerprint: args.imageDataUrl ? fingerprintDataUrl(args.imageDataUrl) : undefined,
+      },
+      semanticFormat: args.semanticFormat,
+      semanticPayload: {
+        rulePackId: rulePack.id,
+        rulePackVersion: rulePack.version,
+        payload: args.semanticPayload,
+      },
+      output: {
+        title: args.draft.title,
+        snapshot: {
+          nodes: snap.nodes ?? [],
+          edges: snap.edges ?? [],
+          viewport: snap.viewport,
+        },
+        rawText: args.draft.rawText,
+      },
+    })
+    saveSemanticRunBundle(bundle)
+    console.info('[Flow2Go Semantic] run saved', bundle.id, bundle.pipeline, `${rulePack.id}@${rulePack.version}`)
+    return bundle.id
+  }, [projectId])
+
+  const replaySemanticRun = useCallback((runId: string): boolean => {
+    const run = getSemanticRunBundle(runId)
+    if (!run) return false
+    const nextNodes = normalizeNodesToGrid(((run.output.snapshot.nodes ?? []) as FlowNode[]))
+    const nextEdges = normalizeEdgesToGrid(((run.output.snapshot.edges ?? []) as FlowEdge[]))
+    setNodes(nextNodes)
+    setEdges(nextEdges)
+    pushHistory(nextNodes, nextEdges, 'semantic-replay')
+    if (run.output.snapshot.viewport) {
+      rf.setViewport(run.output.snapshot.viewport, { duration: 0 })
+    }
+    return true
+  }, [pushHistory, rf])
+
+  useEffect(() => {
+    const catalogValidation = validateSemanticAssetCatalog()
+    if (!catalogValidation.ok) {
+      console.warn('[Flow2Go Semantic] asset catalog validation failed', catalogValidation.errors)
+    }
+    const api = {
+      list: (limit = 20) => loadSemanticRunBundles(limit),
+      replay: (runId: string) => replaySemanticRun(runId),
+      get: (runId: string) => getSemanticRunBundle(runId),
+    }
+    ;(window as any).flow2goSemanticRuns = api
+    return () => {
+      if ((window as any).flow2goSemanticRuns === api) {
+        delete (window as any).flow2goSemanticRuns
+      }
+    }
+  }, [replaySemanticRun])
+
+  useEffect(() => {
+    const assetApi = {
+      catalog: () => getSemanticAssetCatalog(),
+      spec: () => getDiagramSpec(),
+      validateSpec: () => validateDiagramSpec(getDiagramSpec()),
+      validate: () => validateSemanticAssetCatalog(),
+      rulePackOf: (pipeline: SemanticPipeline) => getRulePackByPipeline(pipeline),
+    }
+    ;(window as any).flow2goSemanticAssets = assetApi
+    return () => {
+      if ((window as any).flow2goSemanticAssets === assetApi) {
+        delete (window as any).flow2goSemanticAssets
+      }
+    }
+  }, [])
 
   // const _canUndo = historyRef.current.past.length > 0
   // const canRedo = historyRef.current.future.length > 0  // 已移除重做按钮
@@ -3228,6 +3357,8 @@ function EditorInner({ onBackHome, source, previewSnapshot, readOnly: _readOnly 
                   setAiConfigOpen(false)
                   setAiModalPrompt('')
                   setAiModalPromptUserEdited(false)
+                  setAiModalImageDataUrl(null)
+                  setAiModalImageName(null)
                   setAiModalScene(null)
                   setAiModalOpen(true)
                 }}
@@ -3246,15 +3377,15 @@ function EditorInner({ onBackHome, source, previewSnapshot, readOnly: _readOnly 
                 type="button"
                 onClick={() => fileInputRef.current?.click()}
               >
-                导入
+                打开文件
               </button>
               <button
                 className={styles.assetsBtn}
                 type="button"
                 onClick={openSaveModal}
-                title="导出 zip（project.json + assets）"
+                title="保存到本地 zip（project.json + assets）"
               >
-                保存
+                保存到本地
               </button>
             </Panel>
             )}
@@ -3273,6 +3404,7 @@ function EditorInner({ onBackHome, source, previewSnapshot, readOnly: _readOnly 
               WebkitBackdropFilter: 'blur(10px)',
               zIndex: 30000,
               display: 'flex',
+              flexDirection: 'column',
               alignItems: 'center',
               justifyContent: 'center',
               padding: 16,
@@ -3324,6 +3456,7 @@ function EditorInner({ onBackHome, source, previewSnapshot, readOnly: _readOnly 
                       }}
                       placeholder="sk-or-..."
                     />
+                    <div style={{ fontSize: 12, fontWeight: 700, color: '#475569' }}>文本生成模型</div>
                     <input
                       className={styles.aiApiKeyInput}
                       value={aiModalModel}
@@ -3331,7 +3464,17 @@ function EditorInner({ onBackHome, source, previewSnapshot, readOnly: _readOnly 
                         setAiModalModel(e.target.value)
                         try { localStorage.setItem('flow2go-openrouter-model', e.target.value) } catch {}
                       }}
-                      placeholder="qwen/qwen3-max-thinking"
+                      placeholder="openai/gpt-5.4-mini"
+                    />
+                    <div style={{ fontSize: 12, fontWeight: 700, color: '#475569' }}>图片识图模型</div>
+                    <input
+                      className={styles.aiApiKeyInput}
+                      value={aiModalVisionModel}
+                      onChange={(e) => {
+                        setAiModalVisionModel(e.target.value)
+                        try { localStorage.setItem('flow2go-openrouter-vision-model', e.target.value) } catch {}
+                      }}
+                      placeholder="qwen/qwen2.5-vl-72b-instruct"
                     />
                     <div className={styles.aiNote} style={{ opacity: 0.9 }}>
                       配置只保存在本地浏览器。未配置 Key 时，无法发起生成。
@@ -3350,19 +3493,83 @@ function EditorInner({ onBackHome, source, previewSnapshot, readOnly: _readOnly 
                     )}
                   </div>
                   <div className={styles.aiChatInputWrap}>
-                    <textarea
-                      value={aiModalPrompt}
-                      onChange={(e) => {
-                        const next = e.target.value
-                        setAiModalPrompt(next)
-                        setAiModalPromptUserEdited(next.trim().length > 0)
+                    {aiModalImageDataUrl && (
+                      <div className={styles.aiImageOccupyWrap}>
+                        <img
+                          src={aiModalImageDataUrl}
+                          alt={aiModalImageName || '图片'}
+                          className={styles.aiImageTagThumbLarge}
+                        />
+                        <button
+                          type="button"
+                          className={styles.aiImageTagRemoveLarge}
+                          onClick={() => {
+                            setAiModalImageDataUrl(null)
+                            setAiModalImageName(null)
+                          }}
+                          aria-label="移除图片"
+                          title="移除图片"
+                        >
+                          <X size={14} />
+                        </button>
+                      </div>
+                    )}
+                    {!aiModalImageDataUrl && (
+                      <textarea
+                        value={aiModalPrompt}
+                        onChange={(e) => {
+                          const next = e.target.value
+                          setAiModalPrompt(next)
+                          setAiModalPromptUserEdited(next.trim().length > 0)
+                        }}
+                        rows={10}
+                        placeholder="输入你的需求，支持多层级描述…"
+                        className={styles.aiChatInput}
+                      />
+                    )}
+                    <input
+                      ref={aiModalImageInputRef}
+                      type="file"
+                      accept="image/png,image/jpeg,image/webp,image/svg+xml"
+                      style={{ display: 'none' }}
+                      onChange={(e: ChangeEvent<HTMLInputElement>) => {
+                        const file = e.target.files?.[0]
+                        if (!file) return
+                        const reader = new FileReader()
+                        reader.onload = () => {
+                          const dataUrl = String(reader.result || '')
+                          if (!dataUrl.startsWith('data:image/')) {
+                            setAiModalError('暂不支持该图片格式，请使用 png/jpg/webp/svg')
+                            return
+                          }
+                          setAiModalError(null)
+                          setAiModalImageDataUrl(dataUrl)
+                          setAiModalImageName(file.name)
+                          // 图片模式占据输入区：清空文本，避免隐藏文本影响识图生成。
+                          setAiModalPrompt('')
+                          setAiModalPromptUserEdited(false)
+                        }
+                        reader.onerror = () => {
+                          setAiModalError('图片读取失败，请重试')
+                        }
+                        reader.readAsDataURL(file)
+                        e.currentTarget.value = ''
                       }}
-                      rows={10}
-                      placeholder="输入你的需求，支持多层级描述…"
-                      className={styles.aiChatInput}
                     />
-                    <div className={styles.aiNote} style={{ marginTop: 8, color: '#ef4444' }}>
-                      请勿使用该功能发送公司数据
+                    <div style={{ display: 'flex', gap: 8, alignItems: 'center', flexWrap: 'wrap' }}>
+                      <button
+                        type="button"
+                        className={styles.btnSecondary}
+                        style={{ borderRadius: 10, padding: '6px 10px', fontSize: 12 }}
+                        onClick={() => aiModalImageInputRef.current?.click()}
+                      >
+                        上传参考图
+                      </button>
+                      {aiModalImageName ? (
+                        <div style={{ fontSize: 12, color: '#475569' }}>已选择：{aiModalImageName}</div>
+                      ) : (
+                        <div style={{ fontSize: 12, color: '#94a3b8' }}>可选：上传流程图/草图进行识图落图</div>
+                      )}
                     </div>
                   </div>
                   <AiSceneCapsules
@@ -3372,7 +3579,7 @@ function EditorInner({ onBackHome, source, previewSnapshot, readOnly: _readOnly 
                     onSelect={(preset) => {
                       setAiModalScene(preset.scene)
                       // 仅当用户未手动编辑时，切换胶囊会切换预填文案。
-                      if (!aiModalPromptUserEdited) {
+                      if (!aiModalPromptUserEdited && !aiModalImageDataUrl) {
                         setAiModalPrompt(preset.prompt)
                       }
                     }}
@@ -3388,24 +3595,62 @@ function EditorInner({ onBackHome, source, previewSnapshot, readOnly: _readOnly 
                     <button
                       type="button"
                       className={styles.aiGenerateBtn}
-                      disabled={aiModalGenerating || !aiModalPrompt.trim()}
+                      disabled={aiModalGenerating || (!aiModalPrompt.trim() && !aiModalImageDataUrl)}
                       onClick={async () => {
                         const p = aiModalPrompt.trim()
-                        if (!p) return
+                        if (!p && !aiModalImageDataUrl) return
                         setAiModalGenerating(true)
                         setAiModalError(null)
                         setAiModalProgress({ phase: '已提交', detail: '等待 OpenRouter…' })
                         try {
                           const ac = new AbortController()
                           aiModalAbortRef.current = ac
+                          if (aiModalImageDataUrl) {
+                            setAiModalProgress({ phase: '识图结构化', detail: '读取图中节点和连线…' })
+                            const { draft, structured } = await openRouterGenerateDiagramFromImage({
+                              apiKey: aiModalKey.trim(),
+                              recognitionModel: aiModalVisionModel.trim() || 'qwen/qwen2.5-vl-72b-instruct',
+                              generationModel: aiModalModel.trim() || 'openai/gpt-5.4-mini',
+                              imageDataUrl: aiModalImageDataUrl,
+                              prompt: undefined,
+                              signal: ac.signal,
+                              diagramScene: aiModalScene ?? undefined,
+                              onProgress: (info: AiGenerateProgressInfo) => {
+                                setAiModalProgress({ phase: info.phase, detail: info.detail })
+                              },
+                            })
+                            setAiDiagramDraft(draft)
+                            applyAiDraftDirect(draft)
+                            recordSemanticRun({
+                              pipeline: 'swimlane-image',
+                              semanticFormat: 'image-structured',
+                              semanticPayload: structured,
+                              draft,
+                              sceneHint: aiModalScene,
+                              prompt: p || undefined,
+                              textModel: aiModalModel.trim() || 'openai/gpt-5.4-mini',
+                              visionModel: aiModalVisionModel.trim() || 'qwen/qwen2.5-vl-72b-instruct',
+                              imageDataUrl: aiModalImageDataUrl,
+                            })
+                            requestAnimationFrame(() => {
+                              requestAnimationFrame(() => {
+                                customFitView()
+                              })
+                            })
+                            setAiModalOpen(false)
+                            setAiModalImageDataUrl(null)
+                            setAiModalImageName(null)
+                            return
+                          }
                           // Swimlane 独立链路：先走 LLM 结构化 Draft，再物化为图
                           if (aiModalScene === 'swimlane') {
+                            if (!p) throw new Error('泳道图请先输入文本描述')
                             setAiModalProgress({ phase: '生成泳道图', detail: 'LLM 结构化中…' })
                             const { generateSwimlaneDraftWithLLM, swimlaneDraftToGraphBatchPayload } = await import('./swimlaneDraft')
                             const { materializeGraphBatchPayloadToSnapshot } = await import('./mermaid/apply')
                             const draftFromPrompt = await generateSwimlaneDraftWithLLM({
                               apiKey: aiModalKey.trim(),
-                              model: aiModalModel.trim() || 'qwen/qwen3-max-thinking',
+                              model: aiModalModel.trim() || 'openai/gpt-5.4-mini',
                               prompt: p,
                               signal: ac.signal,
                             })
@@ -3414,9 +3659,32 @@ function EditorInner({ onBackHome, source, previewSnapshot, readOnly: _readOnly 
                             const snap = await materializeGraphBatchPayloadToSnapshot(payload)
                             const nextNodes = normalizeNodesToGrid(((snap.nodes ?? []) as FlowNode[]))
                             const nextEdges = normalizeEdgesToGrid(((snap.edges ?? []) as FlowEdge[]))
+                            const aiDraft: AiDiagramDraft = {
+                              schema: 'flow2go.ai.diagram.v1',
+                              title: draftFromPrompt.title,
+                              nodes: snap.nodes ?? [],
+                              edges: snap.edges ?? [],
+                              viewport: { x: 0, y: 0, zoom: 1 },
+                              rawText: JSON.stringify(draftFromPrompt),
+                            }
                             setNodes(nextNodes)
                             setEdges(nextEdges)
                             pushHistory(nextNodes, nextEdges, 'ai-swimlane')
+                            recordSemanticRun({
+                              pipeline: 'swimlane-text',
+                              semanticFormat: 'swimlane-draft',
+                              semanticPayload: draftFromPrompt,
+                              draft: aiDraft,
+                              sceneHint: aiModalScene,
+                              prompt: p,
+                              textModel: aiModalModel.trim() || 'openai/gpt-5.4-mini',
+                            })
+                            // 泳道图生成后需要重新居中视角（并考虑左右面板安全区）。
+                            requestAnimationFrame(() => {
+                              requestAnimationFrame(() => {
+                                customFitView()
+                              })
+                            })
                             setAiModalOpen(false)
                             setAiModalGenerating(false)
                             setAiModalProgress(null)
@@ -3424,7 +3692,7 @@ function EditorInner({ onBackHome, source, previewSnapshot, readOnly: _readOnly 
                           }
                           const draft = await openRouterGenerateDiagram({
                             apiKey: aiModalKey.trim(),
-                            model: aiModalModel.trim() || 'qwen/qwen3-max-thinking',
+                            model: aiModalModel.trim() || 'openai/gpt-5.4-mini',
                             prompt: p,
                             signal: ac.signal,
                             diagramScene: aiModalScene ?? undefined,
@@ -3434,6 +3702,15 @@ function EditorInner({ onBackHome, source, previewSnapshot, readOnly: _readOnly 
                           })
                           setAiDiagramDraft(draft)
                           applyAiDraftDirect(draft)
+                          recordSemanticRun({
+                            pipeline: sceneHintToPipeline(aiModalScene),
+                            semanticFormat: 'raw-text',
+                            semanticPayload: { rawText: draft.rawText },
+                            draft,
+                            sceneHint: aiModalScene,
+                            prompt: p,
+                            textModel: aiModalModel.trim() || 'openai/gpt-5.4-mini',
+                          })
                           setAiModalOpen(false)
                         } catch (e) {
                           const msg = e instanceof Error ? e.message : '生成失败'
@@ -3482,6 +3759,17 @@ function EditorInner({ onBackHome, source, previewSnapshot, readOnly: _readOnly 
                   )}
                 </div>
               </div>
+            </div>
+            <div
+              style={{
+                marginTop: 8,
+                fontSize: 12,
+                lineHeight: 1.4,
+                color: '#94a3b8',
+                userSelect: 'none',
+              }}
+            >
+              请勿上传公司数据
             </div>
           </div>
         )}

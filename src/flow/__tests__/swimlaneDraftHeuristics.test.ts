@@ -7,6 +7,12 @@ function nodeStyleFromPayload(payload: ReturnType<typeof swimlaneDraftToGraphBat
   return ((op.params.style ?? {}) as Record<string, any>)
 }
 
+function edgeStyleFromPayload(payload: ReturnType<typeof swimlaneDraftToGraphBatchPayload>, edgeId: string): Record<string, any> {
+  const op = payload.operations.find((item) => item.op === 'graph.createEdge' && item.params.id === edgeId)
+  if (!op || op.op !== 'graph.createEdge') throw new Error(`edge op not found: ${edgeId}`)
+  return ((op.params.style ?? {}) as Record<string, any>)
+}
+
 describe('swimlane draft lane heuristics', () => {
   it('splits decision outgoing targets into different rows only when same-row same-col collision exists', () => {
     const draft: SwimlaneDraft = {
@@ -103,5 +109,67 @@ describe('swimlane draft lane heuristics', () => {
     const nStyle = nodeStyleFromPayload(payload, 'N')
     expect(yStyle.laneRow).toBe(0)
     expect(nStyle.laneRow).toBe(0)
+  })
+
+  it('fills explicit crossLane semanticType for cross-lane edges when semanticType is missing', () => {
+    const draft: SwimlaneDraft = {
+      title: 'cross lane semantic',
+      direction: 'horizontal',
+      lanes: [
+        { id: 'lane-a', title: 'A', order: 0 },
+        { id: 'lane-b', title: 'B', order: 1 },
+      ],
+      nodes: [
+        { id: 'A1', title: 'A1', laneId: 'lane-a', semanticType: 'task', order: 0 },
+        { id: 'B1', title: 'B1', laneId: 'lane-b', semanticType: 'task', order: 1 },
+      ],
+      edges: [{ id: 'e-a1-b1', source: 'A1', target: 'B1' }],
+    }
+
+    const payload = swimlaneDraftToGraphBatchPayload(draft)
+    const op = payload.operations.find((item) => item.op === 'graph.createEdge' && item.params.id === 'e-a1-b1')
+    if (!op || op.op !== 'graph.createEdge') throw new Error('edge op not found')
+    expect((op.params.style as any)?.semanticType).toBe('crossLane')
+  })
+
+  it('writes laneId into node style for stable parentId + laneId mapping', () => {
+    const draft: SwimlaneDraft = {
+      title: 'lane id mapping',
+      direction: 'horizontal',
+      lanes: [{ id: 'lane-a', title: 'A', order: 0 }],
+      nodes: [{ id: 'n1', title: '步骤', laneId: 'lane-a', semanticType: 'task', order: 0 }],
+      edges: [],
+    }
+
+    const payload = swimlaneDraftToGraphBatchPayload(draft)
+    const style = nodeStyleFromPayload(payload, 'n1')
+    expect(style.laneId).toBe('lane-a')
+  })
+
+  it('keeps at most one cross-lane returnFlow edge for a cleaner generated draft', () => {
+    const draft: SwimlaneDraft = {
+      title: 'cross-lane return prune',
+      direction: 'horizontal',
+      lanes: [
+        { id: 'lane-user', title: '用户', order: 0 },
+        { id: 'lane-system', title: '系统', order: 1 },
+        { id: 'lane-finance', title: '财务', order: 2 },
+      ],
+      nodes: [
+        { id: 'U1', title: '提交', laneId: 'lane-user', semanticType: 'task', order: 0 },
+        { id: 'S1', title: '审核', laneId: 'lane-system', semanticType: 'task', order: 1 },
+        { id: 'F1', title: '复核', laneId: 'lane-finance', semanticType: 'task', order: 2 },
+      ],
+      edges: [
+        { id: 'ret-1', source: 'S1', target: 'U1', semanticType: 'returnFlow', label: '驳回' },
+        { id: 'ret-2', source: 'F1', target: 'U1', semanticType: 'returnFlow', label: '退回' },
+      ],
+    }
+
+    const payload = swimlaneDraftToGraphBatchPayload(draft)
+    const edgeOps = payload.operations.filter((item) => item.op === 'graph.createEdge') as Array<any>
+    const crossLaneReturns = edgeOps.filter((op) => (op.params.style as any)?.semanticType === 'returnFlow')
+    expect(crossLaneReturns).toHaveLength(1)
+    expect(edgeStyleFromPayload(payload, 'ret-1').semanticType).toBe('returnFlow')
   })
 })

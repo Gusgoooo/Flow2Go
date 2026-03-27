@@ -100,6 +100,44 @@ describe('materializeGraphBatchPayloadToSnapshot - handle inference', () => {
     expect((edge.data ?? {}).labelTextOnly).toBe(true)
   })
 
+  it('applies semantic node defaults for end/decision without overriding explicit styles', async () => {
+    const payload: GraphBatchPayload = {
+      version: '1.0',
+      source: 'mermaid',
+      graphType: 'flowchart',
+      direction: 'LR',
+      operations: [
+        {
+          op: 'graph.createNodeQuad',
+          params: { id: 'end_1', title: '结束', style: { semanticType: 'end' } },
+        },
+        {
+          op: 'graph.createNodeQuad',
+          params: { id: 'decision_1', title: '是否通过', style: { semanticType: 'decision' } },
+        },
+        {
+          op: 'graph.createNodeQuad',
+          params: {
+            id: 'decision_custom',
+            title: '自定义判断',
+            style: { semanticType: 'decision', color: '#123456', strokeWidth: 2 },
+          },
+        },
+      ],
+    }
+
+    const snap = await materializeGraphBatchPayloadToSnapshot(payload, { replace: true })
+    const endNode = snap.nodes.find((n) => n.id === 'end_1') as any
+    const decisionNode = snap.nodes.find((n) => n.id === 'decision_1') as any
+    const decisionCustomNode = snap.nodes.find((n) => n.id === 'decision_custom') as any
+
+    expect((endNode?.data ?? {}).color).toBe('rgba(226, 232, 240, 0.8)')
+    expect((decisionNode?.data ?? {}).color).toBe('#FFB100')
+    expect((decisionNode?.data ?? {}).strokeWidth).toBe(0)
+    expect((decisionCustomNode?.data ?? {}).color).toBe('#123456')
+    expect((decisionCustomNode?.data ?? {}).strokeWidth).toBe(2)
+  })
+
   it('avoids making left side both in+out: if left has in and B is left-down, prefer bottom', async () => {
     const payload: GraphBatchPayload = {
       version: '1.0',
@@ -128,6 +166,67 @@ describe('materializeGraphBatchPayloadToSnapshot - handle inference', () => {
     expect(e.sourceHandle).toBeTruthy()
     expect(e.targetHandle).toBeTruthy()
     expect(e.sourceHandle).toBe('s-bottom')
+    expect(e.targetHandle).toBe('t-top')
+  })
+
+  it('uses top->top for bidirectional flowchart edge when source is left-below target', async () => {
+    const payload: GraphBatchPayload = {
+      version: '1.0',
+      source: 'mermaid',
+      graphType: 'flowchart',
+      direction: 'LR',
+      operations: [
+        { op: 'graph.createNodeQuad', params: { id: 'A', title: 'A', shape: 'rect', position: { x: 0, y: 140 } } },
+        { op: 'graph.createNodeQuad', params: { id: 'B', title: 'B', shape: 'rect', position: { x: 240, y: 0 } } },
+        { op: 'graph.createEdge', params: { id: 'e_ab_both', source: 'A', target: 'B', type: 'bezier', arrowStyle: 'both' } },
+      ],
+    }
+
+    const snap = await materializeGraphBatchPayloadToSnapshot(payload, { replace: true })
+    const e = snap.edges.find((edge) => edge.id === 'e_ab_both') as any
+    expect((e?.data ?? {}).arrowStyle).toBe('both')
+    expect(e.sourceHandle).toBe('s-top')
+    expect(e.targetHandle).toBe('t-top')
+  })
+
+  it('uses bottom->bottom for bidirectional flowchart edge when source is left-above target', async () => {
+    const payload: GraphBatchPayload = {
+      version: '1.0',
+      source: 'mermaid',
+      graphType: 'flowchart',
+      direction: 'LR',
+      operations: [
+        { op: 'graph.createNodeQuad', params: { id: 'A', title: 'A', shape: 'rect', position: { x: 0, y: 0 } } },
+        { op: 'graph.createNodeQuad', params: { id: 'B', title: 'B', shape: 'rect', position: { x: 240, y: 140 } } },
+        { op: 'graph.createEdge', params: { id: 'e_ab_both2', source: 'A', target: 'B', type: 'bezier', arrowStyle: 'both' } },
+      ],
+    }
+
+    const snap = await materializeGraphBatchPayloadToSnapshot(payload, { replace: true })
+    const e = snap.edges.find((edge) => edge.id === 'e_ab_both2') as any
+    expect((e?.data ?? {}).arrowStyle).toBe('both')
+    expect(e.sourceHandle).toBe('s-bottom')
+    expect(e.targetHandle).toBe('t-bottom')
+  })
+
+  it('applies bidirectional diagonal handle rule regardless of source/target order', async () => {
+    const payload: GraphBatchPayload = {
+      version: '1.0',
+      source: 'mermaid',
+      graphType: 'flowchart',
+      direction: 'LR',
+      operations: [
+        { op: 'graph.createNodeQuad', params: { id: 'A', title: 'A', shape: 'rect', position: { x: 0, y: 140 } } },
+        { op: 'graph.createNodeQuad', params: { id: 'B', title: 'B', shape: 'rect', position: { x: 240, y: 0 } } },
+        // source/target 反向：source 在右上，target 在左下
+        { op: 'graph.createEdge', params: { id: 'e_ba_both', source: 'B', target: 'A', type: 'bezier', arrowStyle: 'both' } },
+      ],
+    }
+
+    const snap = await materializeGraphBatchPayloadToSnapshot(payload, { replace: true })
+    const e = snap.edges.find((edge) => edge.id === 'e_ba_both') as any
+    expect((e?.data ?? {}).arrowStyle).toBe('both')
+    expect(e.sourceHandle).toBe('s-top')
     expect(e.targetHandle).toBe('t-top')
   })
 
@@ -201,7 +300,7 @@ describe('materializeGraphBatchPayloadToSnapshot - handle inference', () => {
     expect(w1).not.toBe(w2)
   })
 
-  it('enforces left/right split for swimlane decision outgoing edges', async () => {
+  it('enforces different source handles for swimlane decision outgoing edges', async () => {
     const payload: GraphBatchPayload = {
       version: '1.0',
       source: 'swimlane-draft',
@@ -235,8 +334,7 @@ describe('materializeGraphBatchPayloadToSnapshot - handle inference', () => {
     const e1 = snap.edges.find((e) => e.id === 'e1') as any
     const e2 = snap.edges.find((e) => e.id === 'e2') as any
     const outgoingHandles = new Set<string>([e1?.sourceHandle, e2?.sourceHandle].filter(Boolean))
-    expect(outgoingHandles.has('s-left')).toBe(true)
-    expect(outgoingHandles.has('s-right')).toBe(true)
+    expect(outgoingHandles.size).toBeGreaterThanOrEqual(2)
     expect((e1?.data ?? {}).labelTextOnly).toBe(true)
     expect((e2?.data ?? {}).labelTextOnly).toBe(true)
   })

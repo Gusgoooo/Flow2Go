@@ -3,10 +3,61 @@ import { routeCrossLaneEdge } from './crossLaneRouter'
 
 type SwimlaneEdgeSemanticType = 'normal' | 'crossLane' | 'returnFlow' | 'conditional'
 type HandlePair = { sourceHandle: string; targetHandle: string }
+type Side = 'top' | 'right' | 'bottom' | 'left'
 const RETURN_FLOW_AUTO_ANIMATED_KEY = 'autoReturnFlowAnimated'
 
 const LONG_RETURN_ORDER_GAP = 2
 const LONG_RETURN_X_GAP = 280
+
+function sideToSourceHandle(side: Side): string {
+  return `s-${side}`
+}
+
+function dominantSideFromDelta(dx: number, dy: number): Side {
+  if (Math.abs(dx) >= Math.abs(dy)) return dx >= 0 ? 'right' : 'left'
+  return dy >= 0 ? 'bottom' : 'top'
+}
+
+function oppositeSide(side: Side): Side {
+  if (side === 'top') return 'bottom'
+  if (side === 'bottom') return 'top'
+  if (side === 'left') return 'right'
+  return 'left'
+}
+
+function emptySideUsage(): Record<Side, number> {
+  return { top: 0, right: 0, bottom: 0, left: 0 }
+}
+
+function chooseLeastUsedDistinctSide(
+  preferred: Side,
+  usage: Record<Side, number>,
+  blocked?: Side,
+): Side {
+  const sequence: Side[] = [
+    preferred,
+    oppositeSide(preferred),
+    'right',
+    'left',
+    'bottom',
+    'top',
+  ]
+  const unique: Side[] = []
+  for (const side of sequence) {
+    if (blocked && side === blocked) continue
+    if (!unique.includes(side)) unique.push(side)
+  }
+  let best = unique[0] ?? preferred
+  let bestCount = usage[best] ?? 0
+  for (const side of unique) {
+    const count = usage[side] ?? 0
+    if (count < bestCount) {
+      best = side
+      bestCount = count
+    }
+  }
+  return best
+}
 
 function classifyDecisionBranch(edge: Edge<any>): 'yes' | 'no' | null {
   const text = typeof edge.label === 'string' ? edge.label.trim() : ''
@@ -84,6 +135,12 @@ function centerX(node: Node<any>, byId: Map<string, Node<any>>): number {
   return pos.x + size.width / 2
 }
 
+function centerY(node: Node<any>, byId: Map<string, Node<any>>): number {
+  const pos = absolutePosition(node, byId)
+  const size = nodeSize(node)
+  return pos.y + size.height / 2
+}
+
 function chooseOrdinarySwimlaneHandles(
   semantic: SwimlaneEdgeSemanticType,
   srcNode: Node<any>,
@@ -144,7 +201,8 @@ function applyReturnFlowAnimation(
 export function rerouteSwimlaneEdges(nodes: Node<any>[], edges: Edge<any>[]): Edge<any>[] {
   const nodeById = new Map(nodes.map((n) => [n.id, n]))
   const occupiedRouteSignatures = new Set<string>()
-  const decisionOutUsage = new Map<string, { left: number; right: number }>()
+  const decisionOutUsage = new Map<string, Record<Side, number>>()
+  const decisionBranchSideByLabel = new Map<string, { yes?: Side; no?: Side }>()
 
   return edges.map((edge) => {
     const srcNode = nodeById.get(edge.source)
@@ -180,30 +238,30 @@ export function rerouteSwimlaneEdges(nodes: Node<any>[], edges: Edge<any>[]): Ed
     const srcDecision = isDecisionNode(srcNode)
     const tgtDecision = isDecisionNode(tgtNode)
     const decisionInvolved = srcDecision || tgtDecision
-    // decision 节点：强制使用左右句柄，且前两条出边必须分流到左右两个 handle。
+    // decision 节点：yes/no 必须走不同 handle；不再写死左右。
     const dx = centerX(tgtNode, nodeById) - centerX(srcNode, nodeById)
-    let forcedSourceHandle = dx >= 0 ? 's-right' : 's-left'
+    const dy = centerY(tgtNode, nodeById) - centerY(srcNode, nodeById)
+    let forcedSourceHandle = sideToSourceHandle(dominantSideFromDelta(dx, dy))
     if (srcDecision) {
       const branch = classifyDecisionBranch(edge)
-      const usage = decisionOutUsage.get(srcNode.id) ?? { left: 0, right: 0 }
-      if (branch === 'yes') {
-        forcedSourceHandle = 's-right'
-      } else if (branch === 'no') {
-        forcedSourceHandle = 's-left'
+      const usage = decisionOutUsage.get(srcNode.id) ?? emptySideUsage()
+      const preferred = dominantSideFromDelta(dx, dy)
+      if (branch) {
+        const pair = decisionBranchSideByLabel.get(srcNode.id) ?? {}
+        const current = branch === 'yes' ? pair.yes : pair.no
+        const chosen = current ?? chooseLeastUsedDistinctSide(preferred, usage, branch === 'yes' ? pair.no : pair.yes)
+        if (branch === 'yes') pair.yes = chosen
+        else pair.no = chosen
+        decisionBranchSideByLabel.set(srcNode.id, pair)
+        forcedSourceHandle = sideToSourceHandle(chosen)
       } else {
-        if (usage.left === 0 && usage.right === 0) {
-          forcedSourceHandle = dx >= 0 ? 's-right' : 's-left'
-        } else if (usage.left === 0) {
-          forcedSourceHandle = 's-left'
-        } else if (usage.right === 0) {
-          forcedSourceHandle = 's-right'
-        } else {
-          forcedSourceHandle = dx >= 0 ? 's-right' : 's-left'
-        }
+        const chosen = chooseLeastUsedDistinctSide(preferred, usage)
+        forcedSourceHandle = sideToSourceHandle(chosen)
       }
+      const side = (forcedSourceHandle.split('-')[1] as Side) || 'right'
       const nextUsage = {
-        left: usage.left + (forcedSourceHandle === 's-left' ? 1 : 0),
-        right: usage.right + (forcedSourceHandle === 's-right' ? 1 : 0),
+        ...usage,
+        [side]: (usage[side] ?? 0) + 1,
       }
       decisionOutUsage.set(srcNode.id, nextUsage)
     }
