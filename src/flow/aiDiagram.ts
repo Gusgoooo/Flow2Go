@@ -38,7 +38,9 @@ export type OpenRouterChatOptions = {
 
 export type OpenRouterImageToDiagramOptions = {
   apiKey: string
-  model: string
+  model?: string
+  recognitionModel?: string
+  generationModel?: string
   imageDataUrl: string
   /** 可选：用户额外补充要求（如“改成泳道图”） */
   prompt?: string
@@ -1087,6 +1089,8 @@ export async function openRouterGenerateDiagramFromImage(
   const {
     apiKey,
     model,
+    recognitionModel,
+    generationModel,
     imageDataUrl,
     prompt,
     signal,
@@ -1111,10 +1115,13 @@ export async function openRouterGenerateDiagramFromImage(
     console.info(`[Flow2Go AI] +${elapsedMs}ms`, phase, detail ?? '')
   }
 
+  const recogModel = (recognitionModel ?? model ?? generationModel ?? '').trim() || 'qwen/qwen2.5-vl-72b-instruct'
+  const genModel = (generationModel ?? model ?? recognitionModel ?? '').trim() || 'qwen/qwen3-max-thinking'
+
   report('识图结构化', '请求多模态模型中…')
   const recognitionRaw = await openRouterChatCompleteByMessages({
     apiKey: key,
-    model,
+    model: recogModel,
     signal,
     timeoutMs,
     temperature: STABLE_GENERATION_TEMPERATURE,
@@ -1154,7 +1161,7 @@ export async function openRouterGenerateDiagramFromImage(
 
   const draft = await openRouterGenerateDiagram({
     apiKey: key,
-    model,
+    model: genModel,
     prompt: mergedPrompt,
     signal,
     timeoutMs,
