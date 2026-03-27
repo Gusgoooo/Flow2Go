@@ -153,6 +153,45 @@ const GROUP_TITLE_H = GRID[1] * 4 // 标题高度为网格的4倍 (32px)
 const DEFAULT_QUAD_SIZE = { w: 160, h: 48 }
 const DEFAULT_TEXT_SIZE = { w: 64, h: 32 }
 const DEFAULT_GROUP_SIZE = { w: 640, h: 416 }
+const IMAGE_ASSET_TARGET_WIDTH_UNITS = 70
+const IMAGE_ASSET_TARGET_WIDTH_PX = GRID_UNIT * IMAGE_ASSET_TARGET_WIDTH_UNITS
+
+function readImageAsDataUrl(file: File): Promise<string> {
+  return new Promise((resolve, reject) => {
+    const reader = new FileReader()
+    reader.onload = () => resolve(String(reader.result ?? ''))
+    reader.onerror = () => reject(new Error('图片读取失败'))
+    reader.readAsDataURL(file)
+  })
+}
+
+function getImageNaturalSizeFromDataUrl(dataUrl: string): Promise<{ width: number; height: number }> {
+  return new Promise((resolve, reject) => {
+    const img = new Image()
+    img.onload = () => {
+      resolve({
+        width: Math.max(1, img.naturalWidth || 1),
+        height: Math.max(1, img.naturalHeight || 1),
+      })
+    }
+    img.onerror = () => reject(new Error('图片尺寸读取失败'))
+    img.src = dataUrl
+  })
+}
+
+function computeScaledImageSizeToTargetWidth(
+  width: number,
+  height: number,
+  targetWidth: number,
+): { width: number; height: number } {
+  const safeW = Math.max(1, width)
+  const safeH = Math.max(1, height)
+  const ratio = safeH / safeW
+  return {
+    width: Math.max(GRID_UNIT, targetWidth),
+    height: Math.max(GRID_UNIT, Math.round(targetWidth * ratio)),
+  }
+}
 
 function normalizeNodesToGrid(nodeList: FlowNode[]): FlowNode[] {
   return nodeList.map((node) => normalizeNodeGeometryToGrid(node) as FlowNode)
@@ -320,6 +359,7 @@ function sceneHintToPipeline(scene: AiDiagramSceneHint | null): SemanticPipeline
   if (scene === 'swimlane') return 'swimlane-text'
   if (scene === 'mind-map') return 'mind-map'
   if (scene === 'flowchart') return 'flowchart'
+  if (scene === 'free-layout') return 'free-layout-image'
   return 'auto'
 }
 
@@ -951,6 +991,61 @@ function EditorInner({ onBackHome, source, previewSnapshot, readOnly: _readOnly 
       setNodes(nextNodes)
       setEdges(nextEdges)
       pushHistory(nextNodes, nextEdges, 'ai-apply')
+      if (snap.viewport) rf.setViewport(snap.viewport, { duration: 0 })
+    },
+    [pushHistory, rf],
+  )
+
+  const applyAiDraftWithReferenceImage = useCallback(
+    async (draft: AiDiagramDraft, imageDataUrl: string, imageName?: string | null) => {
+      const snap = normalizeAiDiagramToSnapshot(draft)
+      const baseNodes = normalizeNodesToGrid(((snap.nodes ?? []) as FlowNode[]))
+      const nextEdges = normalizeEdgesToGrid(((snap.edges ?? []) as FlowEdge[]))
+
+      const natural = await getImageNaturalSizeFromDataUrl(imageDataUrl).catch(() => ({
+        width: 120,
+        height: 80,
+      }))
+      const scaled = computeScaledImageSizeToTargetWidth(
+        natural.width,
+        natural.height,
+        IMAGE_ASSET_TARGET_WIDTH_PX,
+      )
+
+      const byId = new Map(baseNodes.map((n) => [n.id, n]))
+      let minX = 0
+      let minY = 0
+      let hasAny = false
+      for (const n of baseNodes) {
+        const abs = getNodeAbsolutePosition(n, byId)
+        minX = hasAny ? Math.min(minX, abs.x) : abs.x
+        minY = hasAny ? Math.min(minY, abs.y) : abs.y
+        hasAny = true
+      }
+
+      const gap = GRID_UNIT * 2
+      const imageNode: FlowNode = {
+        id: nowId('n'),
+        type: 'asset',
+        position: snapPointToGrid({
+          x: (hasAny ? minX : 0) - scaled.width - gap,
+          y: hasAny ? minY : 0,
+        }),
+        data: {
+          assetUrl: imageDataUrl,
+          assetName: imageName?.trim() || '参考图',
+          assetType: 'png',
+          assetWidth: scaled.width,
+          assetHeight: scaled.height,
+        },
+        width: scaled.width,
+        height: scaled.height,
+      }
+
+      const nextNodes = normalizeNodesToGrid([...baseNodes, imageNode])
+      setNodes(nextNodes)
+      setEdges(nextEdges)
+      pushHistory(nextNodes, nextEdges, 'ai-apply-image-ref')
       if (snap.viewport) rf.setViewport(snap.viewport, { duration: 0 })
     },
     [pushHistory, rf],
@@ -2312,6 +2407,56 @@ function EditorInner({ onBackHome, source, previewSnapshot, readOnly: _readOnly 
       const position = snapPos(rawPos)
       const id = nowId('n')
 
+      const files = Array.from(evt.dataTransfer.files ?? [])
+      const imageFiles = files.filter((f) => f.type.startsWith('image/'))
+      if (imageFiles.length > 0) {
+        ;(async () => {
+          const added: FlowNode[] = []
+          const gapY = GRID_UNIT * 2
+          for (let i = 0; i < imageFiles.length; i += 1) {
+            const file = imageFiles[i]
+            try {
+              const dataUrl = await readImageAsDataUrl(file)
+              if (!dataUrl.startsWith('data:image/')) continue
+              const natural = await getImageNaturalSizeFromDataUrl(dataUrl).catch(() => ({ width: 120, height: 80 }))
+              const scaled = computeScaledImageSizeToTargetWidth(
+                natural.width,
+                natural.height,
+                IMAGE_ASSET_TARGET_WIDTH_PX,
+              )
+              added.push({
+                id: nowId('n'),
+                type: 'asset',
+                position: snapPointToGrid({
+                  x: position.x,
+                  y: position.y + i * (scaled.height + gapY),
+                }),
+                data: {
+                  assetUrl: dataUrl,
+                  assetName: file.name,
+                  assetType: file.type.includes('svg') ? 'svg' : 'png',
+                  assetWidth: scaled.width,
+                  assetHeight: scaled.height,
+                },
+                width: scaled.width,
+                height: scaled.height,
+                selected: i === imageFiles.length - 1,
+              } as FlowNode)
+            } catch {
+              // ignore single file failure
+            }
+          }
+          if (added.length === 0) return
+          setNodes((nds) => {
+            const deselected = nds.map((nd) => ({ ...nd, selected: false }))
+            const next = normalizeNodesToGrid([...deselected, ...added])
+            pushHistory(next, edges, 'drop-image-file')
+            return next
+          })
+        })()
+        return
+      }
+
       const assetJson = evt.dataTransfer.getData(DND_ASSET_MIME)
       if (assetJson) {
         try {
@@ -3620,9 +3765,9 @@ function EditorInner({ onBackHome, source, previewSnapshot, readOnly: _readOnly 
                               },
                             })
                             setAiDiagramDraft(draft)
-                            applyAiDraftDirect(draft)
+                            await applyAiDraftWithReferenceImage(draft, aiModalImageDataUrl, aiModalImageName)
                             recordSemanticRun({
-                              pipeline: 'swimlane-image',
+                              pipeline: aiModalScene == null ? 'free-layout-image' : 'swimlane-image',
                               semanticFormat: 'image-structured',
                               semanticPayload: structured,
                               draft,

@@ -870,6 +870,46 @@
   color: #94a3b8;
 }
 
+.aiImageOccupyWrap {
+  width: 100%;
+  max-height: min(44vh, 360px);
+  border-radius: 12px;
+  border: 1px solid #e2e8f0;
+  background: #f8fafc;
+  overflow: hidden;
+  position: relative;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 8px;
+  box-sizing: border-box;
+}
+
+.aiImageTagThumbLarge {
+  width: 100%;
+  max-width: 100%;
+  max-height: min(40vh, 320px);
+  object-fit: contain;
+  display: block;
+  border-radius: 8px;
+}
+
+.aiImageTagRemoveLarge {
+  position: absolute;
+  top: 8px;
+  right: 8px;
+  width: 24px;
+  height: 24px;
+  border: 1px solid #cbd5e1;
+  border-radius: 999px;
+  background: #ffffff;
+  color: #475569;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+}
+
 .aiPresetChips {
   display: flex;
   flex-wrap: wrap;

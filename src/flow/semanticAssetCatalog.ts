@@ -12,6 +12,7 @@ const RULE_PACKS: RulePack[] = [
   { id: 'mind-map-default', version: '1.0.0', pipeline: 'mind-map' },
   { id: 'swimlane-text-default', version: '1.0.0', pipeline: 'swimlane-text' },
   { id: 'swimlane-image-default', version: '1.0.0', pipeline: 'swimlane-image' },
+  { id: 'free-layout-image-default', version: '1.0.0', pipeline: 'free-layout-image' },
 ]
 
 export function getSemanticAssetCatalog() {

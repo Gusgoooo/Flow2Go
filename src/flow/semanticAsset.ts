@@ -6,6 +6,7 @@ export type SemanticPipeline =
   | 'mind-map'
   | 'swimlane-text'
   | 'swimlane-image'
+  | 'free-layout-image'
 
 export type SemanticPayloadFormat =
   | 'raw-text'
