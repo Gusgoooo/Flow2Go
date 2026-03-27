@@ -163,4 +163,59 @@ describe('swimlane layout multi-row support', () => {
     const withLabelGap = withLabelB.position.x - withLabelA.position.x
     expect(withLabelGap).toBeGreaterThan(noLabelGap)
   })
+
+  it('keeps a stable half-unit gap between lanes after grid normalization', () => {
+    const laneA: Node<any> = {
+      id: 'lane-A',
+      type: 'group',
+      position: { x: 0, y: 0 },
+      width: 900,
+      height: 220,
+      data: { role: 'lane', titlePosition: 'left-center', laneMeta: { laneIndex: 0, laneAxis: 'row' } },
+    } as any
+    const laneB: Node<any> = {
+      id: 'lane-B',
+      type: 'group',
+      position: { x: 0, y: 0 },
+      width: 900,
+      height: 220,
+      data: { role: 'lane', titlePosition: 'left-center', laneMeta: { laneIndex: 1, laneAxis: 'row' } },
+    } as any
+    // 高度 116 会让 contentH 落在“非 8 整倍”区间，历史逻辑下常见出现 lane gap 被吃掉为 0。
+    const n1: Node<any> = {
+      id: 'N1',
+      type: 'quad',
+      parentId: laneA.id,
+      position: { x: 0, y: 0 },
+      width: 160,
+      height: 116,
+      data: { laneId: laneA.id, nodeOrder: 0 },
+      style: { width: 160, height: 116 },
+    } as any
+    const n2: Node<any> = {
+      id: 'N2',
+      type: 'quad',
+      parentId: laneB.id,
+      position: { x: 0, y: 0 },
+      width: 160,
+      height: 116,
+      data: { laneId: laneB.id, nodeOrder: 0 },
+      style: { width: 160, height: 116 },
+    } as any
+
+    const result = autoLayoutSwimlane({
+      nodes: [laneA, laneB, n1, n2],
+      edges: [] as Edge<any>[],
+      direction: 'LR',
+      swimlaneDirection: 'horizontal',
+    })
+
+    const outLaneA = nodeById(result.nodes, laneA.id)
+    const outLaneB = nodeById(result.nodes, laneB.id)
+    const bottomA = (outLaneA.position?.y ?? 0) + ((outLaneA.height as number) ?? 0)
+    const gap = (outLaneB.position?.y ?? 0) - bottomA
+
+    // 1/2 单位（group 对齐单元 16 的半步）= 8
+    expect(gap).toBe(8)
+  })
 })

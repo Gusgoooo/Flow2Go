@@ -56,6 +56,9 @@ const COMPLETED_STROKE = '#31C262'
 const COMPLETED_FILL = 'rgba(49, 194, 98, 0.12)' // 12% 透明度
 const FAILED_STROKE = '#FF4E4E'
 const FAILED_FILL = 'rgba(255, 78, 78, 0.12)' // 12% 透明度
+const END_NODE_FILL = 'rgba(226, 232, 240, 0.8)'
+const DECISION_NODE_FILL = '#FFB100'
+const DECISION_LABEL_COLOR = '#ffffff'
 const COMPLETED_KEYWORDS = ['完成', '通过']
 const FAILED_KEYWORDS = ['失败', '不通过']
 
@@ -197,11 +200,16 @@ export function QuadNode(props: NodeProps) {
   const hasUserFill = typeof data.color === 'string' && data.color.trim().length > 0
   const hasUserStroke = typeof data.stroke === 'string' && data.stroke.trim().length > 0
   const hasUserStrokeWidth = typeof data.strokeWidth === 'number' && Number.isFinite(data.strokeWidth)
+  const semanticTypeRaw = String(data.semanticType ?? '').toLowerCase()
+  const isSemanticDecision = semanticTypeRaw === 'decision'
+  const isSemanticEnd = semanticTypeRaw === 'end'
 
   const effectiveLabelColor =
     (isCompleted || isFailed) && !hasUserLabelColor
       ? (isCompleted ? COMPLETED_STROKE : FAILED_STROKE)
-      : (data.labelColor ?? 'rgba(0,0,0,0.8)')
+      : (!hasUserLabelColor && isSemanticDecision)
+        ? DECISION_LABEL_COLOR
+        : (data.labelColor ?? 'rgba(0,0,0,0.8)')
   const titleFs = data.labelFontSize ?? DEFAULT_TITLE_FS
   const subtitleFs = data.subtitleFontSize ?? DEFAULT_SUBTITLE_FS
   const labelStyle: CSSProperties = {
@@ -222,7 +230,11 @@ export function QuadNode(props: NodeProps) {
   const nodeColor =
     (isCompleted || isFailed) && !hasUserFill
       ? (isCompleted ? COMPLETED_FILL : FAILED_FILL)
-      : data.color
+      : (!hasUserFill && isSemanticDecision)
+        ? DECISION_NODE_FILL
+        : (!hasUserFill && isSemanticEnd)
+          ? END_NODE_FILL
+          : data.color
   const strokeColor =
     (isCompleted || isFailed) && !hasUserStroke
       ? (isCompleted ? COMPLETED_STROKE : FAILED_STROKE)
@@ -230,8 +242,10 @@ export function QuadNode(props: NodeProps) {
   const strokeWidth =
     (isCompleted || isFailed) && !hasUserStrokeWidth
       ? 2
-      : data.strokeWidth
-  const semanticType = data.semanticType
+      : (!hasUserStrokeWidth && isSemanticDecision)
+        ? 0
+        : data.strokeWidth
+  const semanticType = semanticTypeRaw as QuadSemanticType | ''
   const shapeHint = data.shape
   const isDecisionNode = semanticType === 'decision' || shapeHint === 'diamond'
   const effectiveHandleMode = data.handleMode ?? (isDecisionNode ? 'leftRight' : undefined)

@@ -319,6 +319,55 @@ describe('swimlane routing - decision handles', () => {
     expect(edge.type).toBe('smoothstep')
     expect(edge.sourceHandle).toBe('s-left')
   })
+
+  it('uses different handles for yes/no and can choose vertical handles when geometry is vertical', () => {
+    const lane: Node<any> = {
+      id: 'lane-system',
+      type: 'group',
+      position: { x: 100, y: 100 },
+      width: 700,
+      height: 560,
+      data: { role: 'lane', laneMeta: { laneAxis: 'row' } },
+    } as any
+    const decision: Node<any> = {
+      id: 'D',
+      type: 'quad',
+      parentId: lane.id,
+      position: { x: 240, y: 240 },
+      width: 140,
+      height: 56,
+      data: { laneId: lane.id, semanticType: 'decision', nodeOrder: 1 },
+    } as any
+    const yesNode: Node<any> = {
+      id: 'Y',
+      type: 'quad',
+      parentId: lane.id,
+      position: { x: 240, y: 40 },
+      width: 140,
+      height: 56,
+      data: { laneId: lane.id, semanticType: 'task', nodeOrder: 2 },
+    } as any
+    const noNode: Node<any> = {
+      id: 'N',
+      type: 'quad',
+      parentId: lane.id,
+      position: { x: 240, y: 440 },
+      width: 140,
+      height: 56,
+      data: { laneId: lane.id, semanticType: 'task', nodeOrder: 3 },
+    } as any
+
+    const edges: Edge<any>[] = [
+      { id: 'e-yes', source: 'D', target: 'Y', label: 'Yes', type: 'bezier', data: {} } as any,
+      { id: 'e-no', source: 'D', target: 'N', label: 'No', type: 'bezier', data: {} } as any,
+    ]
+    const routed = rerouteSwimlaneEdges([lane, decision, yesNode, noNode], edges)
+    const yesEdge = routed.find((edge) => edge.id === 'e-yes') as any
+    const noEdge = routed.find((edge) => edge.id === 'e-no') as any
+
+    expect(yesEdge.sourceHandle).not.toBe(noEdge.sourceHandle)
+    expect(new Set([yesEdge.sourceHandle, noEdge.sourceHandle])).toEqual(new Set(['s-top', 's-bottom']))
+  })
 })
 
 describe('swimlane routing - return flow handles', () => {
