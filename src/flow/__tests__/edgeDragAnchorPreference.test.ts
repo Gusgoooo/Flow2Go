@@ -43,7 +43,7 @@ describe('resolveDragNormalizeAnchorPreference', () => {
     expect(anchor).toBe('source')
   })
 
-  it('returns undefined when dragged segment is not parallel to both terminal leads', () => {
+  it('infers target anchor for bridge segment between same-axis terminals', () => {
     const anchor = resolveDragNormalizeAnchorPreference({
       movedPoints: [
         { x: 0, y: 0 },
@@ -59,7 +59,26 @@ describe('resolveDragNormalizeAnchorPreference', () => {
       sourcePosition: Position.Top,
       targetPosition: Position.Bottom,
     })
-    expect(anchor).toBeUndefined()
+    expect(anchor).toBe('target')
+  })
+
+  it('infers source anchor for bridge segment when closer to source(out)', () => {
+    const anchor = resolveDragNormalizeAnchorPreference({
+      movedPoints: [
+        { x: 0, y: 0 },
+        { x: 0, y: -30 },
+        { x: 40, y: -30 },
+        { x: 100, y: -30 },
+        { x: 100, y: 100 },
+      ],
+      segIndex: 2,
+      isVertical: false,
+      source: { x: 0, y: 0 },
+      target: { x: 100, y: 100 },
+      sourcePosition: Position.Top,
+      targetPosition: Position.Bottom,
+    })
+    expect(anchor).toBe('source')
   })
 
   it('prefers target anchor when axis distance ties but dragged segment is spatially closer to target(in)', () => {

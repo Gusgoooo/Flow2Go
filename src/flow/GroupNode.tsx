@@ -56,13 +56,15 @@ export function GroupNode(props: NodeProps) {
   // 计算样式
   const groupStyle: React.CSSProperties = {
     background: fill,
+    border: 'none',
   }
   if (strokeWidth === 0) {
-    groupStyle.border = 'none'
+    groupStyle.boxShadow = 'none'
   } else {
-    // 选中时不强制黑色描边：保持用户设置的 stroke 颜色
-    groupStyle.borderColor = stroke
-    if (strokeWidth !== undefined) groupStyle.borderWidth = strokeWidth
+    // 统一外描边：不挤占 group/lane 内部布局空间。
+    const defaultStrokeWidth = data.role === 'lane' ? 1.5 : 2
+    const effectiveStrokeWidth = Number.isFinite(strokeWidth as number) ? Math.max(0, Number(strokeWidth)) : defaultStrokeWidth
+    groupStyle.boxShadow = `0 0 0 ${effectiveStrokeWidth}px ${stroke}`
   }
 
   const [editing, setEditing] = useState(false)

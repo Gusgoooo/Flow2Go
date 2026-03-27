@@ -155,6 +155,22 @@ const DEFAULT_TEXT_SIZE = { w: 64, h: 32 }
 const DEFAULT_GROUP_SIZE = { w: 640, h: 416 }
 const IMAGE_ASSET_TARGET_WIDTH_UNITS = 70
 const IMAGE_ASSET_TARGET_WIDTH_PX = GRID_UNIT * IMAGE_ASSET_TARGET_WIDTH_UNITS
+const IMAGE_FILE_NAME_RE = /\.(png|jpe?g|webp|gif|bmp|svg|avif)$/i
+const GENERATED_DIAGRAM_TITLE_FONT_SIZE = 24
+const GENERATED_DIAGRAM_TITLE_GAP = GRID_UNIT * 3
+const GENERATED_DIAGRAM_TITLE_MIN_WIDTH = GRID_UNIT * 20
+
+function isImageLikeFile(file: File): boolean {
+  const mime = (file.type || '').toLowerCase()
+  if (mime.startsWith('image/')) return true
+  return IMAGE_FILE_NAME_RE.test(file.name || '')
+}
+
+function isSvgLikeFile(file: File): boolean {
+  const mime = (file.type || '').toLowerCase()
+  if (mime.includes('svg')) return true
+  return /\.svg$/i.test(file.name || '')
+}
 
 function readImageAsDataUrl(file: File): Promise<string> {
   return new Promise((resolve, reject) => {
@@ -191,6 +207,67 @@ function computeScaledImageSizeToTargetWidth(
     width: Math.max(GRID_UNIT, targetWidth),
     height: Math.max(GRID_UNIT, Math.round(targetWidth * ratio)),
   }
+}
+
+function snapSize(value: number, min: number): number {
+  return Math.max(min, Math.round(value / GRID_UNIT) * GRID_UNIT)
+}
+
+function appendGeneratedDiagramTitleNode(nodes: FlowNode[], title?: string): FlowNode[] {
+  const cleanedTitle = String(title ?? '').trim()
+  const withoutGeneratedTitle = nodes.filter(
+    (node) => !(node.type === 'text' && Boolean((node.data as any)?.generatedDiagramTitle)),
+  )
+  if (!cleanedTitle) return withoutGeneratedTitle
+
+  const byId = new Map(withoutGeneratedTitle.map((node) => [node.id, node]))
+  let minX = 0
+  let maxX = 0
+  let minY = 0
+  let hasAny = false
+  for (const node of withoutGeneratedTitle) {
+    const abs = getNodeAbsolutePosition(node, byId)
+    const size = getNodeSizeLike(node as any)
+    const nodeMinX = abs.x
+    const nodeMaxX = abs.x + size.width
+    const nodeMinY = abs.y
+    minX = hasAny ? Math.min(minX, nodeMinX) : nodeMinX
+    maxX = hasAny ? Math.max(maxX, nodeMaxX) : nodeMaxX
+    minY = hasAny ? Math.min(minY, nodeMinY) : nodeMinY
+    hasAny = true
+  }
+  if (!hasAny) {
+    minX = 0
+    maxX = DEFAULT_QUAD_SIZE.w
+    minY = 0
+  }
+
+  const estimatedWidthRaw = cleanedTitle.length * GENERATED_DIAGRAM_TITLE_FONT_SIZE * 0.62 + GRID_UNIT * 8
+  const titleWidth = snapSize(estimatedWidthRaw, GENERATED_DIAGRAM_TITLE_MIN_WIDTH)
+  const titleHeight = snapSize(
+    GENERATED_DIAGRAM_TITLE_FONT_SIZE + GRID_UNIT * 2,
+    DEFAULT_TEXT_SIZE.h,
+  )
+  const centerX = (minX + maxX) / 2
+  const titlePos = snapPointToGrid({
+    x: centerX - titleWidth / 2,
+    y: minY - GENERATED_DIAGRAM_TITLE_GAP - titleHeight,
+  })
+  const titleNode: FlowNode = {
+    id: nowId('n'),
+    type: 'text',
+    position: { x: titlePos.x, y: titlePos.y },
+    width: titleWidth,
+    height: titleHeight,
+    data: {
+      label: cleanedTitle,
+      labelFontSize: GENERATED_DIAGRAM_TITLE_FONT_SIZE,
+      labelFontWeight: '700',
+      labelColor: 'rgba(15, 23, 42, 0.86)',
+      generatedDiagramTitle: true,
+    },
+  }
+  return [...withoutGeneratedTitle, titleNode]
 }
 
 function normalizeNodesToGrid(nodeList: FlowNode[]): FlowNode[] {
@@ -984,13 +1061,14 @@ function EditorInner({ onBackHome, source, previewSnapshot, readOnly: _readOnly 
   )
 
   const applyAiDraftDirect = useCallback(
-    (draft: AiDiagramDraft) => {
+    (draft: AiDiagramDraft, reason = 'ai-apply') => {
       const snap = normalizeAiDiagramToSnapshot(draft)
-      const nextNodes = normalizeNodesToGrid(((snap.nodes ?? []) as FlowNode[]))
+      const baseNodes = normalizeNodesToGrid(((snap.nodes ?? []) as FlowNode[]))
+      const nextNodes = normalizeNodesToGrid(appendGeneratedDiagramTitleNode(baseNodes, draft.title))
       const nextEdges = normalizeEdgesToGrid(((snap.edges ?? []) as FlowEdge[]))
       setNodes(nextNodes)
       setEdges(nextEdges)
-      pushHistory(nextNodes, nextEdges, 'ai-apply')
+      pushHistory(nextNodes, nextEdges, reason)
       if (snap.viewport) rf.setViewport(snap.viewport, { duration: 0 })
     },
     [pushHistory, rf],
@@ -999,7 +1077,8 @@ function EditorInner({ onBackHome, source, previewSnapshot, readOnly: _readOnly 
   const applyAiDraftWithReferenceImage = useCallback(
     async (draft: AiDiagramDraft, imageDataUrl: string, imageName?: string | null) => {
       const snap = normalizeAiDiagramToSnapshot(draft)
-      const baseNodes = normalizeNodesToGrid(((snap.nodes ?? []) as FlowNode[]))
+      const baseContentNodes = normalizeNodesToGrid(((snap.nodes ?? []) as FlowNode[]))
+      const baseNodes = normalizeNodesToGrid(appendGeneratedDiagramTitleNode(baseContentNodes, draft.title))
       const nextEdges = normalizeEdgesToGrid(((snap.edges ?? []) as FlowEdge[]))
 
       const natural = await getImageNaturalSizeFromDataUrl(imageDataUrl).catch(() => ({
@@ -1012,24 +1091,31 @@ function EditorInner({ onBackHome, source, previewSnapshot, readOnly: _readOnly 
         IMAGE_ASSET_TARGET_WIDTH_PX,
       )
 
-      const byId = new Map(baseNodes.map((n) => [n.id, n]))
+      const byId = new Map(baseContentNodes.map((n) => [n.id, n]))
       let minX = 0
       let minY = 0
+      let maxY = 0
       let hasAny = false
-      for (const n of baseNodes) {
+      for (const n of baseContentNodes) {
         const abs = getNodeAbsolutePosition(n, byId)
-        minX = hasAny ? Math.min(minX, abs.x) : abs.x
-        minY = hasAny ? Math.min(minY, abs.y) : abs.y
+        const size = getNodeSizeLike(n as any)
+        const nodeMinX = abs.x
+        const nodeMinY = abs.y
+        const nodeMaxY = abs.y + size.height
+        minX = hasAny ? Math.min(minX, nodeMinX) : nodeMinX
+        minY = hasAny ? Math.min(minY, nodeMinY) : nodeMinY
+        maxY = hasAny ? Math.max(maxY, nodeMaxY) : nodeMaxY
         hasAny = true
       }
 
       const gap = GRID_UNIT * 2
+      const imageY = hasAny ? (minY + maxY) / 2 - scaled.height / 2 : 0
       const imageNode: FlowNode = {
         id: nowId('n'),
         type: 'asset',
         position: snapPointToGrid({
           x: (hasAny ? minX : 0) - scaled.width - gap,
-          y: hasAny ? minY : 0,
+          y: imageY,
         }),
         data: {
           assetUrl: imageDataUrl,
@@ -1063,6 +1149,9 @@ function EditorInner({ onBackHome, source, previewSnapshot, readOnly: _readOnly 
     imageDataUrl?: string | null
   }) => {
     const snap = normalizeAiDiagramToSnapshot(args.draft)
+    const snapNodes = normalizeNodesToGrid(
+      appendGeneratedDiagramTitleNode(((snap.nodes ?? []) as FlowNode[]), args.draft.title),
+    )
     const rulePack = getRulePackByPipeline(args.pipeline)
     const bundle = buildSemanticRunBundle({
       pipeline: args.pipeline,
@@ -1083,7 +1172,7 @@ function EditorInner({ onBackHome, source, previewSnapshot, readOnly: _readOnly 
       output: {
         title: args.draft.title,
         snapshot: {
-          nodes: snap.nodes ?? [],
+          nodes: snapNodes,
           edges: snap.edges ?? [],
           viewport: snap.viewport,
         },
@@ -1822,7 +1911,8 @@ function EditorInner({ onBackHome, source, previewSnapshot, readOnly: _readOnly 
     evt.preventDefault()
     // 根据拖拽内容给出更准确的 dropEffect（也有助于部分浏览器触发 drop）
     const hasAsset = evt.dataTransfer.types?.includes(DND_ASSET_MIME as any)
-    evt.dataTransfer.dropEffect = hasAsset ? 'copy' : 'move'
+    const hasFiles = evt.dataTransfer.types?.includes('Files' as any)
+    evt.dataTransfer.dropEffect = hasAsset || hasFiles ? 'copy' : 'move'
   }, [])
 
   // 用于 Option+拖动复制：记录原始位置，在 dragStop 时创建副本
@@ -2222,9 +2312,7 @@ function EditorInner({ onBackHome, source, previewSnapshot, readOnly: _readOnly 
 
   const onAddAsset = useCallback((files: FileList | null) => {
     if (!files?.length) return
-    const imageFiles = Array.from(files).filter((f) =>
-      f.type.startsWith('image/') && (f.type.includes('svg') || f.type.includes('png')),
-    )
+    const imageFiles = Array.from(files).filter((f) => isImageLikeFile(f))
     if (!imageFiles.length) return
     const baseId = `asset-${Date.now()}`
     let loadedCount = 0
@@ -2262,7 +2350,7 @@ function EditorInner({ onBackHome, source, previewSnapshot, readOnly: _readOnly 
     }
 
     imageFiles.forEach((file, i) => {
-      const type = file.type === 'image/svg+xml' ? 'svg' : 'png'
+      const type = isSvgLikeFile(file) ? 'svg' : 'png'
 
       if (type === 'svg') {
         // SVG: 先读取文本解析尺寸，再转 dataURL
@@ -2408,7 +2496,7 @@ function EditorInner({ onBackHome, source, previewSnapshot, readOnly: _readOnly 
       const id = nowId('n')
 
       const files = Array.from(evt.dataTransfer.files ?? [])
-      const imageFiles = files.filter((f) => f.type.startsWith('image/'))
+      const imageFiles = files.filter((f) => isImageLikeFile(f))
       if (imageFiles.length > 0) {
         ;(async () => {
           const added: FlowNode[] = []
@@ -2434,7 +2522,7 @@ function EditorInner({ onBackHome, source, previewSnapshot, readOnly: _readOnly 
                 data: {
                   assetUrl: dataUrl,
                   assetName: file.name,
-                  assetType: file.type.includes('svg') ? 'svg' : 'png',
+                  assetType: isSvgLikeFile(file) ? 'svg' : 'png',
                   assetWidth: scaled.width,
                   assetHeight: scaled.height,
                 },
@@ -3802,8 +3890,6 @@ function EditorInner({ onBackHome, source, previewSnapshot, readOnly: _readOnly 
                             setAiModalProgress({ phase: '生成泳道图', detail: '物化布局中…' })
                             const payload = swimlaneDraftToGraphBatchPayload(draftFromPrompt)
                             const snap = await materializeGraphBatchPayloadToSnapshot(payload)
-                            const nextNodes = normalizeNodesToGrid(((snap.nodes ?? []) as FlowNode[]))
-                            const nextEdges = normalizeEdgesToGrid(((snap.edges ?? []) as FlowEdge[]))
                             const aiDraft: AiDiagramDraft = {
                               schema: 'flow2go.ai.diagram.v1',
                               title: draftFromPrompt.title,
@@ -3812,9 +3898,8 @@ function EditorInner({ onBackHome, source, previewSnapshot, readOnly: _readOnly 
                               viewport: { x: 0, y: 0, zoom: 1 },
                               rawText: JSON.stringify(draftFromPrompt),
                             }
-                            setNodes(nextNodes)
-                            setEdges(nextEdges)
-                            pushHistory(nextNodes, nextEdges, 'ai-swimlane')
+                            setAiDiagramDraft(aiDraft)
+                            applyAiDraftDirect(aiDraft, 'ai-swimlane')
                             recordSemanticRun({
                               pipeline: 'swimlane-text',
                               semanticFormat: 'swimlane-draft',

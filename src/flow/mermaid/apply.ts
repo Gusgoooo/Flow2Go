@@ -1521,8 +1521,8 @@ export async function materializeGraphBatchPayloadToSnapshot(
       }
       if (isLane) {
         nodeData.role = 'lane'
-        // 生成泳道默认采用左侧标题样式（左侧灰底 + 竖排标题）
-        nodeData.titlePosition = 'left-center'
+        // 行泳道（horizontal）使用左侧标题；列泳道（vertical）使用上方居中标题。
+        nodeData.titlePosition = swimlaneDirection === 'vertical' ? 'top-center' : 'left-center'
         nodeData.laneMeta = {
           laneId: op.params.id,
           laneIndex: laneIndexCounter++,
