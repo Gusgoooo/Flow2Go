@@ -20,6 +20,7 @@ const LANE_HEADER_SIZE = 48
 // 这样在后续 normalize 到网格时不会把间距“吃掉”成 0。
 const LANE_STACK_STEP = Math.max(1, HANDLE_ALIGN_UNIT * SIZE_STEP_RATIO)
 const LANE_GAP = LANE_STACK_STEP
+const LANE_TOP_HEADER_NODE_GAP = LANE_STACK_STEP
 const LANE_PADDING = { top: 24, right: 24, bottom: 24, left: 24 }
 const MIN_LANE_WIDTH = 912
 const MIN_LANE_HEIGHT = 160
@@ -199,7 +200,9 @@ export function autoLayoutSwimlane(args: {
 
     const headerH = LANE_HEADER_SIZE
     const laneHeaderOnLeft = (((lane.data as any)?.titlePosition ?? 'top-center') as string) === 'left-center'
-    const padTop = LANE_PADDING.top + (laneHeaderOnLeft ? 0 : headerH)
+    const padTop = laneHeaderOnLeft
+      ? LANE_PADDING.top
+      : headerH + LANE_TOP_HEADER_NODE_GAP
     const padRight = LANE_PADDING.right
     const padBottom = LANE_PADDING.bottom
     const padLeft = LANE_PADDING.left + (laneHeaderOnLeft ? headerH : 0)
@@ -220,38 +223,48 @@ export function autoLayoutSwimlane(args: {
       })
       const colKeys = Array.from(new Set(layoutItems.map((item) => item.col))).sort((a, b) => a - b)
       const rowKeys = Array.from(new Set(layoutItems.map((item) => item.row))).sort((a, b) => a - b)
-      const colRank = new Map(colKeys.map((key, idx) => [key, idx]))
-      const rowRank = new Map(rowKeys.map((key, idx) => [key, idx]))
 
       const colWidths = new Map<number, number>()
       const rowHeights = new Map<number, number>()
       for (const item of layoutItems) {
-        const c = colRank.get(item.col) ?? 0
-        const r = rowRank.get(item.row) ?? 0
-        colWidths.set(c, Math.max(colWidths.get(c) ?? 0, item.size.w))
-        rowHeights.set(r, Math.max(rowHeights.get(r) ?? 0, item.size.h))
+        colWidths.set(item.col, Math.max(colWidths.get(item.col) ?? 0, item.size.w))
+        rowHeights.set(item.row, Math.max(rowHeights.get(item.row) ?? 0, item.size.h))
       }
 
       const colStarts = new Map<number, number>()
       const rowStarts = new Map<number, number>()
-      let cx = padLeft
-      for (let c = 0; c < colKeys.length; c += 1) {
-        colStarts.set(c, cx)
-        cx += (colWidths.get(c) ?? 0) + laneGapX
+      let prevCol: number | null = null
+      for (const colKey of colKeys) {
+        if (prevCol == null) {
+          colStarts.set(colKey, padLeft)
+          prevCol = colKey
+          continue
+        }
+        const prevStart = colStarts.get(prevCol) ?? padLeft
+        const prevW = colWidths.get(prevCol) ?? 0
+        const colSpan = Math.max(1, colKey - prevCol)
+        colStarts.set(colKey, prevStart + prevW + laneGapX * colSpan)
+        prevCol = colKey
       }
-      let cy = padTop
-      for (let r = 0; r < rowKeys.length; r += 1) {
-        rowStarts.set(r, cy)
-        cy += (rowHeights.get(r) ?? 0) + laneGapY
+      let prevRow: number | null = null
+      for (const rowKey of rowKeys) {
+        if (prevRow == null) {
+          rowStarts.set(rowKey, padTop)
+          prevRow = rowKey
+          continue
+        }
+        const prevStart = rowStarts.get(prevRow) ?? padTop
+        const prevH = rowHeights.get(prevRow) ?? 0
+        const rowSpan = Math.max(1, rowKey - prevRow)
+        rowStarts.set(rowKey, prevStart + prevH + laneGapY * rowSpan)
+        prevRow = rowKey
       }
 
       for (const item of layoutItems) {
-        const c = colRank.get(item.col) ?? 0
-        const r = rowRank.get(item.row) ?? 0
-        const colStart = colStarts.get(c) ?? padLeft
-        const rowStart = rowStarts.get(r) ?? padTop
-        const colW = colWidths.get(c) ?? item.size.w
-        const rowH = rowHeights.get(r) ?? item.size.h
+        const colStart = colStarts.get(item.col) ?? padLeft
+        const rowStart = rowStarts.get(item.row) ?? padTop
+        const colW = colWidths.get(item.col) ?? item.size.w
+        const rowH = rowHeights.get(item.row) ?? item.size.h
 
         item.child.width = item.size.w
         item.child.height = item.size.h
@@ -262,20 +275,31 @@ export function autoLayoutSwimlane(args: {
         }
       }
 
-      totalContentW = (colKeys.length > 0 ? cx - laneGapX : padLeft) + padRight
-      totalContentH = (rowKeys.length > 0 ? cy - laneGapY : padTop) + padBottom
+      if (colKeys.length > 0) {
+        const lastCol = colKeys[colKeys.length - 1]
+        totalContentW = (colStarts.get(lastCol) ?? padLeft) + (colWidths.get(lastCol) ?? 0) + padRight
+      } else {
+        totalContentW = padLeft + padRight
+      }
+      if (rowKeys.length > 0) {
+        const lastRow = rowKeys[rowKeys.length - 1]
+        totalContentH = (rowStarts.get(lastRow) ?? padTop) + (rowHeights.get(lastRow) ?? 0) + padBottom
+      } else {
+        totalContentH = padTop + padBottom
+      }
     } else {
       // 节点在 lane 内从上到下排列
+      const withSize = ordered.map((child) => ({ child, size: estimateNodeSize(child) }))
+      const maxW = Math.max(0, ...withSize.map((item) => item.size.w))
       let cy = padTop
-      let maxW = 0
-      for (const child of ordered) {
-        const size = estimateNodeSize(child)
+      for (const item of withSize) {
+        const { child, size } = item
         child.width = size.w
         child.height = size.h
         child.style = { ...(child.style as any), width: size.w, height: size.h }
-        child.position = { x: padLeft, y: cy }
+        // 列泳道内默认按中心线对齐，避免整列视觉偏右/偏左。
+        child.position = { x: padLeft + (maxW - size.w) / 2, y: cy }
         cy += size.h + laneGapY
-        maxW = Math.max(maxW, size.w)
       }
       totalContentW = padLeft + maxW + padRight
       totalContentH = cy - laneGapY + padBottom

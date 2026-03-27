@@ -267,12 +267,14 @@ export function QuadNode(props: NodeProps) {
   }
   // rect 保持默认圆角
 
-  // 描边：支持自定义颜色和粗细，strokeWidth 为 0 时无描边
+  // 描边：统一使用“外描边”（box-shadow 外扩），避免描边侵占节点内容区与网格尺寸。
+  nodeStyle.border = 'none'
   if (strokeWidth === 0) {
-    nodeStyle.border = 'none'
+    nodeStyle.boxShadow = 'none'
   } else {
-    if (strokeColor) nodeStyle.borderColor = strokeColor
-    if (strokeWidth !== undefined) nodeStyle.borderWidth = strokeWidth
+    const effectiveStrokeWidth = Number.isFinite(strokeWidth as number) ? Math.max(0, Number(strokeWidth)) : 1
+    const effectiveStrokeColor = strokeColor ?? '#e2e8f0'
+    nodeStyle.boxShadow = `0 0 0 ${effectiveStrokeWidth}px ${effectiveStrokeColor}`
   }
 
   // 选中时不强制黑色描边：保持用户设置的 stroke 颜色

@@ -358,7 +358,33 @@ export function resolveDragNormalizeAnchorPreference(args: {
   // 泳道图生成边常见“仅一端平行”的场景：
   // - 若仅与 in 端平行，优先并到 in；
   // - 若仅与 out 端平行，优先并到 out。
-  if (!sourceParallel && !targetParallel) return undefined
+  if (!sourceParallel && !targetParallel) {
+    // 关键修复：
+    // 在常见的 3 段/5 段正交路径里，用户能拖动的“中间桥接段”常常与 in/out 末段不平行。
+    // 旧逻辑会直接返回 undefined，随后归一化默认锚到 source(out)，导致“想并到 in 却被强制并到 out”。
+    //
+    // 这里仅在“source/target 端口方向同轴、且当前段是两端之间的桥接段”时启用兜底判定：
+    // 按空间距离与段位次推断用户更想并到哪一端。
+    const sameTerminalAxis = sourceTerminalVertical === targetTerminalVertical
+    const isBridgeAgainstTerminalAxis = sameTerminalAxis && sourceTerminalVertical !== isVertical
+    if (!isBridgeAgainstTerminalAxis) return undefined
+
+    const p1 = movedPoints[segIndex]
+    const p2 = movedPoints[segIndex + 1]
+    const midX = (p1.x + p2.x) / 2
+    const midY = (p1.y + p2.y) / 2
+    const dOut2d = Math.abs(midX - source.x) + Math.abs(midY - source.y)
+    const dIn2d = Math.abs(midX - target.x) + Math.abs(midY - target.y)
+    if (Math.abs(dIn2d - dOut2d) > EDGE_STEP_UNIT / 2) {
+      return dIn2d < dOut2d ? 'target' : 'source'
+    }
+
+    const segmentCount = movedPoints.length - 1
+    const distToSource = segIndex
+    const distToTarget = segmentCount - 1 - segIndex
+    if (distToTarget !== distToSource) return distToTarget < distToSource ? 'target' : 'source'
+    return segIndex >= (segmentCount - 1) / 2 ? 'target' : 'source'
+  }
   if (!sourceParallel && targetParallel) return 'target'
   if (sourceParallel && !targetParallel) return 'source'
 
