@@ -120,6 +120,11 @@ export type GraphBatchPayload = {
     /** 如 `mind-map`、`flowchart`、`swimlane` */
     layoutProfile?: string
     swimlaneDirection?: 'horizontal' | 'vertical'
+    /**
+     * 自然语言生成：为 true 时不自动套用语义节点/画框/思维导图预设彩色，仅保留中性灰白与默认结构；
+     * 识图导入、用户显式配色等路径保持 false。
+     */
+    neutralGeneration?: boolean
   }
 }
 

@@ -13,7 +13,12 @@
 - `04-QA.md`
   - 可执行验收用例清单（按场景逐条勾选）
 - `05-AI-DiagramGeneration.md`
-  - AI 生成整张图（OpenRouter BYOK）：草稿/预览/应用流程、数据协议、本地归一化与验收
+  - AI 生成整张图（Routify OpenAI 兼容网关）：草稿/预览/应用流程、数据协议、本地归一化与验收
+- `06-AI-MermaidDSL-Agent.md`
+  - 主流程图路径：Mermaid DSL 中间表示、提示词位置、约束
+- `07-Flow2Go-Graph-Logic-and-AI-Interfaces.md`
+  - 节点/边/Group 的 **data 字段**、Graph API 抽象、**泳道 / 识图**等与 AI 对齐的说明
+  - **§6 功能迭代时 AI Schema 同步清单**：每次增加「模型可产出或可解析」的字段时按表自检（类型 + prompt + 文档）
 
 ### 术语对照
 

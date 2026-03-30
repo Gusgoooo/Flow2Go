@@ -1,4 +1,5 @@
-const BASE = 'https://openrouter.ai/api/v1'
+/** OpenAI 兼容代理：转发至 Routify 网关（服务端使用 process.env.ROUTIFY_API_KEY） */
+const ROUTIFY_BASE = 'http://routify.alibaba-inc.com/protocol/openai/v1'
 
 function readBody(req: any): any {
   if (typeof req.body === 'string') {
@@ -23,22 +24,18 @@ export default async function handler(req: any, res: any) {
     return
   }
 
-  const envKey = process.env.OPENROUTER_API_KEY?.trim()
-  const userKey = String(req.headers['x-openrouter-key'] ?? '').trim()
-  const apiKey = userKey || envKey
+  const apiKey = process.env.ROUTIFY_API_KEY?.trim()
   if (!apiKey) {
-    res.status(500).json({ error: 'missing_server_api_key' })
+    res.status(500).json({ error: 'missing_routify_api_key' })
     return
   }
 
   try {
-    const upstream = await fetch(`${BASE}/${path}`, {
+    const upstream = await fetch(`${ROUTIFY_BASE}/${path}`, {
       method: 'POST',
       headers: {
         Authorization: `Bearer ${apiKey}`,
         'Content-Type': 'application/json',
-        'HTTP-Referer': req.headers.origin || '',
-        'X-Title': 'Flow2Go',
       },
       body: JSON.stringify(readBody(req)),
     })

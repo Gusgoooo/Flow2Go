@@ -33,10 +33,14 @@ export type GroupNodeData = {
   subtitleFontSize?: number
   subtitleFontWeight?: string
   subtitleColor?: string
+  /** 泳道标题条（标签区）背景色；未设置时使用默认半透明灰 */
+  laneHeaderBackground?: string
 
   role?: 'frame' | 'lane'
   laneMeta?: LaneMeta
 }
+
+const DEFAULT_LANE_HEADER_BG = 'rgba(71, 85, 105, 0.08)'
 
 const DEFAULT_GROUP_TITLE_FS = 13
 const DEFAULT_GROUP_SUBTITLE_FS = 10
@@ -157,15 +161,15 @@ export function GroupNode(props: NodeProps) {
     const laneHeaderH = data.laneMeta?.headerSize ?? 48
     const laneTitlePosition = data.titlePosition ?? 'top-center'
     const laneHeaderOnLeft = laneTitlePosition === 'left-center'
+    const laneHeaderBg = data.laneHeaderBackground ?? DEFAULT_LANE_HEADER_BG
     const laneHeaderStyle: React.CSSProperties = laneHeaderOnLeft
-      ? { width: laneHeaderH, height: '100%' }
-      : { height: laneHeaderH }
+      ? { width: laneHeaderH, height: '100%', background: laneHeaderBg }
+      : { height: laneHeaderH, background: laneHeaderBg }
 
     return (
       <div
         className={`${styles.group} ${styles.laneNode} ${laneHeaderOnLeft ? styles.laneNodeLeft : ''}`}
         style={groupStyle}
-        onDoubleClick={onDoubleClick}
       >
         <NodeResizer
           minWidth={200}
@@ -183,6 +187,7 @@ export function GroupNode(props: NodeProps) {
                 fontSize={titleFs}
                 fontWeight={data.titleFontWeight ?? '800'}
                 textColor={data.titleColor ?? '#334155'}
+                fillColor={laneHeaderBg}
                 onFontSizeChange={(v) =>
                   rf.setNodes((nds) =>
                     nds.map((n) =>
@@ -206,6 +211,15 @@ export function GroupNode(props: NodeProps) {
                     nds.map((n) =>
                       n.id === props.id
                         ? { ...n, data: { ...(n.data ?? {}), titleColor: v } }
+                        : n,
+                    ),
+                  )
+                }
+                onFillColorChange={(v) =>
+                  rf.setNodes((nds) =>
+                    nds.map((n) =>
+                      n.id === props.id
+                        ? { ...n, data: { ...(n.data ?? {}), laneHeaderBackground: v } }
                         : n,
                     ),
                   )
@@ -245,6 +259,11 @@ export function GroupNode(props: NodeProps) {
             <div
               className={`${styles.laneHeaderTitle} ${laneHeaderOnLeft ? styles.laneHeaderTitleVertical : ''}`}
               style={titleStyle}
+              onDoubleClick={(e) => {
+                e.stopPropagation()
+                window.dispatchEvent(new CustomEvent('flow2go:close-popups-for-text'))
+                setEditing(true)
+              }}
             >
               {data.title ?? ''}
             </div>

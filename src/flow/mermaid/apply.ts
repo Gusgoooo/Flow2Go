@@ -118,17 +118,21 @@ function quadDefaults(title: string, shape: 'rect' | 'circle' | 'diamond' | unde
 const SEMANTIC_END_NODE_FILL = 'rgba(226, 232, 240, 0.8)'
 const SEMANTIC_DECISION_NODE_FILL = '#FFB100'
 
-function withSemanticNodeStyleDefaults(rawStyle: Record<string, any>): Record<string, any> {
+function withSemanticNodeStyleDefaults(
+  rawStyle: Record<string, any>,
+  opts?: { skipPresetSemanticColors?: boolean },
+): Record<string, any> {
   const next = { ...rawStyle }
   const semantic = String(rawStyle.semanticType ?? '').toLowerCase()
   const hasUserFill = typeof next.color === 'string' && next.color.trim().length > 0
   const hasUserStrokeWidth = typeof next.strokeWidth === 'number' && Number.isFinite(next.strokeWidth)
+  const skipColor = opts?.skipPresetSemanticColors
 
-  if (semantic === 'end' && !hasUserFill) {
+  if (semantic === 'end' && !hasUserFill && !skipColor) {
     next.color = SEMANTIC_END_NODE_FILL
   }
   if (semantic === 'decision') {
-    if (!hasUserFill) next.color = SEMANTIC_DECISION_NODE_FILL
+    if (!hasUserFill && !skipColor) next.color = SEMANTIC_DECISION_NODE_FILL
     if (!hasUserStrokeWidth) next.strokeWidth = 0
   }
   return next
@@ -1484,6 +1488,8 @@ export async function materializeGraphBatchPayloadToSnapshot(
   const edgeById = new Map(edges.map((e) => [e.id, e]))
   const compactLegacyMode = false
   const mindMapMode = ((payload.meta as any)?.layoutProfile ?? '') === 'mind-map'
+  /** 自然语言生成：不自动套用语义节点色、思维导图分岔色等预设 */
+  const neutralGeneration = Boolean((payload.meta as any)?.neutralGeneration)
   const flowchartMode = !mindMapMode
   const preferLR = flowchartMode && shouldPreferLeftToRightByComplexity(payload)
   const preferLRDefault = flowchartMode && payload.direction !== 'LR'
@@ -1564,7 +1570,9 @@ export async function materializeGraphBatchPayloadToSnapshot(
         }
       }
       const rawStyleObj = (op.params.style ?? {}) as Record<string, any>
-      const styleObj = withSemanticNodeStyleDefaults(rawStyleObj)
+      const styleObj = withSemanticNodeStyleDefaults(rawStyleObj, {
+        skipPresetSemanticColors: neutralGeneration,
+      })
       if (styleObj.semanticType && !op.params.shape) {
         const st = String(styleObj.semanticType).toLowerCase()
         if (st === 'start' || st === 'end') d.data.shape = 'circle'
@@ -1751,26 +1759,28 @@ export async function materializeGraphBatchPayloadToSnapshot(
       }
 
       const depthByNodeId = computeMindMapForestDepth(quadNodes, edges)
-      for (const n of quadNodes) {
-        const d = depthByNodeId.get(n.id) ?? 0
-        const color = palette[d % palette.length]
-        n.data = {
-          ...(n.data ?? {}),
-          stroke: color,
-          strokeWidth: 1,
+      if (!neutralGeneration) {
+        for (const n of quadNodes) {
+          const d = depthByNodeId.get(n.id) ?? 0
+          const color = palette[d % palette.length]
+          n.data = {
+            ...(n.data ?? {}),
+            stroke: color,
+            strokeWidth: 1,
+          }
         }
-      }
 
-      const quadIdSet = new Set(quadNodes.map((n) => n.id))
-      for (const e of edges) {
-        if (!quadIdSet.has(e.source) || !quadIdSet.has(e.target)) continue
-        const td = depthByNodeId.get(e.target) ?? 0
-        const color = palette[td % palette.length]
-        ;(e.style as any) = {
-          ...(e.style ?? {}),
-          stroke: color,
-          strokeWidth: 1,
-          '--xy-edge-stroke': color,
+        const quadIdSet = new Set(quadNodes.map((n) => n.id))
+        for (const e of edges) {
+          if (!quadIdSet.has(e.source) || !quadIdSet.has(e.target)) continue
+          const td = depthByNodeId.get(e.target) ?? 0
+          const color = palette[td % palette.length]
+          ;(e.style as any) = {
+            ...(e.style ?? {}),
+            stroke: color,
+            strokeWidth: 1,
+            '--xy-edge-stroke': color,
+          }
         }
       }
     }

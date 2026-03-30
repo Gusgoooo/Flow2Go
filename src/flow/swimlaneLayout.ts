@@ -170,6 +170,19 @@ export function autoLayoutSwimlane(args: {
 
   // ── Phase B: 在每个 lane 内布局子节点 ──
   const laneSizes: { id: string; contentW: number; contentH: number }[] = []
+
+  type HorizontalPending = {
+    laneIndex: number
+    lane: Node<any>
+    layoutItems: Array<{ child: Node<any>; size: { w: number; h: number }; row: number; col: number }>
+    padTop: number
+    padLeft: number
+    padRight: number
+    padBottom: number
+    laneGapY: number
+  }
+  const horizontalPending: HorizontalPending[] = []
+
   for (const lane of lanes) {
     const children = nonLaneNodes
       .filter((n) => n.parentId === lane.id)
@@ -207,86 +220,23 @@ export function autoLayoutSwimlane(args: {
     const padBottom = LANE_PADDING.bottom
     const padLeft = LANE_PADDING.left + (laneHeaderOnLeft ? headerH : 0)
     const laneGapExtra = laneLabelGapExtra.get(lane.id) ?? 0
-    const laneGapX = NODE_GAP_X + laneGapExtra
     const laneGapY = NODE_GAP_Y + Math.round(laneGapExtra * 0.35)
 
     let totalContentW = 0
     let totalContentH = 0
 
     if (isHorizontal) {
-      // 节点在 lane 内按“列 + 行”网格布局（支持多行）
+      // 先只收集「列/行」信息；列宽与列距在跨泳道统一后再落位（避免各泳道独立算 colWidths 导致同列错位）
       const layoutItems = ordered.map((child, index) => {
         const size = estimateNodeSize(child)
         const row = gridIndex((child.data as any)?.laneRow, 0)
         const col = gridIndex((child.data as any)?.laneCol, index)
         return { child, size, row, col }
       })
-      const colKeys = Array.from(new Set(layoutItems.map((item) => item.col))).sort((a, b) => a - b)
-      const rowKeys = Array.from(new Set(layoutItems.map((item) => item.row))).sort((a, b) => a - b)
-
-      const colWidths = new Map<number, number>()
-      const rowHeights = new Map<number, number>()
-      for (const item of layoutItems) {
-        colWidths.set(item.col, Math.max(colWidths.get(item.col) ?? 0, item.size.w))
-        rowHeights.set(item.row, Math.max(rowHeights.get(item.row) ?? 0, item.size.h))
-      }
-
-      const colStarts = new Map<number, number>()
-      const rowStarts = new Map<number, number>()
-      let prevCol: number | null = null
-      for (const colKey of colKeys) {
-        if (prevCol == null) {
-          colStarts.set(colKey, padLeft)
-          prevCol = colKey
-          continue
-        }
-        const prevStart = colStarts.get(prevCol) ?? padLeft
-        const prevW = colWidths.get(prevCol) ?? 0
-        const colSpan = Math.max(1, colKey - prevCol)
-        colStarts.set(colKey, prevStart + prevW + laneGapX * colSpan)
-        prevCol = colKey
-      }
-      let prevRow: number | null = null
-      for (const rowKey of rowKeys) {
-        if (prevRow == null) {
-          rowStarts.set(rowKey, padTop)
-          prevRow = rowKey
-          continue
-        }
-        const prevStart = rowStarts.get(prevRow) ?? padTop
-        const prevH = rowHeights.get(prevRow) ?? 0
-        const rowSpan = Math.max(1, rowKey - prevRow)
-        rowStarts.set(rowKey, prevStart + prevH + laneGapY * rowSpan)
-        prevRow = rowKey
-      }
-
-      for (const item of layoutItems) {
-        const colStart = colStarts.get(item.col) ?? padLeft
-        const rowStart = rowStarts.get(item.row) ?? padTop
-        const colW = colWidths.get(item.col) ?? item.size.w
-        const rowH = rowHeights.get(item.row) ?? item.size.h
-
-        item.child.width = item.size.w
-        item.child.height = item.size.h
-        item.child.style = { ...(item.child.style as any), width: item.size.w, height: item.size.h }
-        item.child.position = {
-          x: colStart + (colW - item.size.w) / 2,
-          y: rowStart + (rowH - item.size.h) / 2,
-        }
-      }
-
-      if (colKeys.length > 0) {
-        const lastCol = colKeys[colKeys.length - 1]
-        totalContentW = (colStarts.get(lastCol) ?? padLeft) + (colWidths.get(lastCol) ?? 0) + padRight
-      } else {
-        totalContentW = padLeft + padRight
-      }
-      if (rowKeys.length > 0) {
-        const lastRow = rowKeys[rowKeys.length - 1]
-        totalContentH = (rowStarts.get(lastRow) ?? padTop) + (rowHeights.get(lastRow) ?? 0) + padBottom
-      } else {
-        totalContentH = padTop + padBottom
-      }
+      const laneIndex = laneSizes.length
+      laneSizes.push({ id: lane.id, contentW: 0, contentH: 0 })
+      horizontalPending.push({ laneIndex, lane, layoutItems, padTop, padLeft, padRight, padBottom, laneGapY })
+      continue
     } else {
       // 节点在 lane 内从上到下排列
       const withSize = ordered.map((child) => ({ child, size: estimateNodeSize(child) }))
@@ -306,6 +256,85 @@ export function autoLayoutSwimlane(args: {
     }
 
     laneSizes.push({ id: lane.id, contentW: totalContentW, contentH: totalContentH })
+  }
+
+  // 水平泳道：跨泳道统一「列宽 + 列距」「行高 + 行距」，使相同 laneCol / laneRow 在各泳道内对齐
+  if (horizontalPending.length > 0) {
+    const globalColWidth = new Map<number, number>()
+    const globalRowHeight = new Map<number, number>()
+    for (const p of horizontalPending) {
+      for (const item of p.layoutItems) {
+        globalColWidth.set(item.col, Math.max(globalColWidth.get(item.col) ?? 0, item.size.w))
+        globalRowHeight.set(item.row, Math.max(globalRowHeight.get(item.row) ?? 0, item.size.h))
+      }
+    }
+    const maxLaneGapExtraAll = Math.max(
+      0,
+      ...horizontalPending.map((p) => laneLabelGapExtra.get(p.lane.id) ?? 0),
+    )
+    const globalLaneGapX = NODE_GAP_X + maxLaneGapExtraAll
+    // 行距取各泳道最大附加间距，避免某一泳道边标签较宽时与其它泳道行带错位
+    const globalRowGapY = Math.max(NODE_GAP_Y, ...horizontalPending.map((p) => p.laneGapY))
+
+    const colKeys = Array.from(globalColWidth.keys()).sort((a, b) => a - b)
+    const colStartsRel = new Map<number, number>()
+    let prevCol: number | null = null
+    for (const colKey of colKeys) {
+      if (prevCol == null) {
+        colStartsRel.set(colKey, 0)
+        prevCol = colKey
+        continue
+      }
+      const prevStart = colStartsRel.get(prevCol) ?? 0
+      const prevW = globalColWidth.get(prevCol) ?? 0
+      const colSpan = Math.max(1, colKey - prevCol)
+      colStartsRel.set(colKey, prevStart + prevW + globalLaneGapX * colSpan)
+      prevCol = colKey
+    }
+
+    const rowKeys = Array.from(globalRowHeight.keys()).sort((a, b) => a - b)
+    const rowStartsRel = new Map<number, number>()
+    let prevRow: number | null = null
+    for (const rowKey of rowKeys) {
+      if (prevRow == null) {
+        rowStartsRel.set(rowKey, 0)
+        prevRow = rowKey
+        continue
+      }
+      const prevStart = rowStartsRel.get(prevRow) ?? 0
+      const prevH = globalRowHeight.get(prevRow) ?? 0
+      const rowSpan = Math.max(1, rowKey - prevRow)
+      rowStartsRel.set(rowKey, prevStart + prevH + globalRowGapY * rowSpan)
+      prevRow = rowKey
+    }
+
+    for (const p of horizontalPending) {
+      const { layoutItems, padTop, padLeft, padRight, padBottom } = p
+
+      let maxContentRight = 0
+      let maxContentBottom = padTop
+      for (const item of layoutItems) {
+        const colStartRel = colStartsRel.get(item.col) ?? 0
+        const colW = globalColWidth.get(item.col) ?? item.size.w
+        const rowStartRel = rowStartsRel.get(item.row) ?? 0
+        const rowH = globalRowHeight.get(item.row) ?? item.size.h
+        const rowStart = padTop + rowStartRel
+        maxContentRight = Math.max(maxContentRight, colStartRel + colW)
+        maxContentBottom = Math.max(maxContentBottom, rowStart + rowH)
+
+        item.child.width = item.size.w
+        item.child.height = item.size.h
+        item.child.style = { ...(item.child.style as any), width: item.size.w, height: item.size.h }
+        item.child.position = {
+          x: padLeft + colStartRel + (colW - item.size.w) / 2,
+          y: rowStart + (rowH - item.size.h) / 2,
+        }
+      }
+
+      const totalContentW = padLeft + maxContentRight + padRight
+      const totalContentH = maxContentBottom + padBottom
+      laneSizes[p.laneIndex] = { id: p.lane.id, contentW: totalContentW, contentH: totalContentH }
+    }
   }
 
   // ── Phase A: 排列 lane 容器 ──

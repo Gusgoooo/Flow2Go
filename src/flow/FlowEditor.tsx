@@ -101,6 +101,9 @@ import {
 } from './grid'
 // overview 示例入口已移除
 
+/** Routify 网关默认文本模型（OpenAI 兼容 `model` 字段；勿使用 OpenRouter 的 `provider/model` 前缀） */
+const DEFAULT_ROUTIFY_TEXT_MODEL = 'gpt-5.4-2026-03-05'
+
 export type AssetItem = {
   id: string
   name: string
@@ -783,9 +786,9 @@ function EditorInner({ onBackHome, source, previewSnapshot, readOnly: _readOnly 
   const [handleLimitNotices, setHandleLimitNotices] = useState<Array<{ id: string; message: string }>>([])
   const [aiModalModel, setAiModalModel] = useState<string>(() => {
     try {
-      return localStorage.getItem('flow2go-openrouter-model') || 'openai/gpt-5.4-mini'
+      return localStorage.getItem('flow2go-openrouter-model') || DEFAULT_ROUTIFY_TEXT_MODEL
     } catch {
-      return 'openai/gpt-5.4-mini'
+      return DEFAULT_ROUTIFY_TEXT_MODEL
     }
   })
   const [aiModalVisionModel, setAiModalVisionModel] = useState<string>(() => {
@@ -3664,7 +3667,7 @@ function EditorInner({ onBackHome, source, previewSnapshot, readOnly: _readOnly 
                   <button
                     type="button"
                     className={styles.aiConfigIconBtn}
-                    title="OpenRouter 配置"
+                    title="模型网关（Routify）配置"
                     onClick={() => setAiConfigOpen((v) => !v)}
                   >
                     <Settings2 size={16} />
@@ -3678,7 +3681,7 @@ function EditorInner({ onBackHome, source, previewSnapshot, readOnly: _readOnly 
               <div className={styles.aiModalLayout}>
                 {aiConfigOpen && (
                   <div className={styles.aiConfigPanel}>
-                    <div className={styles.aiConfigTitle}>OpenRouter 配置</div>
+                    <div className={styles.aiConfigTitle}>模型网关（Routify）配置</div>
                     <input
                       className={styles.aiApiKeyInput}
                       type="password"
@@ -3697,7 +3700,7 @@ function EditorInner({ onBackHome, source, previewSnapshot, readOnly: _readOnly 
                         setAiModalModel(e.target.value)
                         try { localStorage.setItem('flow2go-openrouter-model', e.target.value) } catch {}
                       }}
-                      placeholder="openai/gpt-5.4-mini"
+                      placeholder={DEFAULT_ROUTIFY_TEXT_MODEL}
                     />
                     <div style={{ fontSize: 12, fontWeight: 700, color: '#475569' }}>图片识图模型</div>
                     <input
@@ -3834,7 +3837,7 @@ function EditorInner({ onBackHome, source, previewSnapshot, readOnly: _readOnly 
                         if (!p && !aiModalImageDataUrl) return
                         setAiModalGenerating(true)
                         setAiModalError(null)
-                        setAiModalProgress({ phase: '已提交', detail: '等待 OpenRouter…' })
+                        setAiModalProgress({ phase: '已提交', detail: '等待 Routify 模型服务…' })
                         try {
                           const ac = new AbortController()
                           aiModalAbortRef.current = ac
@@ -3843,7 +3846,7 @@ function EditorInner({ onBackHome, source, previewSnapshot, readOnly: _readOnly 
                             const { draft, structured } = await openRouterGenerateDiagramFromImage({
                               apiKey: aiModalKey.trim(),
                               recognitionModel: aiModalVisionModel.trim() || 'qwen/qwen2.5-vl-72b-instruct',
-                              generationModel: aiModalModel.trim() || 'openai/gpt-5.4-mini',
+                              generationModel: aiModalModel.trim() || DEFAULT_ROUTIFY_TEXT_MODEL,
                               imageDataUrl: aiModalImageDataUrl,
                               prompt: undefined,
                               signal: ac.signal,
@@ -3861,7 +3864,7 @@ function EditorInner({ onBackHome, source, previewSnapshot, readOnly: _readOnly 
                               draft,
                               sceneHint: aiModalScene,
                               prompt: p || undefined,
-                              textModel: aiModalModel.trim() || 'openai/gpt-5.4-mini',
+                              textModel: aiModalModel.trim() || DEFAULT_ROUTIFY_TEXT_MODEL,
                               visionModel: aiModalVisionModel.trim() || 'qwen/qwen2.5-vl-72b-instruct',
                               imageDataUrl: aiModalImageDataUrl,
                             })
@@ -3883,7 +3886,7 @@ function EditorInner({ onBackHome, source, previewSnapshot, readOnly: _readOnly 
                             const { materializeGraphBatchPayloadToSnapshot } = await import('./mermaid/apply')
                             const draftFromPrompt = await generateSwimlaneDraftWithLLM({
                               apiKey: aiModalKey.trim(),
-                              model: aiModalModel.trim() || 'openai/gpt-5.4-mini',
+                              model: aiModalModel.trim() || DEFAULT_ROUTIFY_TEXT_MODEL,
                               prompt: p,
                               signal: ac.signal,
                             })
@@ -3907,7 +3910,7 @@ function EditorInner({ onBackHome, source, previewSnapshot, readOnly: _readOnly 
                               draft: aiDraft,
                               sceneHint: aiModalScene,
                               prompt: p,
-                              textModel: aiModalModel.trim() || 'openai/gpt-5.4-mini',
+                              textModel: aiModalModel.trim() || DEFAULT_ROUTIFY_TEXT_MODEL,
                             })
                             // 泳道图生成后需要重新居中视角（并考虑左右面板安全区）。
                             requestAnimationFrame(() => {
@@ -3922,7 +3925,7 @@ function EditorInner({ onBackHome, source, previewSnapshot, readOnly: _readOnly 
                           }
                           const draft = await openRouterGenerateDiagram({
                             apiKey: aiModalKey.trim(),
-                            model: aiModalModel.trim() || 'openai/gpt-5.4-mini',
+                            model: aiModalModel.trim() || DEFAULT_ROUTIFY_TEXT_MODEL,
                             prompt: p,
                             signal: ac.signal,
                             diagramScene: aiModalScene ?? undefined,
@@ -3939,7 +3942,7 @@ function EditorInner({ onBackHome, source, previewSnapshot, readOnly: _readOnly 
                             draft,
                             sceneHint: aiModalScene,
                             prompt: p,
-                            textModel: aiModalModel.trim() || 'openai/gpt-5.4-mini',
+                            textModel: aiModalModel.trim() || DEFAULT_ROUTIFY_TEXT_MODEL,
                           })
                           setAiModalOpen(false)
                         } catch (e) {

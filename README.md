@@ -45,7 +45,7 @@ https://flow2go-nine.vercel.app/
 
 - React Flow (`@xyflow/react`)
 - ELK.js + Dagre
-- LLM (OpenRouter)
+- 模型网关（Routify OpenAI 兼容，统一路由）
 - React + TypeScript + Vite
 - Mermaid parse/transpile/materialize toolchain
 
@@ -60,9 +60,10 @@ https://flow2go-nine.vercel.app/
 7. Snapshot materialization to React Flow nodes/edges
 
 Related modules:
+- `src/flow/routifyClient.ts`（**所有模型 HTTP 调用的唯一出口**：`post` / `chatCompletions` / …）
 - `src/flow/FlowEditor.tsx`
 - `src/flow/aiDiagram.ts`
-- `src/flow/openRouterClient.ts`
+- `src/flow/openRouterClient.ts`（兼容封装，内部走 Routify）
 - `src/flow/swimlaneDraft.ts`
 - `src/flow/mermaid/*`
 
@@ -74,4 +75,22 @@ npm run dev
 ```
 
 Open [http://localhost:5173](http://localhost:5173).
+
+### AI / LLM（Routify）
+
+统一路由为 OpenAI 兼容协议：
+
+- Base URL: `http://routify.alibaba-inc.com/protocol/openai/v1`
+- Chat: `.../chat/completions`
+- 鉴权：`Authorization: Bearer <key>`
+- **本地开发**：浏览器直连上述外网地址会被 **CORS** 拦截（控制台常见 `Failed to fetch`）；项目在 `localhost` / `127.0.0.1` 下会改用同源路径 `/protocol/openai/v1`，由 Vite **开发/预览代理**转发到 Routify。修改 `vite.config.ts` 后需重启 `npm run dev`。生产环境若静态站点仍跨域，需在网关侧放行 CORS，或设置 `VITE_ROUTIFY_BASE_URL` 指向自有反代。
+
+环境变量（不要提交真实密钥）：
+
+| 场景 | 变量名 |
+|------|--------|
+| Vite 前端构建 / 本地开发 | `VITE_ROUTIFY_API_KEY` |
+| Node / serverless（如 `api/` 代理） | `ROUTIFY_API_KEY` |
+
+底层封装见 `src/flow/routifyClient.ts`（`routifyOpenAICompatible.post('子路径', { body })` 可覆盖 chat / images / embeddings 等所有兼容端点）。业务侧通过 `aiDiagram.ts` 等模块调用，**不要在页面或业务 handler 里直接写外部模型 URL**。
 

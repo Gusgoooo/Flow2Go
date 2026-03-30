@@ -17,9 +17,12 @@ type Props = {
   fontSize?: number
   fontWeight?: string | number
   textColor?: string
+  /** 可选：第二块配色（如泳道标题条底色），与「颜色」共用同一 ColorEditor 形态 */
+  fillColor?: string
   onFontSizeChange: (v: number) => void
   onFontWeightChange: (v: string) => void
   onTextColorChange?: (v: string) => void
+  onFillColorChange?: (v: string) => void
   visible: boolean
   /** 当点击到工具栏和调色板之外时请求关闭（由调用方结束编辑） */
   onRequestClose?: () => void
@@ -33,9 +36,11 @@ export function QuickTextStyleToolbar({
   fontSize = 14,
   fontWeight = '400',
   textColor = 'rgba(0,0,0,0.8)',
+  fillColor = 'rgba(71, 85, 105, 0.08)',
   onFontSizeChange,
   onFontWeightChange,
   onTextColorChange,
+  onFillColorChange,
   visible,
   onRequestClose,
 }: Props) {
@@ -126,6 +131,20 @@ export function QuickTextStyleToolbar({
           <ColorEditor
             value={textColor}
             onChange={onTextColorChange}
+            showPicker={true}
+            showAlpha={true}
+            compact={true}
+            portalPicker={true}
+            focusRetainDataAttr={QUICK_TOOLBAR_DATA_ATTR}
+          />
+        </label>
+      )}
+      {onFillColorChange && (
+        <label className={styles.item}>
+          <span className={styles.itemLabel}>底色</span>
+          <ColorEditor
+            value={fillColor}
+            onChange={onFillColorChange}
             showPicker={true}
             showAlpha={true}
             compact={true}

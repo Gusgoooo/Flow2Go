@@ -99,7 +99,7 @@ Group 同样是 `type:'group'`，但通常不设置 `data.role='frame'`。
 - **`flipX/flipY?`**: boolean
 - **`colorOverride?`**: 渐变/颜色覆盖（仅 SVG，见 `GradientColorEditor`）
 
-#### 2.4 `group`（Frame/Group）（见 `src/flow/GroupNode.tsx`）
+#### 2.4 `group`（Frame / Group / Swimlane）（见 `src/flow/GroupNode.tsx`）
 
 - **`title?`**: string（双击编辑）
 - **`subtitle?`**: string
@@ -107,7 +107,19 @@ Group 同样是 `type:'group'`，但通常不设置 `data.role='frame'`。
 - **`titlePosition?`**: `'top-center'|'left-center'`
 - **`stroke/strokeWidth/fill?`**: string/number（样式）
 - **`titleFontSize/titleFontWeight/titleColor/subtitleFontSize?`**
-- **`role?`**: `'frame'`（仅 Frame）
+- **`role?`**: `'frame' | 'lane'`（Frame 为 `frame`；泳道容器为 `lane`）
+- **泳道专用**（`role==='lane'`）：
+  - **`laneMeta?`**: `{ laneId, laneIndex, laneAxis: 'row'|'column', headerSize?, ... }`
+  - **`laneHeaderBackground?`**: string（泳道**标题条/标签区**底色，CSS 颜色；与 UI 双击标题工具栏「底色」一致）
+
+#### 2.5 `SwimlaneDraft`（LLM 文本泳道中间结构，见 `src/flow/swimlaneDraft.ts`）
+
+- **`lanes[]`**: `{ id, title, order, laneHeaderBackground? }`（`laneHeaderBackground` 经 `graph.createFrame` 的 `params.style` 落到 `group.data`）
+- **`nodes` / `edges`**: 见该文件类型定义；系统提示词 **`SWIMLANE_DRAFT_SYSTEM_PROMPT`** 与上述字段需同步维护
+
+#### 2.6 识图结构化（见 `src/flow/aiDiagram.ts`）
+
+- **`AiImageStructuredDraft`**：`groups[].kind === 'lane'` 时，**`groups[].style.fill`** 可映射为泳道标题条底色（与 `laneHeaderBackground` 一致）；阶段 2 提示词需与字段含义一致
 
 ---
 
@@ -263,3 +275,27 @@ fe_login -->|提交| be_auth
 - `groupSelection` 语义（Mermaid 中用子 subgraph 或特定标记触发）
 - waypoints（让 AI 指定折线路径点）
 
+---
+
+### 6. 功能迭代时：AI Schema 同步清单（保证大模型可识别）
+
+每次为**画布元素 / 生成链路**增加或变更**可被模型产出或解析**的字段时，请按下面顺序自检，避免「代码已支持、模型仍不知道」的漂移。
+
+| 步骤 | 要做什么 | 典型落点 |
+|------|----------|----------|
+| 1 | **类型与归一化**：新字段写进 TypeScript 类型，并在 `normalize* / validate* / apply` 路径上可读可写 | 例：`GroupNodeData`（`GroupNode.tsx`）、`SwimlaneDraft`（`swimlaneDraft.ts`）、`AiImageStructuredDraft`（`aiDiagram.ts`） |
+| 2 | **Graph 落地**：若经 `GraphBatchPayload` / `graph.createFrame` 等创建 | `src/flow/mermaid/apply.ts`、`mermaid/types.ts` 中 `CreateFrameOp` 的 `params.style` 等 |
+| 3 | **LLM 系统提示词**：凡是模型应输出或识图应识别的字段，在对应 **system prompt 字符串**中补充字段名、示例与约束 | `aiDiagram.ts`（主流程图 / 识图 stage1&2 / planner）、`swimlaneDraft.ts`（`SWIMLANE_DRAFT_SYSTEM_PROMPT`） |
+| 4 | **产品文档（本目录）**：更新与本文件相关的字段说明 | `05-AI-DiagramGeneration.md`（总协议）、`06-AI-MermaidDSL-Agent.md`（Mermaid 路径）、**本文档 §2–3**（元素与 Graph API） |
+| 5 | **单测**：为归一化或 JSON 解析增加一条最小用例 | `src/flow/__tests__/*` |
+
+**原则**：「模型可见」的字段 = **类型 + 提示词 + 本文档** 至少一处显式描述；**仅 UI 本地**、从不进 JSON 的字段不必写入 LLM prompt。
+
+**快速索引（代码里搜这些即可对齐）**：
+
+- `SWIMLANE_DRAFT_SYSTEM_PROMPT` — 泳道 JSON
+- `IMAGE_TO_STRUCTURED_STAGE1_SYSTEM_PROMPT` / `IMAGE_TO_STRUCTURED_STAGE2_SYSTEM_PROMPT` — 识图
+- `DIAGRAM_PLANNER_SYSTEM_PROMPT` — 规划器结构
+- `openRouterGenerateDiagram` / `user` 拼接 — 主流程图 Mermaid 生成
+
+---

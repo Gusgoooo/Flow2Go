@@ -138,6 +138,34 @@ describe('materializeGraphBatchPayloadToSnapshot - handle inference', () => {
     expect((decisionCustomNode?.data ?? {}).strokeWidth).toBe(2)
   })
 
+  it('skips preset semantic node colors when meta.neutralGeneration is true', async () => {
+    const payload: GraphBatchPayload = {
+      version: '1.0',
+      source: 'mermaid',
+      graphType: 'flowchart',
+      direction: 'LR',
+      operations: [
+        {
+          op: 'graph.createNodeQuad',
+          params: { id: 'end_1', title: '结束', style: { semanticType: 'end' } },
+        },
+        {
+          op: 'graph.createNodeQuad',
+          params: { id: 'decision_1', title: '是否通过', style: { semanticType: 'decision' } },
+        },
+      ],
+      meta: { neutralGeneration: true } as any,
+    }
+
+    const snap = await materializeGraphBatchPayloadToSnapshot(payload, { replace: true })
+    const endNode = snap.nodes.find((n) => n.id === 'end_1') as any
+    const decisionNode = snap.nodes.find((n) => n.id === 'decision_1') as any
+
+    expect((endNode?.data ?? {}).color).toBeUndefined()
+    expect((decisionNode?.data ?? {}).color).toBeUndefined()
+    expect((decisionNode?.data ?? {}).strokeWidth).toBe(0)
+  })
+
   it('avoids making left side both in+out: if left has in and B is left-down, prefer bottom', async () => {
     const payload: GraphBatchPayload = {
       version: '1.0',

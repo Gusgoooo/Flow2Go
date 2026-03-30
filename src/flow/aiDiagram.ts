@@ -55,6 +55,7 @@ import { parseMermaidFlowchart, transpileMermaidFlowIR } from './mermaid'
 import { materializeGraphBatchPayloadToSnapshot } from './mermaid/apply'
 import { GRID_UNIT, snapToGrid } from './grid'
 import { swimlaneDraftToGraphBatchPayload, type SwimlaneDraft } from './swimlaneDraft'
+import { routifyChatCompletions } from './routifyClient'
 
 const DEFAULT_TIMEOUT_MS = 90_000
 
@@ -209,21 +210,14 @@ async function openRouterChatCompleteByMessages(args: {
     if (Number.isFinite(maxTokens) && maxTokens > 0) {
       requestPayload.max_tokens = Math.floor(maxTokens)
     }
-    const requestBody = JSON.stringify(requestPayload)
-    const res = await fetch('https://openrouter.ai/api/v1/chat/completions', {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-        Authorization: `Bearer ${args.apiKey.trim()}`,
-        'HTTP-Referer': window.location.origin,
-        'X-Title': 'Flow2Go',
-      },
+    const res = await routifyChatCompletions({
+      body: requestPayload,
       signal: mergedController.signal,
-      body: requestBody,
+      bearerFallback: args.apiKey,
     })
 
     const text = await res.text()
-    if (!res.ok) throw new Error(`OpenRouter 错误 ${res.status}: ${text}`)
+    if (!res.ok) throw new Error(`Routify 错误 ${res.status}: ${text}`)
     const payload = JSON.parse(text)
     const content = payload?.choices?.[0]?.message?.content
     if (typeof content !== 'string' || !content.trim()) throw new Error('AI 未返回内容')
@@ -397,11 +391,11 @@ export async function convertMermaidToAiDraft(
     const msg = transpiled.errors?.[0]?.message || 'Mermaid 转译失败'
     throw new Error(msg)
   }
-  if (opts?.layoutProfile) {
-    transpiled.data.meta = {
-      ...(transpiled.data.meta ?? {}),
-      layoutProfile: opts.layoutProfile,
-    }
+  transpiled.data.meta = {
+    ...(transpiled.data.meta ?? {}),
+    ...(opts?.layoutProfile ? { layoutProfile: opts.layoutProfile } : {}),
+    /** 自然语言 Mermaid 转图：不自动注入语义色、思维导图分岔色等预设 */
+    neutralGeneration: true,
   }
   const snap = await materializeGraphBatchPayloadToSnapshot(transpiled.data, { replace: true })
   return {
@@ -704,6 +698,7 @@ const IMAGE_TO_STRUCTURED_STAGE2_SYSTEM_PROMPT = [
   `- 输出 schema 固定为 "${IMAGE_STRUCTURE_SCHEMA}"。`,
   '- 优先复用阶段1中的 id，不要随意改名；确需新增也要保持引用正确。',
   '- 允许补全字段：groups[].parentId、nodes[].parentId、style(fill/stroke/textColor/strokeWidth/opacity)。',
+  '- 泳道分组 groups（kind=lane）：style.fill 可表示泳道标题条（标签区）底色，对应画布 laneHeaderBackground；不确定则省略。',
   '- 禁止臆造复杂关系；若不确定，保持 next 关系并保守输出。',
   '- 仅输出 JSON，不要 markdown，不要解释。',
 ].join('\n')
@@ -1689,6 +1684,8 @@ export function buildSwimlaneDraftFromImageStructured(structured: AiImageStructu
     order: number
     groupId?: string
     box?: { x: number; y: number; w: number; h: number }
+    /** 与 SwimlaneDraft.lanes[].laneHeaderBackground / GroupNode 标题条底色一致 */
+    laneHeaderBackground?: string
   }
   type NodeResolved = {
     id: string
@@ -1724,13 +1721,20 @@ export function buildSwimlaneDraftFromImageStructured(structured: AiImageStructu
   const usedLaneIds = new Set<string>()
   const laneByKey = new Map<string, LaneResolved>()
   const laneByGroupId = new Map<string, LaneResolved>()
-  const pushLane = (titleRaw: string, groupId?: string, box?: { x: number; y: number; w: number; h: number }) => {
+  const pushLane = (
+    titleRaw: string,
+    groupId?: string,
+    box?: { x: number; y: number; w: number; h: number },
+    headerBgRaw?: string,
+  ) => {
     const title = titleRaw.trim()
     if (!title) return
     const key = laneLabelKey(title)
+    const headerBg = String(headerBgRaw ?? '').trim().slice(0, 120)
     const existed = laneByKey.get(key)
     if (existed) {
       if (groupId) laneByGroupId.set(groupId, existed)
+      if (headerBg && !existed.laneHeaderBackground) existed.laneHeaderBackground = headerBg
       return
     }
     const lane: LaneResolved = {
@@ -1739,6 +1743,7 @@ export function buildSwimlaneDraftFromImageStructured(structured: AiImageStructu
       order: lanes.length,
       ...(groupId ? { groupId } : {}),
       ...(box ? { box } : {}),
+      ...(headerBg ? { laneHeaderBackground: headerBg } : {}),
     }
     lanes.push(lane)
     laneByKey.set(key, lane)
@@ -1746,10 +1751,12 @@ export function buildSwimlaneDraftFromImageStructured(structured: AiImageStructu
   }
 
   for (const laneGroup of laneGroupsSorted) {
+    const headerFill = laneGroup.style?.fill
     pushLane(
       laneGroup.label,
       laneGroup.id,
       hasLayoutBox(laneGroup) ? { x: laneGroup.x, y: laneGroup.y, w: laneGroup.w, h: laneGroup.h } : undefined,
+      typeof headerFill === 'string' ? headerFill : undefined,
     )
   }
   for (const lane of structured.lanes) pushLane(lane)
@@ -1931,7 +1938,12 @@ export function buildSwimlaneDraftFromImageStructured(structured: AiImageStructu
   return {
     title: structured.title || '泳道图（图生图）',
     direction,
-    lanes: lanes.map((lane) => ({ id: lane.id, title: lane.title, order: lane.order })),
+    lanes: lanes.map((lane) => ({
+      id: lane.id,
+      title: lane.title,
+      order: lane.order,
+      ...(lane.laneHeaderBackground ? { laneHeaderBackground: lane.laneHeaderBackground } : {}),
+    })),
     nodes: normalizedNodes,
     edges: normalizedEdges,
   }

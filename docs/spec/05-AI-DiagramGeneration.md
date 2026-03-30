@@ -1,4 +1,4 @@
-## AI 生成整张图（OpenRouter）规格说明
+## AI 生成整张图（Routify OpenAI 兼容网关）规格说明
 
 ### 0. 目标
 
@@ -9,6 +9,8 @@
 - 应用时必须满足 Flow2Go 的核心语义：尤其是 **Frame 的 `parentId + 局部坐标`**
 
 **原则**：AI 只负责“提议”，最终落盘必须经过本地校验与归一化。
+
+**维护**：凡新增或变更「模型可输出 / 识图可解析」的 JSON 字段，除更新本文件相关小节外，请同步 **`07-Flow2Go-Graph-Logic-and-AI-Interfaces.md` §6** 中的自检清单（类型、prompt、文档一致）。
 
 ---
 
@@ -53,21 +55,23 @@
 
 ---
 
-### 3. OpenRouter（BYOK）接入规范
+### 3. Routify（OpenAI 兼容）接入规范
 
 #### 3.1 Key 管理
 
-- 第一优先：`localStorage`（用户在 UI 输入后存储）
-- 第二优先：`import.meta.env.VITE_OPENROUTER_API_KEY`
-- UI 必须提示：
-  - Key 只保存在本地，不上传你的服务器（Local-first）
+- **推荐**：构建/运行环境注入 `VITE_ROUTIFY_API_KEY`（前端）或 `ROUTIFY_API_KEY`（Node/服务端代理）
+- 过渡期：若未配置环境变量，部分调用可回退使用 UI 中保存的旧版 key（仅作 Bearer 兜底，不推荐长期依赖）
+- UI 可继续提示：敏感信息以本地/环境配置为准
 
 #### 3.2 API 调用（文本生成）
 
-- Endpoint：`https://openrouter.ai/api/v1/chat/completions`
+- Base：`http://routify.alibaba-inc.com/protocol/openai/v1`
+- Endpoint：`http://routify.alibaba-inc.com/protocol/openai/v1/chat/completions`
+- 鉴权：`Authorization: Bearer ${ROUTIFY_API_KEY}`（或前端构建注入的 `VITE_ROUTIFY_API_KEY`）
+- 统一实现：`src/flow/routifyClient.ts`
 - 请求必须支持：
   - 取消（`AbortController`）
-  - 超时（如 45s）
+  - 超时（如 45s / 90s）
   - 明确的错误映射：无 key / 401 / 429 / 5xx
 
 #### 3.3 模型选择
@@ -206,7 +210,7 @@ AI 输出只是“草稿”，应用前必须做归一化：
 
 ### 9. 验收用例（补充到 QA）
 
-- [ ] 无 OpenRouter Key：面板提示并禁用“生成”
+- [ ] 无 Routify Key（且未配置回退）：面板提示并禁用“生成”
 - [ ] 生成成功：出现草稿摘要 + 预览 + 应用按钮
 - [ ] 应用后：画布节点/边出现，且 Undo 可回滚到应用前
 - [ ] 草稿含 Frame：应用后拖入/拖出行为仍符合 `02-Interaction.md`

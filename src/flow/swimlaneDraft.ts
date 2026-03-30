@@ -3,6 +3,7 @@
  * LLM / 外部输入只需产出此结构，由 swimlaneDraftToGraphBatchPayload 转为 GraphBatchPayload。
  */
 import type { GraphBatchPayload, GraphOperation } from './mermaid/types'
+import { routifyChatCompletions } from './routifyClient'
 
 export type SwimlaneDraftNode = {
   id: string
@@ -36,6 +37,11 @@ export type SwimlaneDraft = {
     id: string
     title: string
     order: number
+    /**
+     * 泳道标题条（标签区）背景色，与画布 GroupNode `laneHeaderBackground` 一致。
+     * 支持 CSS 颜色字符串，如 `#e2e8f0`、`rgba(71,85,105,0.12)`。
+     */
+    laneHeaderBackground?: string
   }>
   nodes: SwimlaneDraftNode[]
   edges: SwimlaneDraftEdge[]
@@ -213,7 +219,13 @@ function enforceSwimlaneDraftSemantics(input: SwimlaneDraft): SwimlaneDraft {
       k += 1
     }
     laneIdSeen.add(id)
-    lanes.push({ id, title, order: lanes.length })
+    const headerBg = String(lane?.laneHeaderBackground ?? '').trim()
+    lanes.push({
+      id,
+      title,
+      order: lanes.length,
+      ...(headerBg ? { laneHeaderBackground: headerBg.slice(0, 120) } : {}),
+    })
   }
   if (lanes.length === 0) {
     lanes.push({ id: 'lane-default', title: '默认泳道', order: 0 })
@@ -419,11 +431,15 @@ export function swimlaneDraftToGraphBatchPayload(
   // lanes -> createFrame (排序后按 order)
   const sortedLanes = [...normalizedDraft.lanes].sort((a, b) => a.order - b.order)
   for (const lane of sortedLanes) {
+    const headerBg = String(lane.laneHeaderBackground ?? '').trim()
     ops.push({
       op: 'graph.createFrame',
       params: {
         id: lane.id,
         title: lane.title,
+        ...(headerBg
+          ? { style: { laneHeaderBackground: headerBg.slice(0, 120) } as Record<string, unknown> }
+          : {}),
       },
     })
   }
@@ -484,6 +500,8 @@ export function swimlaneDraftToGraphBatchPayload(
     meta: {
       layoutProfile: 'swimlane',
       swimlaneDirection: normalizedDraft.direction,
+      /** 文本泳道 Draft：不自动注入语义节点色等预设 */
+      neutralGeneration: true,
     },
   }
 }
@@ -684,6 +702,7 @@ const SWIMLANE_DRAFT_SYSTEM_PROMPT = `
 6) lanes.order 必须从 0 开始连续递增（0,1,2...）。
 7) 每条 edge 必须有 semanticType，且跨泳道边优先显式为 crossLane；跨泳道 returnFlow 必须极少（默认 0，最多 1）。
 8) nodes 必须有 laneId（后续会映射为 parentId + laneId 双归属）。
+9) laneHeaderBackground（泳道标题条底色）：仅当用户在描述中**明确要求**泳道标题/底色配色时才输出；默认不要输出任何泳道或节点的装饰性颜色字段。
 
 优先输出语义 schema（推荐）：
 {
@@ -791,17 +810,21 @@ export function normalizeSwimlaneDraftCandidate(input: any): any {
   const rawEdges = Array.isArray(input.edges) ? input.edges : []
   const rawLanes = Array.isArray(input.lanes) ? input.lanes : []
 
-  const lanes: Array<{ id: string; title: string; order: number }> = []
+  const lanes: SwimlaneDraft['lanes'] = []
   const laneIdByKey = new Map<string, string>()
 
-  const registerLane = (id: string, title: string, order: number) => {
+  const registerLane = (id: string, title: string, order: number, headerBgRaw?: unknown) => {
     const keyId = id.toLowerCase()
     const keyTitle = title.toLowerCase()
     if (!laneIdByKey.has(keyId)) laneIdByKey.set(keyId, id)
     if (!laneIdByKey.has(keyTitle)) laneIdByKey.set(keyTitle, id)
-    if (!lanes.some((lane) => lane.id === id)) {
-      lanes.push({ id, title, order })
+    const headerBg = String(headerBgRaw ?? '').trim().slice(0, 120)
+    const existing = lanes.find((lane) => lane.id === id)
+    if (existing) {
+      if (headerBg && !existing.laneHeaderBackground) existing.laneHeaderBackground = headerBg
+      return
     }
+    lanes.push({ id, title, order, ...(headerBg ? { laneHeaderBackground: headerBg } : {}) })
   }
 
   const ensureLane = (laneValue: unknown, orderHint: number): string => {
@@ -833,7 +856,14 @@ export function normalizeSwimlaneDraftCandidate(input: any): any {
     if (!title && !idRaw) continue
     const titleFinal = title || idRaw
     const idFinal = idRaw || `lane-${slug(titleFinal) || i + 1}`
-    registerLane(idFinal, titleFinal, Number.isFinite(lane?.order) ? lane.order : lanes.length)
+    const headerBg =
+      lane?.laneHeaderBackground ?? (lane as any)?.headerBackground ?? (lane as any)?.labelBackground
+    registerLane(
+      idFinal,
+      titleFinal,
+      Number.isFinite(lane?.order) ? lane.order : lanes.length,
+      headerBg,
+    )
   }
 
   const nodes = rawNodes.map((node: any, i: number) => {
@@ -914,7 +944,14 @@ function validateSwimlaneDraft(draft: any): SwimlaneDraft {
     const title = String(l?.title ?? '').trim()
     if (!title) throw new Error(`lane[${i}] title 不能为空`)
     laneIds.add(id)
-    return { id, title, order: Number.isFinite(l?.order) ? l.order : i }
+    const bgRaw = l?.laneHeaderBackground ?? l?.headerBackground ?? l?.labelBackground
+    const bg = typeof bgRaw === 'string' ? bgRaw.trim().slice(0, 120) : ''
+    return {
+      id,
+      title,
+      order: Number.isFinite(l?.order) ? l.order : i,
+      ...(bg ? { laneHeaderBackground: bg } : {}),
+    }
   })
   const nodeIds = new Set<string>()
   draft.nodes = draft.nodes.map((n: any, i: number) => {
@@ -970,25 +1007,20 @@ export async function generateSwimlaneDraftWithLLM(
   const onAbort = () => controller.abort(signal?.reason)
   signal?.addEventListener('abort', onAbort, { once: true })
   try {
-    const requestBody = JSON.stringify({
-      model,
-      temperature: 0,
-      messages: [
-        { role: 'system', content: SWIMLANE_DRAFT_SYSTEM_PROMPT },
-        { role: 'user', content: prompt },
-      ],
-    })
-    const res = await fetch('https://openrouter.ai/api/v1/chat/completions', {
-      method: 'POST',
-      headers: {
-        Authorization: `Bearer ${apiKey.trim()}`,
-        'Content-Type': 'application/json',
+    const res = await routifyChatCompletions({
+      body: {
+        model,
+        temperature: 0,
+        messages: [
+          { role: 'system', content: SWIMLANE_DRAFT_SYSTEM_PROMPT },
+          { role: 'user', content: prompt },
+        ],
       },
       signal: controller.signal,
-      body: requestBody,
+      bearerFallback: apiKey,
     })
     const text = await res.text()
-    if (!res.ok) throw new Error(`OpenRouter 请求失败: ${res.status} ${text}`)
+    if (!res.ok) throw new Error(`Routify 请求失败: ${res.status} ${text}`)
     const json = safeJsonParse(JSON.parse(text).choices?.[0]?.message?.content ?? '')
     return validateSwimlaneDraft(json)
   } catch (e) {
