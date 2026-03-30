@@ -6,9 +6,6 @@ type HandlePair = { sourceHandle: string; targetHandle: string }
 type Side = 'top' | 'right' | 'bottom' | 'left'
 const RETURN_FLOW_AUTO_ANIMATED_KEY = 'autoReturnFlowAnimated'
 
-const LONG_RETURN_ORDER_GAP = 2
-const LONG_RETURN_X_GAP = 280
-
 function sideToSourceHandle(side: Side): string {
   return `s-${side}`
 }
@@ -153,24 +150,44 @@ function chooseOrdinarySwimlaneHandles(
   }
 
   const laneAxis = (sourceLane?.data as any)?.laneMeta?.laneAxis as 'row' | 'column' | undefined
+
+  // 列泳道：主流程自上而下，回流用「上出下进 / 下出上进」或水平正交拐角，避免同侧平行贴边
   if (laneAxis === 'column') {
-    return { sourceHandle: 's-bottom', targetHandle: 't-top' }
+    const dx = centerX(tgtNode, byId) - centerX(srcNode, byId)
+    const dy = centerY(tgtNode, byId) - centerY(srcNode, byId)
+    if (Math.abs(dy) >= Math.abs(dx)) {
+      if (dy <= 0) return { sourceHandle: 's-top', targetHandle: 't-bottom' }
+      return { sourceHandle: 's-bottom', targetHandle: 't-top' }
+    }
+    if (dx <= 0) return { sourceHandle: 's-left', targetHandle: 't-right' }
+    return { sourceHandle: 's-right', targetHandle: 't-left' }
   }
 
-  const srcOrder = Number((srcNode.data as any)?.nodeOrder ?? 0)
-  const tgtOrder = Number((tgtNode.data as any)?.nodeOrder ?? 0)
-  const orderGap = Math.abs(srcOrder - tgtOrder)
-  const xGap = Math.abs(centerX(srcNode, byId) - centerX(tgtNode, byId))
-  const isLongReturn = orderGap >= LONG_RETURN_ORDER_GAP || xGap >= LONG_RETURN_X_GAP
-
-  if (isLongReturn) {
-    // Long loops are routed to keep visual stability, but avoid "in/out on the same handle".
-    // Note: laneAxis=column is already handled above (returns s-bottom -> t-top), so here laneAxis is row/undefined.
-    return { sourceHandle: 's-left', targetHandle: 't-right' }
+  // 行泳道：主流程自左而右，回流用水平「左出右进」或垂直与水平正交拐角（左上/左下/右上/右下）
+  const dx = centerX(tgtNode, byId) - centerX(srcNode, byId)
+  const dy = centerY(tgtNode, byId) - centerY(srcNode, byId)
+  if (Math.abs(dx) >= Math.abs(dy)) {
+    if (dx <= 0) {
+      return {
+        sourceHandle: 's-left',
+        targetHandle: dy < 0 ? 't-top' : 't-bottom',
+      }
+    }
+    return {
+      sourceHandle: 's-right',
+      targetHandle: dy < 0 ? 't-top' : 't-bottom',
+    }
   }
-
-  // For short backward edges, mirror handles so the arrow enters from the geometric travel side.
-  return { sourceHandle: 's-left', targetHandle: 't-right' }
+  if (dy <= 0) {
+    return {
+      sourceHandle: 's-top',
+      targetHandle: dx < 0 ? 't-left' : 't-right',
+    }
+  }
+  return {
+    sourceHandle: 's-bottom',
+    targetHandle: dx < 0 ? 't-left' : 't-right',
+  }
 }
 
 function applyReturnFlowAnimation(
@@ -230,8 +247,18 @@ export function rerouteSwimlaneEdges(nodes: Node<any>[], edges: Edge<any>[]): Ed
     const sideOpposite: Record<string, string> = { left: 'right', right: 'left', top: 'bottom', bottom: 'top' }
     const sourceSide = sourceHandle.split('-')[1]
     const targetSide = targetHandle.split('-')[1]
+    const sameSideReturnParallel =
+      semantic === 'returnFlow' &&
+      sourceIsOrdinarySwimlane &&
+      targetIsOrdinarySwimlane &&
+      Boolean(sourceSide && targetSide && sourceSide === targetSide)
     const fixedTargetHandle =
-      sourceIsOrdinarySwimlane && targetIsOrdinarySwimlane && sourceSide && targetSide && sourceSide === targetSide
+      sourceIsOrdinarySwimlane &&
+      targetIsOrdinarySwimlane &&
+      sourceSide &&
+      targetSide &&
+      sourceSide === targetSide &&
+      !sameSideReturnParallel
         ? `t-${sideOpposite[targetSide] ?? targetSide}`
         : targetHandle
 

@@ -17,7 +17,7 @@ const FRAME_PRESET: Partial<GroupNodeData> = {
 
 const LANE_PRESET: Partial<GroupNodeData> = {
   role: 'lane',
-  stroke: '#94a3b8',
+  stroke: '#cbd5e1',
   strokeWidth: 1.5,
   fill: 'rgba(241, 245, 249, 0.5)',
   titleFontSize: 14,
@@ -69,7 +69,7 @@ export function GroupEditPopup({ node, anchor, onUpdate, onFillChange, onDeleteF
           headerSize: 48,
           padding: { top: 24, right: 24, bottom: 24, left: 24 },
           minLaneWidth: 800,
-          minLaneHeight: 160,
+          minLaneHeight: 88,
         },
       })
       return

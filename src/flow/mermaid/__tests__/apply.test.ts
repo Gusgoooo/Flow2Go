@@ -217,7 +217,7 @@ describe('materializeGraphBatchPayloadToSnapshot - handle inference', () => {
     expect(e.targetHandle).toBe('t-top')
   })
 
-  it('uses bottom->bottom for bidirectional flowchart edge when source is left-above target', async () => {
+  it('uses top->top for bidirectional flowchart edge when source is left-above target (prefer top over bottom)', async () => {
     const payload: GraphBatchPayload = {
       version: '1.0',
       source: 'mermaid',
@@ -233,8 +233,8 @@ describe('materializeGraphBatchPayloadToSnapshot - handle inference', () => {
     const snap = await materializeGraphBatchPayloadToSnapshot(payload, { replace: true })
     const e = snap.edges.find((edge) => edge.id === 'e_ab_both2') as any
     expect((e?.data ?? {}).arrowStyle).toBe('both')
-    expect(e.sourceHandle).toBe('s-bottom')
-    expect(e.targetHandle).toBe('t-bottom')
+    expect(e.sourceHandle).toBe('s-top')
+    expect(e.targetHandle).toBe('t-top')
   })
 
   it('applies bidirectional diagonal handle rule regardless of source/target order', async () => {

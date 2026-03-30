@@ -17,7 +17,7 @@ type Props = {
   fontSize?: number
   fontWeight?: string | number
   textColor?: string
-  /** 可选：第二块配色（如泳道标题条底色），与「颜色」共用同一 ColorEditor 形态 */
+  /** 可选：文字标签「底色」（如 Quad 节点），与「颜色」共用同一 ColorEditor；泳道标题栏整段色带不在此编辑 */
   fillColor?: string
   onFontSizeChange: (v: number) => void
   onFontWeightChange: (v: string) => void

@@ -68,6 +68,9 @@ function dirToLayoutDirection(dir: FlowDirection) {
   return dir as any
 }
 
+/** 与 GroupNode 泳道标题一致；泳道 createFrame 时强制使用，避免沿用 frame 默认 #64748b */
+const DEFAULT_LANE_TITLE_TEXT_COLOR = '#334155'
+
 function frameDefaults(title: string) {
   return {
     width: 640,
@@ -731,9 +734,8 @@ function isBidirectionalArrowEdge(edge: Edge<any>): boolean {
 
 /**
  * Flowchart 特判（仅双向箭头）：
- * - 左侧节点在右侧节点下方：上 -> 上
- * - 左侧节点在右侧节点上方：下 -> 下
- * 该规则与 source/target 顺序无关，仅依赖几何关系。
+ * - 当两节点主要是左右关系（LR）时，优先用「上 -> 上」，避免出现左节点上连右节点下的“反直觉”折线。
+ *   该规则与 source/target 顺序无关，仅依赖几何关系。
  */
 function inferBidirectionalDiagonalHandlesForFlowchart(
   edge: Edge<any>,
@@ -746,10 +748,13 @@ function inferBidirectionalDiagonalHandlesForFlowchart(
   const dy = centers.tCy - centers.sCy
   const EPS = 1e-6
   if (Math.abs(dx) <= EPS || Math.abs(dy) <= EPS) return null
-  const sourceIsLeft = centers.sCx < centers.tCx
-  const leftCy = sourceIsLeft ? centers.sCy : centers.tCy
-  const rightCy = sourceIsLeft ? centers.tCy : centers.sCy
-  const side: 'top' | 'bottom' = leftCy > rightCy ? 'top' : 'bottom'
+  // 仅在确实形成“对角”时触发（dx、dy 都非 0）。
+  // 对于左右主导的场景，统一用 top/top 更符合流程图阅读习惯（两条双向边也更稳定）。
+  if (Math.abs(dx) >= Math.abs(dy)) {
+    return { sourceHandle: 's-top', targetHandle: 't-top' }
+  }
+  // 上下主导时，维持同侧以减少穿越（左/右由左右相对位置决定）
+  const side: 'left' | 'right' = centers.sCx < centers.tCx ? 'right' : 'left'
   return { sourceHandle: `s-${side}`, targetHandle: `t-${side}` }
 }
 
@@ -1029,6 +1034,111 @@ function applyInferredEdgeHandles(nodes: Array<Node<any>>, edges: Array<Edge<any
     m.set(id, rec)
   }
 
+  // decision 节点 yes/no 出口：不再按 out-going 几何直接选 left/right，
+  // 而是先根据“入边从哪个 handle 进来”推断分支坐标轴与 next 出口。
+  //
+  // 规则（仅 swimlane decision）：
+  // - 左进（入边从 left 进入）=> yes/no 分别从 top/bottom 出；next 从 right 出
+  // - 上进（入边从 top 进入）=> yes/no 分别从 left/right 出；next 从 bottom 出
+  // 其余入边方向按对称关系补全：right-in => next-left, bottom-in => next-top
+  const decisionIds = new Set(
+    nodes
+      .filter((n) => {
+        const laneId = (n.data as any)?.laneId ?? n.parentId
+        if (!laneId) return false
+        const semantic = String((n.data as any)?.semanticType ?? '')
+        const shape = String((n.data as any)?.shape ?? '')
+        return semantic === 'decision' || shape === 'diamond'
+      })
+      .map((n) => n.id),
+  )
+
+  const decisionEntrySideCounts = new Map<string, Record<Side, number>>()
+  for (const e of edges) {
+    if (!decisionIds.has(e.target)) continue
+    const centers = getCenters(e.source, e.target, nodeById)
+    if (!centers) continue
+    const dxIn = centers.tCx - centers.sCx
+    const dyIn = centers.tCy - centers.sCy
+    // from source -> decision vector：vector 指向 right => 边从 left 进入 decision
+    const entrySide = oppositeSide(dominantSideFromDelta(dxIn, dyIn))
+    bump(decisionEntrySideCounts, e.target, entrySide)
+  }
+
+  const decisionEntrySide = new Map<string, Side>()
+  const tieOrder: Side[] = ['left', 'right', 'top', 'bottom']
+  for (const id of decisionIds) {
+    const rec = decisionEntrySideCounts.get(id) ?? { top: 0, right: 0, bottom: 0, left: 0 }
+    let best: Side = tieOrder[0]
+    let bestCount = rec[best] ?? 0
+    for (const s of tieOrder) {
+      const c = rec[s] ?? 0
+      if (c > bestCount) {
+        best = s
+        bestCount = c
+      }
+    }
+    // 没有任何入边时，默认按“左进”兜底（对应 next=right，yes/no=top/bottom）。
+    decisionEntrySide.set(id, bestCount > 0 ? best : 'left')
+  }
+
+  type DecisionBranchMapping = { yes?: Side; no?: Side; next: Side }
+  const decisionBranchMappingById = new Map<string, DecisionBranchMapping>()
+  for (const decisionId of decisionIds) {
+    const entry = decisionEntrySide.get(decisionId) ?? 'left'
+    const nextSide = oppositeSide(entry)
+    const axisIsY = entry === 'left' || entry === 'right' // 左进/右进 => top/bottom；上进/下进 => left/right
+
+    const yesEdge = edges.find((e) => e.source === decisionId && classifyDecisionBranch(e) === 'yes')
+    const noEdge = edges.find((e) => e.source === decisionId && classifyDecisionBranch(e) === 'no')
+
+    let yesSide: Side | undefined
+    let noSide: Side | undefined
+
+    if (yesEdge && noEdge) {
+      const yC = getCenters(decisionId, yesEdge.target, nodeById)
+      const nC = getCenters(decisionId, noEdge.target, nodeById)
+      if (yC && nC) {
+        if (axisIsY) {
+          // 上下由目标相对位置判断：y 更小者在 top。
+          if (yC.tCy <= nC.tCy) {
+            yesSide = 'top'
+            noSide = 'bottom'
+          } else {
+            yesSide = 'bottom'
+            noSide = 'top'
+          }
+        } else {
+          // 左右由目标相对位置判断：x 更小者在 left。
+          if (yC.tCx <= nC.tCx) {
+            yesSide = 'left'
+            noSide = 'right'
+          } else {
+            yesSide = 'right'
+            noSide = 'left'
+          }
+        }
+      }
+    }
+
+    if (!yesSide && yesEdge) {
+      const yC = getCenters(decisionId, yesEdge.target, nodeById)
+      if (yC) {
+        if (axisIsY) yesSide = yC.tCy <= yC.sCy ? 'top' : 'bottom'
+        else yesSide = yC.tCx <= yC.sCx ? 'left' : 'right'
+      }
+    }
+    if (!noSide && noEdge) {
+      const nC = getCenters(decisionId, noEdge.target, nodeById)
+      if (nC) {
+        if (axisIsY) noSide = nC.tCy <= nC.sCy ? 'top' : 'bottom'
+        else noSide = nC.tCx <= nC.sCx ? 'left' : 'right'
+      }
+    }
+
+    decisionBranchMappingById.set(decisionId, { yes: yesSide, no: noSide, next: nextSide })
+  }
+
   return edges.map((e) => {
     const dataTyped = (e.data ?? {}) as {
       semanticType?: unknown
@@ -1076,23 +1186,27 @@ function applyInferredEdgeHandles(nodes: Array<Node<any>>, edges: Array<Edge<any
     let forcedDecisionSourceSide: Side | null = null
     const decisionBranch = srcIsSwimlaneDecision ? classifyDecisionBranch(e) : null
     if (srcIsSwimlaneDecision) {
-      const usage = decisionOutUsage.get(e.source) ?? emptySideUsage()
-      const preferred = dominantSideFromDelta(dx, dy)
-      if (decisionBranch) {
-        const pair = decisionBranchSideByLabel.get(e.source) ?? {}
-        const current = decisionBranch === 'yes' ? pair.yes : pair.no
-        if (current) {
-          forcedDecisionSourceSide = current
-        } else {
-          const other = decisionBranch === 'yes' ? pair.no : pair.yes
-          const chosen = chooseLeastUsedDistinctSide(preferred, usage, other)
-          forcedDecisionSourceSide = chosen
-          if (decisionBranch === 'yes') pair.yes = chosen
-          else pair.no = chosen
-          decisionBranchSideByLabel.set(e.source, pair)
+      // 用入边推断的 yes/no 出口映射强制 decision 出边 handle。
+      const mapping = decisionBranchMappingById.get(e.source)
+      const entryFallback = decisionEntrySide.get(e.source) ?? 'left'
+      const nextFallback = oppositeSide(entryFallback)
+      if (decisionBranch === 'yes') forcedDecisionSourceSide = mapping?.yes ?? 'top'
+      else if (decisionBranch === 'no') forcedDecisionSourceSide = mapping?.no ?? 'bottom'
+      else {
+        // 无 label（decisionBranch=null）时：仍需给两条 outgoing 边分配到不同的分支 handle，
+        // 避免同侧平行贴边/重叠；这里按入边决定分支轴并选择“使用次数更少”的那一侧。
+        const usage = decisionOutUsage.get(e.source) ?? emptySideUsage()
+        const axisSides: Side[] = entryFallback === 'left' || entryFallback === 'right' ? ['top', 'bottom'] : ['left', 'right']
+        let best = axisSides[0]
+        let bestCount = usage[best] ?? 0
+        for (const s of axisSides) {
+          const c = usage[s] ?? 0
+          if (c < bestCount) {
+            best = s
+            bestCount = c
+          }
         }
-      } else {
-        forcedDecisionSourceSide = chooseLeastUsedDistinctSide(preferred, usage)
+        forcedDecisionSourceSide = best || mapping?.next || nextFallback
       }
     }
 
@@ -1498,6 +1612,8 @@ export async function materializeGraphBatchPayloadToSnapshot(
 
   const swimlaneMode = ((payload.meta as any)?.layoutProfile ?? '') === 'swimlane'
   const swimlaneDirection: 'horizontal' | 'vertical' = (payload.meta as any)?.swimlaneDirection ?? 'horizontal'
+  /** 图生图泳道 Draft：物化时强制默认泳道底色，忽略泳道配色字段 */
+  const swimlaneImageImport = Boolean((payload.meta as any)?.swimlaneImageImport)
   let laneIndexCounter = 0
 
   const frameOrder: string[] = []
@@ -1520,12 +1636,18 @@ export async function materializeGraphBatchPayloadToSnapshot(
         })()
 
       const isLane = swimlaneMode && !isNested
+      const rawFrameStyle = (op.params.style ?? {}) as Record<string, unknown>
       const nodeData: Record<string, any> = {
         ...d.data,
         title: op.params.title,
-        ...(op.params.style ?? {}),
+        ...rawFrameStyle,
       }
       if (isLane) {
+        // 泳道描边不由大模型/草稿 style 覆盖（图生图路径在下面单独设定）
+        if (!swimlaneImageImport) {
+          delete nodeData.stroke
+          delete nodeData.strokeWidth
+        }
         nodeData.role = 'lane'
         // 行泳道（horizontal）使用左侧标题；列泳道（vertical）使用上方居中标题。
         nodeData.titlePosition = swimlaneDirection === 'vertical' ? 'top-center' : 'left-center'
@@ -1536,7 +1658,18 @@ export async function materializeGraphBatchPayloadToSnapshot(
           headerSize: 48,
           padding: { top: 24, right: 24, bottom: 24, left: 24 },
           minLaneWidth: 800,
-          minLaneHeight: 160,
+          minLaneHeight: 88,
+        }
+        nodeData.titleColor = DEFAULT_LANE_TITLE_TEXT_COLOR
+        if (swimlaneImageImport) {
+          nodeData.fill = 'rgba(241, 245, 249, 0.5)'
+          nodeData.stroke = 'rgba(203, 213, 225, 0.6)'
+          nodeData.strokeWidth = 1.5
+          delete nodeData.laneHeaderBackground
+          delete nodeData.laneTitleLabelBackground
+        } else {
+          nodeData.stroke = 'rgba(203, 213, 225, 0.6)'
+          nodeData.strokeWidth = 1.5
         }
       }
 
@@ -1759,28 +1892,28 @@ export async function materializeGraphBatchPayloadToSnapshot(
       }
 
       const depthByNodeId = computeMindMapForestDepth(quadNodes, edges)
-      if (!neutralGeneration) {
-        for (const n of quadNodes) {
-          const d = depthByNodeId.get(n.id) ?? 0
-          const color = palette[d % palette.length]
-          n.data = {
-            ...(n.data ?? {}),
-            stroke: color,
-            strokeWidth: 1,
-          }
+      for (const n of quadNodes) {
+        const d = depthByNodeId.get(n.id) ?? 0
+        // mind-map：描边颜色始终按默认色板分列/分层（中性模式也保留“每一大列一个色”的可读性）
+        const color = palette[d % palette.length]
+        n.data = {
+          ...(n.data ?? {}),
+          stroke: color,
+          strokeWidth: 1,
         }
+      }
 
-        const quadIdSet = new Set(quadNodes.map((n) => n.id))
-        for (const e of edges) {
-          if (!quadIdSet.has(e.source) || !quadIdSet.has(e.target)) continue
-          const td = depthByNodeId.get(e.target) ?? 0
-          const color = palette[td % palette.length]
-          ;(e.style as any) = {
-            ...(e.style ?? {}),
-            stroke: color,
-            strokeWidth: 1,
-            '--xy-edge-stroke': color,
-          }
+      const quadIdSet = new Set(quadNodes.map((n) => n.id))
+      for (const e of edges) {
+        if (!quadIdSet.has(e.source) || !quadIdSet.has(e.target)) continue
+        const td = depthByNodeId.get(e.target) ?? 0
+        const color = palette[td % palette.length]
+        ;(e.style as any) = {
+          ...(e.style ?? {}),
+          stroke: color,
+          strokeWidth: 1,
+          '--xy-edge-stroke': color,
+          ...(neutralGeneration ? { opacity: 0.75 } : {}),
         }
       }
     }

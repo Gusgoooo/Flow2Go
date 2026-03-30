@@ -34,9 +34,11 @@ import {
 import JSZip from 'jszip'
 import {
   AlignHorizontalDistributeCenter,
+  ChevronDown,
   KeyRound,
   InspectionPanel,
   MessageCircleQuestion,
+  Plus,
   Settings2,
   SquareDashedKanban,
   Square,
@@ -71,6 +73,8 @@ import {
   type AiDiagramSceneHint,
   type AiGenerateProgressInfo,
 } from './aiDiagram'
+import { generateSwimlaneDraftWithLLM, swimlaneDraftToGraphBatchPayload } from './swimlaneDraft'
+import { materializeGraphBatchPayloadToSnapshot } from './mermaid/apply'
 import {
   buildSemanticRunBundle,
   fingerprintDataUrl,
@@ -784,6 +788,7 @@ function EditorInner({ onBackHome, source, previewSnapshot, readOnly: _readOnly 
   const [aiModalError, setAiModalError] = useState<string | null>(null)
   const aiModalAbortRef = useRef<AbortController | null>(null)
   const [handleLimitNotices, setHandleLimitNotices] = useState<Array<{ id: string; message: string }>>([])
+  const [helpExpanded, setHelpExpanded] = useState(false)
   const [aiModalModel, setAiModalModel] = useState<string>(() => {
     try {
       return localStorage.getItem('flow2go-openrouter-model') || DEFAULT_ROUTIFY_TEXT_MODEL
@@ -3567,9 +3572,30 @@ function EditorInner({ onBackHome, source, previewSnapshot, readOnly: _readOnly 
             <Controls />
             {!isPreview && (
               <Panel position="bottom-right" className={styles.bottomHelpPanel}>
-                <div className={styles.bottomHelpHint} title="有疑问请钉钉咨询顾硕（寺宽）">
-                  <MessageCircleQuestion size={14} />
-                  <span>有疑问请钉钉咨询顾硕（寺宽）</span>
+                <div className={styles.bottomHelpWrap}>
+                  <button
+                    type="button"
+                    className={styles.helpFab}
+                    aria-label={helpExpanded ? '收起咨询提示' : '展开咨询提示'}
+                    title={helpExpanded ? '收起' : '咨询'}
+                    onClick={() => setHelpExpanded((v) => !v)}
+                  >
+                    <MessageCircleQuestion size={16} />
+                  </button>
+                  {helpExpanded && (
+                    <div className={styles.helpBubble} role="note" aria-live="polite">
+                      <div className={styles.helpBubbleText}>有疑问请钉钉咨询顾硕（寺宽）</div>
+                      <button
+                        type="button"
+                        className={styles.helpCollapseBtn}
+                        aria-label="收起"
+                        title="收起"
+                        onClick={() => setHelpExpanded(false)}
+                      >
+                        <ChevronDown size={16} />
+                      </button>
+                    </div>
+                  )}
                 </div>
               </Panel>
             )}
@@ -3585,44 +3611,47 @@ function EditorInner({ onBackHome, source, previewSnapshot, readOnly: _readOnly 
 
             {!isPreview && (
             <Panel position="top-right" className={styles.topPanel}>
-              <button
-                className={styles.assetsBtn}
-                type="button"
-                onClick={() => {
-                  setAiModalError(null)
-                  setAiConfigOpen(false)
-                  setAiModalPrompt('')
-                  setAiModalPromptUserEdited(false)
-                  setAiModalImageDataUrl(null)
-                  setAiModalImageName(null)
-                  setAiModalScene(null)
-                  setAiModalOpen(true)
-                }}
-              >
-                AI生成
-              </button>
-              <button
-                className={styles.assetsBtn}
-                type="button"
-                onClick={() => setAssetsPopupOpen((v) => !v)}
-              >
-                素材
-              </button>
-              <button
-                className={styles.assetsBtn}
-                type="button"
-                onClick={() => fileInputRef.current?.click()}
-              >
-                打开文件
-              </button>
-              <button
-                className={styles.assetsBtn}
-                type="button"
-                onClick={openSaveModal}
-                title="保存到本地 zip（project.json + assets）"
-              >
-                保存到本地
-              </button>
+              <div className={styles.topPanelRow}>
+                <button
+                  className={styles.assetsBtn}
+                  type="button"
+                  onClick={() => {
+                    setAiModalError(null)
+                    setAiConfigOpen(false)
+                    setAiModalPrompt('')
+                    setAiModalPromptUserEdited(false)
+                    setAiModalImageDataUrl(null)
+                    setAiModalImageName(null)
+                    setAiModalScene(null)
+                    setAiModalOpen(true)
+                  }}
+                >
+                  AI生成
+                </button>
+                <button
+                  className={styles.assetsBtn}
+                  type="button"
+                  onClick={() => setAssetsPopupOpen((v) => !v)}
+                >
+                  素材
+                </button>
+                <button
+                  className={styles.assetsBtn}
+                  type="button"
+                  onClick={() => fileInputRef.current?.click()}
+                >
+                  打开文件
+                </button>
+                <button
+                  className={styles.saveBar}
+                  type="button"
+                  onClick={openSaveModal}
+                  title="保存到本地 zip（project.json + assets）"
+                >
+                  保存到本地
+                </button>
+              </div>
+              <div className={styles.topPanelSaveHint}>为了您的数据安全，请及时本地保存</div>
             </Panel>
             )}
           </EdgeLabelLayoutProvider>
@@ -3796,15 +3825,15 @@ function EditorInner({ onBackHome, source, previewSnapshot, readOnly: _readOnly 
                       <button
                         type="button"
                         className={styles.btnSecondary}
-                        style={{ borderRadius: 10, padding: '6px 10px', fontSize: 12 }}
                         onClick={() => aiModalImageInputRef.current?.click()}
                       >
-                        上传参考图
+                        <Plus size={14} style={{ marginRight: 6, verticalAlign: 'middle' }} />
+                        图生图
                       </button>
                       {aiModalImageName ? (
                         <div style={{ fontSize: 12, color: '#475569' }}>已选择：{aiModalImageName}</div>
                       ) : (
-                        <div style={{ fontSize: 12, color: '#94a3b8' }}>可选：上传流程图/草图进行识图落图</div>
+                        <div style={{ fontSize: 12, color: '#94a3b8' }}>点击上传图片</div>
                       )}
                     </div>
                   </div>
@@ -3882,8 +3911,6 @@ function EditorInner({ onBackHome, source, previewSnapshot, readOnly: _readOnly 
                           if (aiModalScene === 'swimlane') {
                             if (!p) throw new Error('泳道图请先输入文本描述')
                             setAiModalProgress({ phase: '生成泳道图', detail: 'LLM 结构化中…' })
-                            const { generateSwimlaneDraftWithLLM, swimlaneDraftToGraphBatchPayload } = await import('./swimlaneDraft')
-                            const { materializeGraphBatchPayloadToSnapshot } = await import('./mermaid/apply')
                             const draftFromPrompt = await generateSwimlaneDraftWithLLM({
                               apiKey: aiModalKey.trim(),
                               model: aiModalModel.trim() || DEFAULT_ROUTIFY_TEXT_MODEL,
@@ -3968,26 +3995,23 @@ function EditorInner({ onBackHome, source, previewSnapshot, readOnly: _readOnly 
                   {aiModalGenerating && (
                     <div className={styles.aiGenProgress}>
                       <div className={styles.aiGenProgressHead}>
-                        <div className={styles.aiGenProgressPhase}>{aiModalProgress?.phase ?? '准备中…'}</div>
-                        {String(aiModalProgress?.phase ?? '').includes('大模型生成 Mermaid') ? (
-                          <button
-                            type="button"
-                            className={styles.aiCancelBtn}
-                            onClick={() => {
-                              aiModalAbortRef.current?.abort()
-                            }}
-                          >
-                            取消生成
-                          </button>
-                        ) : null}
+                        <div className={styles.aiGenProgressPhase}>
+                          {aiModalProgress?.phase ?? '准备中…'}
+                          {Number.isFinite(aiGenElapsedSec) ? `（已等待${aiGenElapsedSec}s）` : ''}
+                        </div>
+                        <button
+                          type="button"
+                          className={styles.aiCancelBtn}
+                          onClick={() => {
+                            aiModalAbortRef.current?.abort()
+                          }}
+                        >
+                          取消生成
+                        </button>
                       </div>
                       {aiModalProgress?.detail ? (
                         <div className={styles.aiGenProgressDetail}>{aiModalProgress.detail}</div>
                       ) : null}
-                      <div className={styles.aiGenProgressHint}>
-                        已等待 {aiGenElapsedSec}s · 按 F12 打开开发者工具，在 Console 中搜索{' '}
-                        <code>[Flow2Go AI]</code> 可查看每步耗时。若某一步长时间不变，多为 API 慢或排队，不是页面卡死。
-                      </div>
                     </div>
                   )}
                 </div>

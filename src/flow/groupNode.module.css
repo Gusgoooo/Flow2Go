@@ -27,28 +27,37 @@
 .titleStackTop {
   position: absolute;
   top: 8px;
-  left: 8px;
-  right: 8px;
+  left: 50%;
+  right: auto;
+  transform: translateX(-50%);
+  width: max-content;
   display: flex;
   flex-direction: column;
   align-items: center;
   gap: 2px;
+  pointer-events: none;
+}
+
+.titleStackTop .title,
+.titleStackTop .titleInput {
+  pointer-events: auto;
 }
 
 .title {
-  width: 100%;
+  width: max-content;
   text-align: center;
   font-size: 13px;
   font-weight: 800;
   color: #1e3a8a;
   user-select: none;
-  white-space: pre-wrap;
-  word-break: break-word;
+  white-space: pre;
+  overflow: visible;
   letter-spacing: 0;
 }
 
 .titleInput {
-  width: 100%;
+  width: max-content;
+  min-width: min(100%, 12em);
   border: none;
   outline: none;
   background: transparent;
@@ -59,7 +68,8 @@
   resize: none;
   font-family: inherit;
   height: auto;
-  overflow: hidden;
+  overflow: visible;
+  white-space: pre;
   letter-spacing: 0;
 }
 
@@ -164,8 +174,8 @@
 
 /* ─── Lane (swimlane) 专用样式 ─── */
 .laneNode {
-  border-radius: 8px;
-  border: 1.5px solid #94a3b8;
+  border-radius: 12px;
+  border: 1.5px solid #cbd5e1;
   background: rgba(241, 245, 249, 0.5);
   display: flex;
   flex-direction: column;
@@ -181,7 +191,7 @@
   justify-content: center;
   background: rgba(71, 85, 105, 0.08);
   border-bottom: 1px solid #cbd5e1;
-  border-radius: 7px 7px 0 0;
+  border-radius: 12px 12px 0 0;
   padding: 0 16px;
   flex-shrink: 0;
 }
@@ -189,7 +199,7 @@
 .laneHeaderLeft {
   border-bottom: none;
   border-right: 1px solid #cbd5e1;
-  border-radius: 7px 0 0 7px;
+  border-radius: 12px 0 0 12px;
   padding: 16px 0;
 }
 

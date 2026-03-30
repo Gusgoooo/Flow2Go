@@ -407,27 +407,27 @@ describe('swimlane routing - return flow handles', () => {
     data: { laneId: lane.id, semanticType: 'task', nodeOrder: 3 },
   } as any
 
-  it('uses left->right for short backward edge to preserve geometric direction', () => {
+  it('uses orthogonal handles for same-lane return on row swimlane (corner, not parallel same-side)', () => {
     const edges: Edge<any>[] = [
       { id: 'e-ba', source: 'B', target: 'A', type: 'bezier', data: {} } as any,
     ]
 
     const [edge] = rerouteSwimlaneEdges([lane, a, b, c], edges)
     expect(edge.sourceHandle).toBe('s-left')
-    expect(edge.targetHandle).toBe('t-right')
+    expect(edge.targetHandle).toBe('t-bottom')
     expect((edge.data as any)?.semanticType).toBe('returnFlow')
     expect(edge.animated).toBe(true)
     expect((edge.data as any)?.autoReturnFlowAnimated).toBe(true)
   })
 
-  it('avoids in/out same handle for long backward edge', () => {
+  it('uses orthogonal handles for long same-lane return on row swimlane', () => {
     const edges: Edge<any>[] = [
       { id: 'e-ca', source: 'C', target: 'A', type: 'bezier', data: {} } as any,
     ]
 
     const [edge] = rerouteSwimlaneEdges([lane, a, b, c], edges)
     expect(edge.sourceHandle).toBe('s-left')
-    expect(edge.targetHandle).toBe('t-right')
+    expect(edge.targetHandle).toBe('t-bottom')
     expect((edge.data as any)?.semanticType).toBe('returnFlow')
     expect(edge.animated).toBe(true)
     expect((edge.data as any)?.autoReturnFlowAnimated).toBe(true)

@@ -873,7 +873,7 @@
             "left": 24
           },
           "minLaneWidth": 800,
-          "minLaneHeight": 160
+          "minLaneHeight": 88
         },
         "titlePosition": "left-center"
       },
@@ -921,7 +921,7 @@
             "left": 24
           },
           "minLaneWidth": 800,
-          "minLaneHeight": 160
+          "minLaneHeight": 88
         },
         "titlePosition": "left-center"
       },
@@ -1003,7 +1003,7 @@
             "left": 24
           },
           "minLaneWidth": 800,
-          "minLaneHeight": 160
+          "minLaneHeight": 88
         },
         "titlePosition": "left-center"
       },
@@ -1151,7 +1151,7 @@
             "left": 24
           },
           "minLaneWidth": 800,
-          "minLaneHeight": 160
+          "minLaneHeight": 88
         },
         "titlePosition": "left-center"
       },
@@ -1449,7 +1449,7 @@
             "left": 24
           },
           "minLaneWidth": 800,
-          "minLaneHeight": 160
+          "minLaneHeight": 88
         },
         "titlePosition": "left-center"
       },

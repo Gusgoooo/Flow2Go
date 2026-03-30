@@ -698,7 +698,7 @@ const IMAGE_TO_STRUCTURED_STAGE2_SYSTEM_PROMPT = [
   `- 输出 schema 固定为 "${IMAGE_STRUCTURE_SCHEMA}"。`,
   '- 优先复用阶段1中的 id，不要随意改名；确需新增也要保持引用正确。',
   '- 允许补全字段：groups[].parentId、nodes[].parentId、style(fill/stroke/textColor/strokeWidth/opacity)。',
-  '- 泳道分组 groups（kind=lane）：style.fill 可表示泳道标题条（标签区）底色，对应画布 laneHeaderBackground；不确定则省略。',
+  '- 泳道分组 groups（kind=lane）：不要输出 style.fill、labelFill、color、stroke、strokeWidth 等泳道配色/描边字段（由应用统一默认）。',
   '- 禁止臆造复杂关系；若不确定，保持 next 关系并保守输出。',
   '- 仅输出 JSON，不要 markdown，不要解释。',
 ].join('\n')
@@ -1133,6 +1133,7 @@ export function validateImageStructuredDraft(obj: any, rawText: string): AiImage
     const style = normalizeImageStyle({
       ...(g?.style ?? {}),
       fill: g?.style?.fill ?? g?.fill ?? g?.color,
+      labelFill: g?.style?.labelFill ?? g?.labelFill ?? g?.titleLabelFill,
       stroke: g?.style?.stroke ?? g?.stroke,
       textColor: g?.style?.textColor ?? g?.textColor ?? g?.fontColor,
       strokeWidth: g?.style?.strokeWidth ?? g?.strokeWidth,
@@ -1684,8 +1685,6 @@ export function buildSwimlaneDraftFromImageStructured(structured: AiImageStructu
     order: number
     groupId?: string
     box?: { x: number; y: number; w: number; h: number }
-    /** 与 SwimlaneDraft.lanes[].laneHeaderBackground / GroupNode 标题条底色一致 */
-    laneHeaderBackground?: string
   }
   type NodeResolved = {
     id: string
@@ -1725,16 +1724,13 @@ export function buildSwimlaneDraftFromImageStructured(structured: AiImageStructu
     titleRaw: string,
     groupId?: string,
     box?: { x: number; y: number; w: number; h: number },
-    headerBgRaw?: string,
   ) => {
     const title = titleRaw.trim()
     if (!title) return
     const key = laneLabelKey(title)
-    const headerBg = String(headerBgRaw ?? '').trim().slice(0, 120)
     const existed = laneByKey.get(key)
     if (existed) {
       if (groupId) laneByGroupId.set(groupId, existed)
-      if (headerBg && !existed.laneHeaderBackground) existed.laneHeaderBackground = headerBg
       return
     }
     const lane: LaneResolved = {
@@ -1743,7 +1739,6 @@ export function buildSwimlaneDraftFromImageStructured(structured: AiImageStructu
       order: lanes.length,
       ...(groupId ? { groupId } : {}),
       ...(box ? { box } : {}),
-      ...(headerBg ? { laneHeaderBackground: headerBg } : {}),
     }
     lanes.push(lane)
     laneByKey.set(key, lane)
@@ -1751,12 +1746,10 @@ export function buildSwimlaneDraftFromImageStructured(structured: AiImageStructu
   }
 
   for (const laneGroup of laneGroupsSorted) {
-    const headerFill = laneGroup.style?.fill
     pushLane(
       laneGroup.label,
       laneGroup.id,
       hasLayoutBox(laneGroup) ? { x: laneGroup.x, y: laneGroup.y, w: laneGroup.w, h: laneGroup.h } : undefined,
-      typeof headerFill === 'string' ? headerFill : undefined,
     )
   }
   for (const lane of structured.lanes) pushLane(lane)
@@ -1942,7 +1935,6 @@ export function buildSwimlaneDraftFromImageStructured(structured: AiImageStructu
       id: lane.id,
       title: lane.title,
       order: lane.order,
-      ...(lane.laneHeaderBackground ? { laneHeaderBackground: lane.laneHeaderBackground } : {}),
     })),
     nodes: normalizedNodes,
     edges: normalizedEdges,
@@ -1954,6 +1946,7 @@ export async function buildSwimlaneAiDraftFromImageStructured(
 ): Promise<AiDiagramDraft> {
   const swimlaneDraft = buildSwimlaneDraftFromImageStructured(structured)
   const payload = swimlaneDraftToGraphBatchPayload(swimlaneDraft)
+  payload.meta = { ...(payload.meta ?? {}), swimlaneImageImport: true }
   const snap = await materializeGraphBatchPayloadToSnapshot(payload, { replace: true })
   return {
     schema: 'flow2go.ai.diagram.v1',
@@ -1997,6 +1990,23 @@ function sanitizeEdgeLabelForImageSwimlane(label: unknown, relation: unknown): s
   if (token === 'yes') return '是'
   if (token === 'no') return '否'
   return t.slice(0, 12)
+}
+
+/** 图生图泳道：与 GroupNode `.laneNode` 一致的默认区底色，禁止沿用识图模型配色 */
+const SWIMLANE_IMAGE_LANE_BODY_FILL = 'rgba(241, 245, 249, 0.5)'
+const SWIMLANE_IMAGE_LANE_STROKE = 'rgba(203, 213, 225, 0.6)'
+
+function applySwimlaneImageDefaultLaneGroupPaint(node: any): any {
+  if (node?.type !== 'group' || node?.data?.role !== 'lane') return node
+  const d = { ...(node.data ?? {}) }
+  d.fill = SWIMLANE_IMAGE_LANE_BODY_FILL
+  d.stroke = SWIMLANE_IMAGE_LANE_STROKE
+  d.strokeWidth = 1.5
+  d.titleColor = '#334155'
+  delete d.laneHeaderBackground
+  delete d.laneTitleLabelBackground
+  delete d.opacity
+  return { ...node, data: d }
 }
 
 const SWIMLANE_IMAGE_HEADER_DEFAULT_SIZE = 48
@@ -2643,7 +2653,7 @@ export function buildSwimlanePreserveLayoutDraftFromImageStructured(
     return autoFixSwimlaneImageLayoutNodes(nodes, direction)
   }
 
-  const finalNodes = absorbSwimlaneNodes()
+  const finalNodes = absorbSwimlaneNodes().map((n: any) => applySwimlaneImageDefaultLaneGroupPaint(n))
   const nodeById = new Map(finalNodes.map((n: any) => [n.id, n]))
   const nextEdges = (base.edges as any[]).map((edge) => {
     const srcNode = nodeById.get(edge.source)
@@ -2824,12 +2834,13 @@ export function buildFreeLayoutDraftFromImageStructured(
         title: g.label,
         role: g.kind === 'lane' ? 'lane' : 'frame',
         titlePosition: g.kind === 'lane' ? laneTitlePosition : undefined,
-        stroke: useMonochromeTheme
-          ? MONO_GROUP_STROKE
-          : (g.style?.stroke ?? '#CBD5E1'),
-        strokeWidth: useMonochromeTheme
-          ? 1
-          : (g.style?.strokeWidth ?? 1),
+        stroke:
+          g.kind === 'lane'
+            ? '#cbd5e1'
+            : useMonochromeTheme
+              ? MONO_GROUP_STROKE
+              : (g.style?.stroke ?? '#CBD5E1'),
+        strokeWidth: g.kind === 'lane' ? 1.5 : useMonochromeTheme ? 1 : (g.style?.strokeWidth ?? 1),
         fill: useMonochromeTheme
           ? (g.kind === 'lane' ? MONO_LANE_FILL : MONO_GROUP_FILL)
           : (g.style?.fill ?? (g.kind === 'lane' ? 'rgba(226, 232, 240, 0.24)' : 'rgba(226, 232, 240, 0.14)')),

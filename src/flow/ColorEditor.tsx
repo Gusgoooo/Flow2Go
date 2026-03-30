@@ -122,6 +122,24 @@ function rgbToHex(r: number, g: number, b: number): string {
   return '#' + [r, g, b].map((x) => Math.round(x).toString(16).padStart(2, '0')).join('')
 }
 
+function formatRgbaCss(r: number, g: number, b: number, a: number): string {
+  const rr = Math.max(0, Math.min(255, Math.round(r)))
+  const gg = Math.max(0, Math.min(255, Math.round(g)))
+  const bb = Math.max(0, Math.min(255, Math.round(b)))
+  const aa = Math.max(0, Math.min(1, a))
+  const rounded = Math.round(aa * 1000) / 1000
+  return `rgba(${rr}, ${gg}, ${bb}, ${rounded})`
+}
+
+/** 宽松解析用户在 RGBA 输入框中的文本 */
+function parseRgbaLoose(s: string): { r: number; g: number; b: number; a: number } | null {
+  const m = s.trim().match(/^rgba?\s*\(\s*(\d+)\s*,\s*(\d+)\s*,\s*(\d+)\s*(?:,\s*([\d.]+)\s*)?\)$/i)
+  if (!m) return null
+  const a = m[4] != null ? Number(m[4]) : 1
+  if (!Number.isFinite(a)) return null
+  return { r: Number(m[1]), g: Number(m[2]), b: Number(m[3]), a }
+}
+
 export function ColorEditor({
   value,
   onChange,
@@ -133,6 +151,12 @@ export function ColorEditor({
   focusRetainDataAttr,
 }: Props) {
   const [open, setOpen] = useState(false)
+  const [valueMode, setValueMode] = useState<'hex' | 'rgba'>('hex')
+  /** 弹层内 HEX/RGBA 文本：编辑中用本地串，避免受控值每键归一化导致光标跳动 */
+  const [hexFieldDraft, setHexFieldDraft] = useState('')
+  const [rgbaFieldDraft, setRgbaFieldDraft] = useState('')
+  const [hexFieldFocused, setHexFieldFocused] = useState(false)
+  const [rgbaFieldFocused, setRgbaFieldFocused] = useState(false)
   const [recentColors, setRecentColors] = useState<RecentEntry[]>(loadRecent)
   const popoverRef = useRef<HTMLDivElement>(null)
   const swatchRef = useRef<HTMLButtonElement>(null)
@@ -173,6 +197,18 @@ export function ColorEditor({
 
   const pickerColor = hex || '#ffffff'
   const inputColor = hex || '#ffffff'
+  const rgbaDisplay = useMemo(() => {
+    const rgba = parseRgba(value)
+    if (rgba) return formatRgbaCss(rgba.r, rgba.g, rgba.b, rgba.a)
+    const rgb = hexToRgb(pickerColor)
+    if (rgb) return formatRgbaCss(rgb.r, rgb.g, rgb.b, alpha / 100)
+    return formatRgbaCss(255, 255, 255, 1)
+  }, [value, pickerColor, alpha])
+  const hexForCopy = useMemo(() => {
+    const h = normalizeHex(pickerColor) || pickerColor
+    if (!h) return '#ffffff'
+    return h.startsWith('#') ? h.slice(0, 7) : `#${h}`.slice(0, 8)
+  }, [pickerColor])
   const swatchBackground =
     alpha < 100
       ? (() => {
@@ -204,6 +240,21 @@ export function ColorEditor({
   useEffect(() => {
     if (open && portalPicker) update()
   }, [open, portalPicker, update])
+
+  // 拾色器/滑块/外部 value 变化时同步文本草稿（编辑中不同步）
+  useEffect(() => {
+    if (!open || !showPicker) return
+    if (!hexFieldFocused && valueMode === 'hex') {
+      setHexFieldDraft(hexForCopy)
+    }
+  }, [open, showPicker, value, alpha, valueMode, hexFieldFocused, hexForCopy])
+
+  useEffect(() => {
+    if (!open || !showPicker) return
+    if (!rgbaFieldFocused && valueMode === 'rgba') {
+      setRgbaFieldDraft(rgbaDisplay)
+    }
+  }, [open, showPicker, value, valueMode, rgbaFieldFocused, rgbaDisplay])
 
   const handleHexChange = useCallback(
     (v: string) => {
@@ -237,6 +288,8 @@ export function ColorEditor({
 
   const handlePresetClick = useCallback(
     (presetHex: string) => {
+      setHexFieldFocused(false)
+      setRgbaFieldFocused(false)
       onChange(presetHex)
       addToRecent(presetHex)
       setOpen(false)
@@ -246,11 +299,94 @@ export function ColorEditor({
 
   const handleRecentClick = useCallback(
     (entry: RecentEntry) => {
+      setHexFieldFocused(false)
+      setRgbaFieldFocused(false)
       onChange(entry.color)
       addToRecent(entry.color)
       setOpen(false)
     },
     [onChange, addToRecent],
+  )
+
+  const commitHexFieldDraft = useCallback(() => {
+    const raw = hexFieldDraft.trim().replace(/^#/, '')
+    if (/^[0-9A-Fa-f]{6}$/i.test(raw) || /^[0-9A-Fa-f]{3}$/i.test(raw)) {
+      handleHexChange(hexFieldDraft.trim().startsWith('#') ? hexFieldDraft.trim() : `#${hexFieldDraft.trim()}`)
+      return
+    }
+    setHexFieldDraft(hexForCopy)
+  }, [handleHexChange, hexFieldDraft, hexForCopy])
+
+  const commitRgbaFieldDraft = useCallback(() => {
+    const p = parseRgbaLoose(rgbaFieldDraft.trim())
+    if (p) onChange(formatRgbaCss(p.r, p.g, p.b, p.a))
+  }, [rgbaFieldDraft, onChange])
+
+  const handleCopyValue = useCallback(() => {
+    const text = valueMode === 'hex' ? hexFieldDraft || hexForCopy : rgbaFieldDraft || rgbaDisplay
+    void navigator.clipboard.writeText(text)
+  }, [valueMode, hexFieldDraft, hexForCopy, rgbaFieldDraft, rgbaDisplay])
+
+  const valueModeRow = (
+    <div className={styles.valueRow}>
+      <div className={styles.valueModeToggle}>
+        <button
+          type="button"
+          className={`${styles.modeBtn} ${valueMode === 'hex' ? styles.modeBtnActive : ''}`}
+          onClick={() => setValueMode('hex')}
+        >
+          HEX
+        </button>
+        <button
+          type="button"
+          className={`${styles.modeBtn} ${valueMode === 'rgba' ? styles.modeBtnActive : ''}`}
+          onClick={() => setValueMode('rgba')}
+        >
+          RGBA
+        </button>
+      </div>
+      <div className={styles.valueInputRow}>
+        <input
+          type="text"
+          className={styles.valueInput}
+          spellCheck={false}
+          autoComplete="off"
+          value={valueMode === 'hex' ? hexFieldDraft : rgbaFieldDraft}
+          onChange={(e) => {
+            if (valueMode === 'hex') setHexFieldDraft(e.target.value)
+            else setRgbaFieldDraft(e.target.value)
+          }}
+          onFocus={() => {
+            if (valueMode === 'hex') {
+              setHexFieldFocused(true)
+              setHexFieldDraft(hexForCopy)
+            } else {
+              setRgbaFieldFocused(true)
+              setRgbaFieldDraft(rgbaDisplay)
+            }
+          }}
+          onBlur={() => {
+            if (valueMode === 'hex') {
+              commitHexFieldDraft()
+              setHexFieldFocused(false)
+            } else {
+              commitRgbaFieldDraft()
+              setRgbaFieldFocused(false)
+            }
+          }}
+          onKeyDown={(e) => {
+            if (e.key === 'Enter') {
+              e.preventDefault()
+              ;(e.target as HTMLInputElement).blur()
+            }
+          }}
+          aria-label={valueMode === 'hex' ? '十六进制颜色' : 'RGBA 颜色'}
+        />
+        <button type="button" className={styles.copyBtn} onClick={handleCopyValue}>
+          复制
+        </button>
+      </div>
+    </div>
   )
 
   const pickerContent = (
@@ -279,6 +415,7 @@ export function ColorEditor({
           <span className={styles.alphaValue}>{alpha}%</span>
         </div>
       )}
+      {valueModeRow}
       <div className={styles.presetSection}>
         <span className={styles.presetSectionTitle}>预设</span>
         <div className={styles.presets}>
@@ -359,6 +496,7 @@ export function ColorEditor({
               <span className={styles.alphaValue}>{alpha}%</span>
             </div>
           )}
+          {valueModeRow}
           <div className={styles.presetSection}>
             <span className={styles.presetSectionTitle}>预设</span>
             <div className={styles.presets}>

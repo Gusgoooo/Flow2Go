@@ -23,7 +23,8 @@ const LANE_GAP = LANE_STACK_STEP
 const LANE_TOP_HEADER_NODE_GAP = LANE_STACK_STEP
 const LANE_PADDING = { top: 24, right: 24, bottom: 24, left: 24 }
 const MIN_LANE_WIDTH = 912
-const MIN_LANE_HEIGHT = 160
+/** 无节点或内容极矮时的兜底高度；真实高度主要由 lane 内行/列与节点尺寸决定，不宜过大以免单行泳道虚高 */
+const MIN_LANE_HEIGHT_FLOOR = 88
 const CANVAS_START_X = 80
 const CANVAS_START_Y = 80
 const NODE_GAP_X = 48
@@ -94,6 +95,106 @@ function edgeLabelLength(edge: Edge<any>): number {
 function labelGapExtraByMaxLen(maxLen: number): number {
   if (maxLen <= 0) return 0
   return Math.min(120, Math.max(32, Math.round(maxLen * 5)))
+}
+
+type HorizontalLayoutItem = {
+  child: Node<any>
+  size: { w: number; h: number }
+  row: number
+  col: number
+}
+
+/**
+ * 同一泳道同一行内若多条节点共享 laneCol，落点公式会得到相同 x/y → 完全重叠。
+ * 按行分组后对 laneCol 做严格递增修正（保留稀疏列意图，仅消除重复与逆序）。
+ */
+function dedupeLaneColWithinEachRow(layoutItems: HorizontalLayoutItem[]) {
+  if (layoutItems.length <= 1) return
+  const byRow = new Map<number, HorizontalLayoutItem[]>()
+  for (const it of layoutItems) {
+    const list = byRow.get(it.row)
+    if (list) list.push(it)
+    else byRow.set(it.row, [it])
+  }
+  for (const items of byRow.values()) {
+    if (items.length <= 1) continue
+    items.sort((a, b) => {
+      if (a.col !== b.col) return a.col - b.col
+      const ao = (a.child.data as any)?.nodeOrder
+      const bo = (b.child.data as any)?.nodeOrder
+      if (ao != null && bo != null) return ao - bo
+      return String(a.child.id).localeCompare(String(b.child.id))
+    })
+    for (let i = 1; i < items.length; i++) {
+      if (items[i].col <= items[i - 1].col) {
+        items[i].col = items[i - 1].col + 1
+      }
+    }
+  }
+}
+
+/**
+ * 相邻行号 r 与 r+1 且两行的列集合不相交 → 多为误拆行，合并到上一行（近似同一行对齐）。
+ */
+function mergeAdjacentRowsWhenColsDisjoint(layoutItems: HorizontalLayoutItem[]) {
+  if (layoutItems.length <= 1) return
+  for (;;) {
+    const rows = Array.from(new Set(layoutItems.map((it) => it.row))).sort((a, b) => a - b)
+    let merged = false
+    for (let i = 0; i + 1 < rows.length; i++) {
+      const r0 = rows[i]
+      const r1 = rows[i + 1]
+      if (r1 - r0 !== 1) continue
+      const cols0 = new Set(layoutItems.filter((it) => it.row === r0).map((it) => it.col))
+      const cols1 = new Set(layoutItems.filter((it) => it.row === r1).map((it) => it.col))
+      let overlap = false
+      for (const c of cols1) {
+        if (cols0.has(c)) {
+          overlap = true
+          break
+        }
+      }
+      if (overlap) continue
+      for (const it of layoutItems) {
+        if (it.row === r1) it.row = r0
+      }
+      merged = true
+      break
+    }
+    if (!merged) break
+  }
+}
+
+/**
+ * 相邻列号 c 与 c+1 且两列的行集合不相交 → 多为误分列，合并到左列（列泳道内近似同列对齐）。
+ */
+function mergeAdjacentColsWhenRowsDisjoint(layoutItems: HorizontalLayoutItem[]) {
+  if (layoutItems.length <= 1) return
+  for (;;) {
+    const cols = Array.from(new Set(layoutItems.map((it) => it.col))).sort((a, b) => a - b)
+    let merged = false
+    for (let i = 0; i + 1 < cols.length; i++) {
+      const c0 = cols[i]
+      const c1 = cols[i + 1]
+      if (c1 - c0 !== 1) continue
+      const rows0 = new Set(layoutItems.filter((it) => it.col === c0).map((it) => it.row))
+      const rows1 = new Set(layoutItems.filter((it) => it.col === c1).map((it) => it.row))
+      let overlap = false
+      for (const r of rows1) {
+        if (rows0.has(r)) {
+          overlap = true
+          break
+        }
+      }
+      if (overlap) continue
+      for (const it of layoutItems) {
+        if (it.col === c1) it.col = c0
+      }
+      merged = true
+      break
+    }
+    if (!merged) break
+  }
 }
 
 /**
@@ -171,7 +272,7 @@ export function autoLayoutSwimlane(args: {
   // ── Phase B: 在每个 lane 内布局子节点 ──
   const laneSizes: { id: string; contentW: number; contentH: number }[] = []
 
-  type HorizontalPending = {
+  type LaneGridPending = {
     laneIndex: number
     lane: Node<any>
     layoutItems: Array<{ child: Node<any>; size: { w: number; h: number }; row: number; col: number }>
@@ -181,7 +282,7 @@ export function autoLayoutSwimlane(args: {
     padBottom: number
     laneGapY: number
   }
-  const horizontalPending: HorizontalPending[] = []
+  const laneGridPending: LaneGridPending[] = []
 
   for (const lane of lanes) {
     const children = nonLaneNodes
@@ -222,47 +323,44 @@ export function autoLayoutSwimlane(args: {
     const laneGapExtra = laneLabelGapExtra.get(lane.id) ?? 0
     const laneGapY = NODE_GAP_Y + Math.round(laneGapExtra * 0.35)
 
-    let totalContentW = 0
-    let totalContentH = 0
-
-    if (isHorizontal) {
-      // 先只收集「列/行」信息；列宽与列距在跨泳道统一后再落位（避免各泳道独立算 colWidths 导致同列错位）
-      const layoutItems = ordered.map((child, index) => {
-        const size = estimateNodeSize(child)
-        const row = gridIndex((child.data as any)?.laneRow, 0)
-        const col = gridIndex((child.data as any)?.laneCol, index)
+    // LR / TB 泳道共用网格；TB 未写 laneCol 时默认为单列（自上而下），未写 laneRow 时按顺序占行
+    const layoutItems = ordered.map((child, index) => {
+      const size = estimateNodeSize(child)
+      const d = (child.data as any) ?? {}
+      if (isHorizontal) {
+        const row = gridIndex(d.laneRow, 0)
+        const col = gridIndex(d.laneCol, index)
         return { child, size, row, col }
-      })
-      const laneIndex = laneSizes.length
-      laneSizes.push({ id: lane.id, contentW: 0, contentH: 0 })
-      horizontalPending.push({ laneIndex, lane, layoutItems, padTop, padLeft, padRight, padBottom, laneGapY })
-      continue
-    } else {
-      // 节点在 lane 内从上到下排列
-      const withSize = ordered.map((child) => ({ child, size: estimateNodeSize(child) }))
-      const maxW = Math.max(0, ...withSize.map((item) => item.size.w))
-      let cy = padTop
-      for (const item of withSize) {
-        const { child, size } = item
-        child.width = size.w
-        child.height = size.h
-        child.style = { ...(child.style as any), width: size.w, height: size.h }
-        // 列泳道内默认按中心线对齐，避免整列视觉偏右/偏左。
-        child.position = { x: padLeft + (maxW - size.w) / 2, y: cy }
-        cy += size.h + laneGapY
       }
-      totalContentW = padLeft + maxW + padRight
-      totalContentH = cy - laneGapY + padBottom
-    }
-
-    laneSizes.push({ id: lane.id, contentW: totalContentW, contentH: totalContentH })
+      const row = Number.isFinite(Number(d.laneRow)) ? gridIndex(d.laneRow, 0) : index
+      const col = Number.isFinite(Number(d.laneCol)) ? gridIndex(d.laneCol, 0) : 0
+      return { child, size, row, col }
+    })
+    const laneIndex = laneSizes.length
+    laneSizes.push({ id: lane.id, contentW: 0, contentH: 0 })
+    laneGridPending.push({ laneIndex, lane, layoutItems, padTop, padLeft, padRight, padBottom, laneGapY })
   }
 
-  // 水平泳道：跨泳道统一「列宽 + 列距」「行高 + 行距」，使相同 laneCol / laneRow 在各泳道内对齐
-  if (horizontalPending.length > 0) {
+  // 泳道内网格：跨泳道统一「列宽 + 列距」「行高 + 行距」
+  if (laneGridPending.length > 0) {
+    // 各泳道内 laneRow 可能从非 0 开始（草稿/识图），先按泳道归零，避免「每行泳道虚高递增」且同列错位
+    for (const p of laneGridPending) {
+      if (p.layoutItems.length === 0) continue
+      const rmin = Math.min(...p.layoutItems.map((it) => it.row))
+      for (const it of p.layoutItems) {
+        it.row = it.row - rmin
+      }
+    }
+
+    for (const p of laneGridPending) {
+      mergeAdjacentRowsWhenColsDisjoint(p.layoutItems)
+      mergeAdjacentColsWhenRowsDisjoint(p.layoutItems)
+      dedupeLaneColWithinEachRow(p.layoutItems)
+    }
+
     const globalColWidth = new Map<number, number>()
     const globalRowHeight = new Map<number, number>()
-    for (const p of horizontalPending) {
+    for (const p of laneGridPending) {
       for (const item of p.layoutItems) {
         globalColWidth.set(item.col, Math.max(globalColWidth.get(item.col) ?? 0, item.size.w))
         globalRowHeight.set(item.row, Math.max(globalRowHeight.get(item.row) ?? 0, item.size.h))
@@ -270,11 +368,11 @@ export function autoLayoutSwimlane(args: {
     }
     const maxLaneGapExtraAll = Math.max(
       0,
-      ...horizontalPending.map((p) => laneLabelGapExtra.get(p.lane.id) ?? 0),
+      ...laneGridPending.map((p) => laneLabelGapExtra.get(p.lane.id) ?? 0),
     )
     const globalLaneGapX = NODE_GAP_X + maxLaneGapExtraAll
     // 行距取各泳道最大附加间距，避免某一泳道边标签较宽时与其它泳道行带错位
-    const globalRowGapY = Math.max(NODE_GAP_Y, ...horizontalPending.map((p) => p.laneGapY))
+    const globalRowGapY = Math.max(NODE_GAP_Y, ...laneGridPending.map((p) => p.laneGapY))
 
     const colKeys = Array.from(globalColWidth.keys()).sort((a, b) => a - b)
     const colStartsRel = new Map<number, number>()
@@ -308,7 +406,7 @@ export function autoLayoutSwimlane(args: {
       prevRow = rowKey
     }
 
-    for (const p of horizontalPending) {
+    for (const p of laneGridPending) {
       const { layoutItems, padTop, padLeft, padRight, padBottom } = p
 
       let maxContentRight = 0
@@ -337,15 +435,37 @@ export function autoLayoutSwimlane(args: {
     }
   }
 
+  // 水平泳道：全局仅使用第 0 行时，各泳道内容高度应对齐为同一值（避免「都是一行但泳道高度不一」）
+  let horizontalSingleRowOnly = false
+  if (laneGridPending.length > 0) {
+    let globalMaxRowIndex = -1
+    for (const p of laneGridPending) {
+      for (const item of p.layoutItems) {
+        globalMaxRowIndex = Math.max(globalMaxRowIndex, item.row)
+      }
+    }
+    horizontalSingleRowOnly = globalMaxRowIndex <= 0
+  }
+
+  const laneHeightNeeded = (contentH: number) =>
+    snapSizeByNodeType(Math.max(MIN_LANE_HEIGHT_FLOOR, contentH), 'group')
+
   // ── Phase A: 排列 lane 容器 ──
   if (isHorizontal) {
     // horizontal: lane 从上到下，所有 lane 统一宽度
     const unifiedW = snapSizeByNodeType(Math.max(MIN_LANE_WIDTH, ...laneSizes.map((s) => s.contentW)), 'group')
+    const perLaneH = laneSizes.map((s) => Math.max(MIN_LANE_HEIGHT_FLOOR, s.contentH))
+    const unifiedHorizontalH = horizontalSingleRowOnly
+      ? snapSizeByNodeType(Math.max(...perLaneH), 'group')
+      : undefined
     let cy = snapToGrid(CANVAS_START_Y, LANE_STACK_STEP)
     for (let i = 0; i < lanes.length; i++) {
       const lane = lanes[i]
       const sizeInfo = laneSizes[i]
-      const h = snapSizeByNodeType(Math.max(MIN_LANE_HEIGHT, sizeInfo.contentH), 'group')
+      const h =
+        horizontalSingleRowOnly && unifiedHorizontalH != null
+          ? unifiedHorizontalH
+          : laneHeightNeeded(sizeInfo.contentH)
       lane.position = { x: snapToGrid(CANVAS_START_X, LANE_STACK_STEP), y: cy }
       lane.width = unifiedW
       lane.height = h
@@ -354,7 +474,7 @@ export function autoLayoutSwimlane(args: {
     }
   } else {
     // vertical: lane 从左到右，所有 lane 统一高度
-    const unifiedH = snapSizeByNodeType(Math.max(MIN_LANE_HEIGHT, ...laneSizes.map((s) => s.contentH)), 'group')
+    const unifiedH = snapSizeByNodeType(Math.max(MIN_LANE_HEIGHT_FLOOR, ...laneSizes.map((s) => s.contentH)), 'group')
     let cx = snapToGrid(CANVAS_START_X, LANE_STACK_STEP)
     for (let i = 0; i < lanes.length; i++) {
       const lane = lanes[i]

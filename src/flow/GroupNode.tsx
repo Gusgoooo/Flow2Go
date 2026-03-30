@@ -33,7 +33,7 @@ export type GroupNodeData = {
   subtitleFontSize?: number
   subtitleFontWeight?: string
   subtitleColor?: string
-  /** 泳道标题条（标签区）背景色；未设置时使用默认半透明灰 */
+  /** 泳道标题栏（左侧条 / 顶条整段）背景色；文字本身无独立底色 */
   laneHeaderBackground?: string
 
   role?: 'frame' | 'lane'
@@ -51,7 +51,8 @@ function groupLineHeightPx(fs: number) {
 
 export function GroupNode(props: NodeProps) {
   const data = (props.data ?? {}) as GroupNodeData
-  const stroke = data.stroke ?? '#3b82f6'
+  const stroke =
+    data.role === 'lane' ? (data.stroke ?? 'rgba(203, 213, 225, 0.6)') : (data.stroke ?? '#3b82f6')
   const strokeWidth = data.strokeWidth
   const fill = data.fill ?? 'rgba(59, 130, 246, 0.10)'
   const rf = useReactFlow()
@@ -187,7 +188,6 @@ export function GroupNode(props: NodeProps) {
                 fontSize={titleFs}
                 fontWeight={data.titleFontWeight ?? '800'}
                 textColor={data.titleColor ?? '#334155'}
-                fillColor={laneHeaderBg}
                 onFontSizeChange={(v) =>
                   rf.setNodes((nds) =>
                     nds.map((n) =>
@@ -211,15 +211,6 @@ export function GroupNode(props: NodeProps) {
                     nds.map((n) =>
                       n.id === props.id
                         ? { ...n, data: { ...(n.data ?? {}), titleColor: v } }
-                        : n,
-                    ),
-                  )
-                }
-                onFillColorChange={(v) =>
-                  rf.setNodes((nds) =>
-                    nds.map((n) =>
-                      n.id === props.id
-                        ? { ...n, data: { ...(n.data ?? {}), laneHeaderBackground: v } }
                         : n,
                     ),
                   )
@@ -494,10 +485,21 @@ export function GroupNode(props: NodeProps) {
                 ref={inputRef}
                 className={`${styles.titleInput} nodrag`}
                 autoFocus
+                wrap="off"
                 value={draft}
                 placeholder="（可为空）"
                 style={{ ...titleStyle, height: 'auto' }}
                 rows={1}
+                onWheelCapture={(e) => {
+                  e.stopPropagation()
+                  e.preventDefault()
+                }}
+                onTouchMoveCapture={(e) => {
+                  e.stopPropagation()
+                }}
+                onMouseDownCapture={(e) => {
+                  e.stopPropagation()
+                }}
                 onChange={(e) => {
                   setDraft(e.target.value)
                   e.target.style.height = 'auto'

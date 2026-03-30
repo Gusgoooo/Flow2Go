@@ -65,6 +65,78 @@
   text-align: right;
 }
 
+.valueRow {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.valueModeToggle {
+  display: flex;
+  gap: 6px;
+}
+
+.modeBtn {
+  font-size: 12px;
+  padding: 4px 10px;
+  border-radius: 8px;
+  border: 1px solid #e5e7eb;
+  background: #f8fafc;
+  color: #64748b;
+  cursor: pointer;
+}
+
+.modeBtn:hover {
+  border-color: #94a3b8;
+  color: #334155;
+}
+
+.modeBtnActive {
+  border-color: #3b82f6;
+  background: #eff6ff;
+  color: #1d4ed8;
+}
+
+.valueInputRow {
+  display: flex;
+  align-items: stretch;
+  gap: 8px;
+}
+
+.valueInput {
+  flex: 1;
+  min-width: 0;
+  border: 1px solid #e5e7eb;
+  border-radius: 10px;
+  padding: 8px 10px;
+  font-size: 12px;
+  font-family: ui-monospace, monospace;
+  color: #0f172a;
+}
+
+.valueInput:focus {
+  outline: none;
+  border-color: #3b82f6;
+  box-shadow: 0 0 0 2px rgba(59, 130, 246, 0.2);
+}
+
+.copyBtn {
+  flex-shrink: 0;
+  font-size: 12px;
+  padding: 8px 12px;
+  border-radius: 10px;
+  border: 1px solid #e5e7eb;
+  background: #ffffff;
+  color: #475569;
+  cursor: pointer;
+  white-space: nowrap;
+}
+
+.copyBtn:hover {
+  border-color: #94a3b8;
+  background: #f8fafc;
+}
+
 .pickerPopover {
   padding: 12px;
   border-radius: 12px;

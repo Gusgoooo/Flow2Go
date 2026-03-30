@@ -125,6 +125,8 @@ export type GraphBatchPayload = {
      * 识图导入、用户显式配色等路径保持 false。
      */
     neutralGeneration?: boolean
+    /** 图生图泳道：物化时强制默认泳道底色，忽略 payload 中泳道配色 */
+    swimlaneImageImport?: boolean
   }
 }
 

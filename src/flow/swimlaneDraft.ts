@@ -37,10 +37,7 @@ export type SwimlaneDraft = {
     id: string
     title: string
     order: number
-    /**
-     * 泳道标题条（标签区）背景色，与画布 GroupNode `laneHeaderBackground` 一致。
-     * 支持 CSS 颜色字符串，如 `#e2e8f0`、`rgba(71,85,105,0.12)`。
-     */
+    /** 泳道标题栏（整段色带）→ GroupNode `laneHeaderBackground`；标题文字无独立底色 */
     laneHeaderBackground?: string
   }>
   nodes: SwimlaneDraftNode[]
@@ -432,14 +429,14 @@ export function swimlaneDraftToGraphBatchPayload(
   const sortedLanes = [...normalizedDraft.lanes].sort((a, b) => a.order - b.order)
   for (const lane of sortedLanes) {
     const headerBg = String(lane.laneHeaderBackground ?? '').trim()
+    const laneStyle: Record<string, unknown> = {}
+    if (headerBg) laneStyle.laneHeaderBackground = headerBg.slice(0, 120)
     ops.push({
       op: 'graph.createFrame',
       params: {
         id: lane.id,
         title: lane.title,
-        ...(headerBg
-          ? { style: { laneHeaderBackground: headerBg.slice(0, 120) } as Record<string, unknown> }
-          : {}),
+        ...(Object.keys(laneStyle).length ? { style: laneStyle } : {}),
       },
     })
   }
@@ -702,7 +699,9 @@ const SWIMLANE_DRAFT_SYSTEM_PROMPT = `
 6) lanes.order 必须从 0 开始连续递增（0,1,2...）。
 7) 每条 edge 必须有 semanticType，且跨泳道边优先显式为 crossLane；跨泳道 returnFlow 必须极少（默认 0，最多 1）。
 8) nodes 必须有 laneId（后续会映射为 parentId + laneId 双归属）。
+9) 泳道配色：laneHeaderBackground 为标题栏整段色带；仅当用户明确要求时再输出；默认不要输出装饰性颜色字段。不要输出泳道描边色 stroke / strokeWidth（由产品统一）。
 9) laneHeaderBackground（泳道标题条底色）：仅当用户在描述中**明确要求**泳道标题/底色配色时才输出；默认不要输出任何泳道或节点的装饰性颜色字段。
+
 
 优先输出语义 schema（推荐）：
 {
@@ -807,9 +806,8 @@ export function normalizeSwimlaneDraftCandidate(input: any): any {
   if (!usesLogicNodeSchema && !usesLogicEdgeSchema) return input
 
   const rawNodes = Array.isArray(input.nodes) ? input.nodes : []
-  const rawEdges = Array.isArray(input.edges) ? input.edges : []
   const rawLanes = Array.isArray(input.lanes) ? input.lanes : []
-
+  const rawEdges = Array.isArray(input.edges) ? input.edges : []
   const lanes: SwimlaneDraft['lanes'] = []
   const laneIdByKey = new Map<string, string>()
 
@@ -824,7 +822,12 @@ export function normalizeSwimlaneDraftCandidate(input: any): any {
       if (headerBg && !existing.laneHeaderBackground) existing.laneHeaderBackground = headerBg
       return
     }
-    lanes.push({ id, title, order, ...(headerBg ? { laneHeaderBackground: headerBg } : {}) })
+    lanes.push({
+      id,
+      title,
+      order,
+      ...(headerBg ? { laneHeaderBackground: headerBg } : {}),
+    })
   }
 
   const ensureLane = (laneValue: unknown, orderHint: number): string => {
@@ -853,16 +856,14 @@ export function normalizeSwimlaneDraftCandidate(input: any): any {
     }
     const title = String(lane?.title ?? lane?.name ?? lane?.label ?? '').trim()
     const idRaw = String(lane?.id ?? '').trim()
-    if (!title && !idRaw) continue
-    const titleFinal = title || idRaw
+    const stripBg = lane?.laneHeaderBackground ?? (lane as any)?.headerBackground
+    const titleFinal = title || `泳道${i + 1}`
     const idFinal = idRaw || `lane-${slug(titleFinal) || i + 1}`
-    const headerBg =
-      lane?.laneHeaderBackground ?? (lane as any)?.headerBackground ?? (lane as any)?.labelBackground
     registerLane(
       idFinal,
       titleFinal,
       Number.isFinite(lane?.order) ? lane.order : lanes.length,
-      headerBg,
+      stripBg,
     )
   }
 
@@ -941,17 +942,20 @@ function validateSwimlaneDraft(draft: any): SwimlaneDraft {
   const laneIds = new Set<string>()
   draft.lanes = draft.lanes.map((l: any, i: number) => {
     const id = String(l?.id ?? `lane-${i + 1}`).trim()
-    const title = String(l?.title ?? '').trim()
-    if (!title) throw new Error(`lane[${i}] title 不能为空`)
+    const title = String(l?.title ?? l?.name ?? l?.label ?? '').trim() || id
+    const stripRaw = l?.laneHeaderBackground ?? l?.headerBackground
+    const strip = typeof stripRaw === 'string' ? stripRaw.trim().slice(0, 120) : ''
     laneIds.add(id)
-    const bgRaw = l?.laneHeaderBackground ?? l?.headerBackground ?? l?.labelBackground
-    const bg = typeof bgRaw === 'string' ? bgRaw.trim().slice(0, 120) : ''
     return {
       id,
       title,
       order: Number.isFinite(l?.order) ? l.order : i,
-      ...(bg ? { laneHeaderBackground: bg } : {}),
+      ...(strip ? { laneHeaderBackground: strip } : {}),
     }
+  })
+  draft.lanes.sort((a: any, b: any) => a.order - b.order)
+  draft.lanes.forEach((lane: any, idx: number) => {
+    lane.order = idx
   })
   const nodeIds = new Set<string>()
   draft.nodes = draft.nodes.map((n: any, i: number) => {

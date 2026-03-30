@@ -218,4 +218,51 @@ describe('swimlane layout multi-row support', () => {
     // 1/2 单位（group 对齐单元 16 的半步）= 8
     expect(gap).toBe(8)
   })
+
+  it('normalizes per-lane laneRow so single-row swimlanes share height across lanes', () => {
+    const laneA: Node<any> = {
+      id: 'lane-A',
+      type: 'group',
+      position: { x: 0, y: 0 },
+      width: 900,
+      height: 220,
+      data: { role: 'lane', laneMeta: { laneIndex: 0, laneAxis: 'row' } },
+    } as any
+    const laneB: Node<any> = {
+      id: 'lane-B',
+      type: 'group',
+      position: { x: 0, y: 0 },
+      width: 900,
+      height: 220,
+      data: { role: 'lane', laneMeta: { laneIndex: 1, laneAxis: 'row' } },
+    } as any
+    const a1: Node<any> = {
+      id: 'A1',
+      type: 'quad',
+      parentId: laneA.id,
+      position: { x: 0, y: 0 },
+      width: 140,
+      height: 56,
+      data: { laneId: laneA.id, nodeOrder: 0, laneRow: 0, laneCol: 0 },
+    } as any
+    const b1: Node<any> = {
+      id: 'B1',
+      type: 'quad',
+      parentId: laneB.id,
+      position: { x: 0, y: 0 },
+      width: 140,
+      height: 56,
+      data: { laneId: laneB.id, nodeOrder: 0, laneRow: 3, laneCol: 0 },
+    } as any
+
+    const result = autoLayoutSwimlane({
+      nodes: [laneA, laneB, a1, b1],
+      edges: [] as Edge<any>[],
+      direction: 'LR',
+      swimlaneDirection: 'horizontal',
+    })
+    const outA = nodeById(result.nodes, laneA.id)
+    const outB = nodeById(result.nodes, laneB.id)
+    expect(outA.height).toBe(outB.height)
+  })
 })

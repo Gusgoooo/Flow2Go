@@ -457,6 +457,7 @@ export function EditableSmoothStepEdge(props: EdgeProps) {
     label,
     data,
     selected,
+    animated,
   } = props
   const dataTyped = (data ?? {}) as EdgeData
   const labelStyleObj = (dataTyped.labelStyle ?? (props as { labelStyle?: EdgeLabelStyle }).labelStyle) ?? {}
@@ -482,11 +483,18 @@ export function EditableSmoothStepEdge(props: EdgeProps) {
   }, [allNodes, dataTyped.layoutProfile, source, target])
 
   const semanticType = dataTyped.semanticType
-  const semanticStyle: React.CSSProperties = {}
-  if (semanticType === 'returnFlow') {
-    semanticStyle.strokeDasharray = '6 3'
-    semanticStyle.opacity = 0.7
-  }
+
+  const pathEdgeStyle = useMemo(() => {
+    const merged = { ...(style as React.CSSProperties) }
+    if (semanticType === 'returnFlow') {
+      merged.opacity = 0.75
+      if (!animated) merged.strokeDasharray = '6 3'
+    }
+    if (animated && semanticType === 'returnFlow') {
+      delete (merged as { strokeDasharray?: string }).strokeDasharray
+    }
+    return merged
+  }, [style, semanticType, animated])
 
   const padded = useMemo(
     () =>
@@ -863,7 +871,7 @@ export function EditableSmoothStepEdge(props: EdgeProps) {
         path={edgePath}
         markerStart={startMarkerUrl}
         markerEnd={endMarkerUrl}
-        style={{ ...style, ...semanticStyle } as any}
+        style={pathEdgeStyle as any}
         interactionWidth={interactionWidth ?? 24}
       />
 

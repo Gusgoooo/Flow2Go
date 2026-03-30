@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useLayoutEffect, useRef, useState } from 'react'
-import { NodeResizer, useReactFlow, useUpdateNodeInternals, type NodeProps } from '@xyflow/react'
+import { useReactFlow, useUpdateNodeInternals, type NodeProps } from '@xyflow/react'
 import { QuickTextStyleToolbar, QUICK_TOOLBAR_DATA_ATTR } from './QuickTextStyleToolbar'
 import { snapSizeToGrid } from './grid'
 
@@ -20,15 +20,12 @@ export function TextNode(props: NodeProps) {
   const data = (props.data ?? {}) as TextNodeData
   const rf = useReactFlow()
   const updateNodeInternals = useUpdateNodeInternals()
-  const selected = (props as any).selected
 
   const isNew = (data.label ?? '').trim() === ''
   const [editing, setEditing] = useState(() => isNew)
   const [draft, setDraft] = useState(data.label ?? '')
   const inputRef = useRef<HTMLTextAreaElement>(null)
   const measureRef = useRef<HTMLDivElement>(null)
-  /** 用户用 NodeResizer 拖过则保持其尺寸，避免展示态把框「缩回去」；进入编辑时重新跟随内容 */
-  const manualSizingRef = useRef(false)
   const lastAppliedRef = useRef({ w: 0, h: 0 })
 
   useEffect(() => {
@@ -68,7 +65,6 @@ export function TextNode(props: NodeProps) {
   const onDoubleClick = useCallback((e: React.MouseEvent) => {
     e.stopPropagation()
     window.dispatchEvent(new CustomEvent('flow2go:close-popups-for-text'))
-    manualSizingRef.current = false
     lastAppliedRef.current = { w: 0, h: 0 }
     setEditing(true)
   }, [])
@@ -99,8 +95,8 @@ export function TextNode(props: NodeProps) {
     fontWeight,
     color: textColor,
     lineHeight: 1.4,
-    wordBreak: 'break-word',
-    whiteSpace: 'pre-wrap',
+    wordBreak: 'normal',
+    whiteSpace: 'pre',
   }
 
   const measureMirrorStyle: React.CSSProperties = {
@@ -110,8 +106,9 @@ export function TextNode(props: NodeProps) {
     top: 0,
     visibility: 'hidden',
     pointerEvents: 'none',
-    whiteSpace: 'pre-wrap',
-    wordBreak: 'break-word',
+    display: 'inline-block',
+    whiteSpace: 'pre',
+    wordBreak: 'normal',
     boxSizing: 'border-box',
     padding: 0,
     margin: 0,
@@ -119,29 +116,19 @@ export function TextNode(props: NodeProps) {
     overflow: 'hidden',
   }
 
-  // 按「当前内容区宽度」测量软折行后的高度，外框增高而不是 textarea 内部滚动（与 textarea 布局一致）
+  // 文字节点：宽度跟随最长行（仅用户手动换行），避免容器裁剪/软折行。
   useLayoutEffect(() => {
     if (!measureRef.current) return
-    if (!editing && manualSizingRef.current) return
 
     const raw = editing ? draft : label
     const el = measureRef.current
     el.textContent = raw.length > 0 ? raw : '\u200b'
 
-    const nodeOuterW = typeof props.width === 'number' && props.width > 0 ? props.width : MIN_W
-    let innerW = Math.max(1, nodeOuterW - PAD_TOTAL)
-    el.style.width = `${innerW}px`
+    el.style.width = 'max-content'
+    const sw = el.scrollWidth
+    const mh = el.scrollHeight
 
-    let mh = el.scrollHeight
-    let sw = el.scrollWidth
-    // 极长无空格串等：需要放宽宽度，否则会出现横向裁剪/滚动
-    if (sw > innerW + 1) {
-      innerW = Math.ceil(sw)
-      el.style.width = `${innerW}px`
-      mh = el.scrollHeight
-    }
-
-    const w = snapSizeToGrid(Math.max(MIN_W, Math.ceil(innerW + PAD_TOTAL)))
+    const w = snapSizeToGrid(Math.max(MIN_W, Math.ceil(sw + PAD_TOTAL)))
     const h = snapSizeToGrid(Math.max(MIN_H, Math.ceil(mh + PAD_TOTAL)))
 
     if (Math.abs(w - lastAppliedRef.current.w) <= 1 && Math.abs(h - lastAppliedRef.current.h) <= 1) return
@@ -193,25 +180,6 @@ export function TextNode(props: NodeProps) {
     >
       <div ref={measureRef} aria-hidden style={measureMirrorStyle} />
 
-      <NodeResizer
-        minWidth={MIN_W}
-        minHeight={MIN_H}
-        handleStyle={{
-          width: 8,
-          height: 8,
-          borderRadius: 9999,
-          background: '#3b82f6',
-          border: '2px solid #fff',
-        }}
-        lineStyle={{
-          border: '1px dashed #3b82f6',
-        }}
-        isVisible={selected}
-        onResizeEnd={() => {
-          manualSizingRef.current = true
-        }}
-      />
-
       {editing ? (
         <>
           <QuickTextStyleToolbar
@@ -253,12 +221,24 @@ export function TextNode(props: NodeProps) {
             ref={inputRef}
             value={draft}
             onChange={(e) => setDraft(e.target.value)}
+            onWheelCapture={(e) => {
+              // 避免滚轮把事件冒泡到 ReactFlow / 页面，导致画布平移或出现页面滚动条。
+              e.stopPropagation()
+              e.preventDefault()
+            }}
+            onTouchMoveCapture={(e) => {
+              e.stopPropagation()
+            }}
+            onMouseDownCapture={(e) => {
+              e.stopPropagation()
+            }}
             onBlur={(e) => {
               if ((e.relatedTarget as HTMLElement)?.closest?.(`[${QUICK_TOOLBAR_DATA_ATTR}]`)) return
               commit()
             }}
             onKeyDown={onKeyDown}
             placeholder="输入文字…"
+            wrap="off"
             style={{
               ...textStyle,
               display: 'block',
@@ -269,7 +249,7 @@ export function TextNode(props: NodeProps) {
               outline: 'none',
               background: 'transparent',
               resize: 'none',
-              overflow: 'hidden',
+              overflow: 'visible',
               padding: 0,
               margin: 0,
               fontFamily: 'inherit',

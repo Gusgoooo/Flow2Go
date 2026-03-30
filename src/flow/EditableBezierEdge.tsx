@@ -53,6 +53,7 @@ export function EditableBezierEdge(props: EdgeProps) {
     interactionWidth,
     label,
     data,
+    animated,
   } = props
   const rf = useReactFlow()
   const dataTyped = (data ?? {}) as EdgeData
@@ -72,11 +73,17 @@ export function EditableBezierEdge(props: EdgeProps) {
   const srcPos = sourcePosition ?? Position.Right
   const tgtPos = targetPosition ?? Position.Left
 
-  const semanticStyle: React.CSSProperties = {}
-  if (semanticType === 'returnFlow') {
-    semanticStyle.strokeDasharray = '6 3'
-    semanticStyle.opacity = 0.7
-  }
+  const pathEdgeStyle = useMemo(() => {
+    const merged = { ...(style as React.CSSProperties) }
+    if (semanticType === 'returnFlow') {
+      merged.opacity = 0.75
+      if (!animated) merged.strokeDasharray = '6 3'
+    }
+    if (animated && semanticType === 'returnFlow') {
+      delete (merged as { strokeDasharray?: string }).strokeDasharray
+    }
+    return merged
+  }, [style, semanticType, animated])
 
   const edgeStep = Math.max(1, GRID_UNIT * SIZE_STEP_RATIO)
   const sx0 = snapToGrid(sourceX, edgeStep)
@@ -324,7 +331,7 @@ export function EditableBezierEdge(props: EdgeProps) {
         path={edgePath}
         markerStart={startMarkerUrl}
         markerEnd={endMarkerUrl}
-        style={{ ...style, ...semanticStyle } as any}
+        style={pathEdgeStyle as any}
         interactionWidth={interactionWidth ?? 24}
       />
       <SmartEdgeLabel
