@@ -27,12 +27,8 @@ export function getRoutifyOpenAIBase(): string {
   } catch {
     /* ignore */
   }
-  if (typeof window !== 'undefined') {
-    const h = window.location.hostname
-    if (h === 'localhost' || h === '127.0.0.1' || h === '[::1]') {
-      return '/protocol/openai/v1'
-    }
-  }
+  // 浏览器环境：优先走同源路径，避免 CORS / Mixed Content（线上需由 Nginx/反代转发到 Routify）
+  if (typeof window !== 'undefined') return '/protocol/openai/v1'
   return ROUTIFY_OPENAI_BASE_REMOTE
 }
 
