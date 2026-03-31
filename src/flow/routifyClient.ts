@@ -1,19 +1,19 @@
 /**
  * Routify OpenAI-compatible 统一网关（所有模型相关 HTTP 调用应经此出口）。
  *
- * Base: http://routify.alibaba-inc.com/protocol/openai/v1
+ * Base: https://routify.alibaba-inc.com/protocol/openai/v1
  * 典型路径：chat/completions、images/generations、embeddings 等（与 OpenAI API 路径一致）
  *
  * 鉴权：Authorization: Bearer <key>
  * - 浏览器：`import.meta.env.VITE_ROUTIFY_API_KEY`
  * - Node：`process.env.ROUTIFY_API_KEY`
  *
- * 浏览器注意：直连 `http://routify...` 会受 CORS 限制（表现为 Failed to fetch）。
+ * 浏览器注意：直连 `https://routify...` 仍可能受 CORS 限制（表现为 Failed to fetch）。
  * 本地开发/预览（localhost）默认使用同源路径 `/protocol/openai/v1`，由 Vite 代理到 Routify。
  * 生产环境可设置 `VITE_ROUTIFY_BASE_URL` 指向自有反代；未设置则直连官方地址（需网关放行 CORS 或同域部署）。
  */
 
-const ROUTIFY_OPENAI_BASE_REMOTE = 'http://routify.alibaba-inc.com/protocol/openai/v1'
+const ROUTIFY_OPENAI_BASE_REMOTE = 'https://routify.alibaba-inc.com/protocol/openai/v1'
 
 /**
  * 当前应使用的 OpenAI 兼容 base（含本地代理路径或远程 URL）。
@@ -27,8 +27,13 @@ export function getRoutifyOpenAIBase(): string {
   } catch {
     /* ignore */
   }
-  // 浏览器环境：优先走同源路径，避免 CORS / Mixed Content（线上需由 Nginx/反代转发到 Routify）
-  if (typeof window !== 'undefined') return '/protocol/openai/v1'
+  // 本地开发/预览：走同源路径交给 Vite 代理，避免 CORS
+  if (typeof window !== 'undefined') {
+    const h = window.location.hostname
+    if (h === 'localhost' || h === '127.0.0.1' || h === '[::1]') {
+      return '/protocol/openai/v1'
+    }
+  }
   return ROUTIFY_OPENAI_BASE_REMOTE
 }
 
