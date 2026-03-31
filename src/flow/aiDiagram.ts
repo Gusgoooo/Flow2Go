@@ -4430,7 +4430,8 @@ export async function openRouterGenerateDiagramFromImage(
     console.info(`[Flow2Go AI] +${elapsedMs}ms`, phase, detail ?? '')
   }
 
-  const recogModel = (recognitionModel ?? model ?? generationModel ?? '').trim() || 'qwen/qwen2.5-vl-72b-instruct'
+  const recogModel =
+    (recognitionModel ?? model ?? generationModel ?? '').trim() || 'qwen/qwen2.5-vl-72b-instruct'
 
   const imageRecognitionMaxTokens = 4096
   report('识图阶段1', '提取结构骨架（场景/分组/节点/连线）…')
