@@ -6,7 +6,7 @@ import tailwindcss from '@tailwindcss/vite'
 // https://vite.dev/config/
 const routifyProxy = {
   '/protocol/openai/v1': {
-    target: 'http://routify.alibaba-inc.com',
+    target: 'https://routify.alibaba-inc.com',
     changeOrigin: true,
   },
 } as const
