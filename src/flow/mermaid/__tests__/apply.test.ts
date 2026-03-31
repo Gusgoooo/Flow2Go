@@ -258,6 +258,35 @@ describe('materializeGraphBatchPayloadToSnapshot - handle inference', () => {
     expect(e.targetHandle).toBe('t-top')
   })
 
+  it('avoids awkward vertical mixed handles for near-same-row flowchart edges when a cleaner route exists', async () => {
+    const payload: GraphBatchPayload = {
+      version: '1.0',
+      source: 'mermaid',
+      graphType: 'flowchart',
+      direction: 'LR',
+      operations: [
+        { op: 'graph.createNodeQuad', params: { id: 'A', title: 'A', shape: 'rect', position: { x: 0, y: 0 } } },
+        { op: 'graph.createNodeQuad', params: { id: 'B', title: 'B', shape: 'rect', position: { x: 240, y: 0 } } },
+        // Intentionally provide an awkward handle pair (bottom -> top) while nodes are on the same row.
+        {
+          op: 'graph.createEdge',
+          params: {
+            id: 'e_ab',
+            source: 'A',
+            target: 'B',
+            type: 'smoothstep',
+            arrowStyle: 'end',
+            style: { sourceHandle: 's-bottom', targetHandle: 't-top' } as any,
+          },
+        },
+      ],
+    }
+    const snap = await materializeGraphBatchPayloadToSnapshot(payload, { replace: true })
+    const e = snap.edges.find((x) => x.id === 'e_ab') as any
+    // Should not keep the vertical mixed pair if a cleaner (typically horizontal) route is available.
+    expect(`${e.sourceHandle}/${e.targetHandle}`).not.toBe('s-bottom/t-top')
+  })
+
   it('keeps flowchart edges pinned to handles with zero autoOffset', async () => {
     const payload: GraphBatchPayload = {
       version: '1.0',
@@ -304,6 +333,27 @@ describe('materializeGraphBatchPayloadToSnapshot - handle inference', () => {
     const wps = ((eab.data ?? {}).waypoints ?? []) as Array<{ x: number; y: number }>
     expect(wps.length).toBeGreaterThanOrEqual(3)
     expect(Number((eab.data ?? {}).autoOffset ?? 0)).toBe(0)
+  })
+
+  it('uses a simpler route for mixed-handle flowchart edges (bottom -> left) when possible', async () => {
+    const payload: GraphBatchPayload = {
+      version: '1.0',
+      source: 'mermaid',
+      graphType: 'flowchart',
+      direction: 'LR',
+      operations: [
+        // A 在 B 左上
+        { op: 'graph.createNodeQuad', params: { id: 'A', title: 'A', shape: 'rect', position: { x: 0, y: 0 } } },
+        { op: 'graph.createNodeQuad', params: { id: 'B', title: 'B', shape: 'rect', position: { x: 260, y: 120 } } },
+        // 强制 mixed pair：A bottom out -> B left in
+        { op: 'graph.createEdge', params: { id: 'e', source: 'A', target: 'B', type: 'smoothstep', style: { sourceHandle: 's-bottom', targetHandle: 't-left' } as any } },
+      ],
+    }
+    const snap = await materializeGraphBatchPayloadToSnapshot(payload, { replace: true })
+    const e = snap.edges.find((x) => x.id === 'e') as any
+    const wps = ((e.data ?? {}).waypoints ?? []) as Array<{ x: number; y: number }>
+    // 期望是单拐角 L 形：waypoints 只有 1 个
+    expect(wps.length).toBeLessThanOrEqual(1)
   })
 
   it('avoids 100% overlap when two flowchart edges share the same endpoints', async () => {

@@ -34,7 +34,6 @@ import {
 import JSZip from 'jszip'
 import {
   AlignHorizontalDistributeCenter,
-  ChevronDown,
   KeyRound,
   InspectionPanel,
   MessageCircleQuestion,
@@ -49,6 +48,7 @@ import {
 import defaultExample from './defaultExample.json'
 import { getProject, saveProject } from './projectStorage'
 import styles from './flowEditor.module.css'
+import ShinyText from '../components/ShinyText'
 import { GroupNode, type GroupNodeData } from './GroupNode'
 import { type LayoutDirection } from './layout'
 import { autoLayoutDagre } from './dagreLayout'
@@ -3588,11 +3588,11 @@ function EditorInner({ onBackHome, source, previewSnapshot, readOnly: _readOnly 
                       <button
                         type="button"
                         className={styles.helpCollapseBtn}
-                        aria-label="收起"
-                        title="收起"
+                        aria-label="关闭"
+                        title="关闭"
                         onClick={() => setHelpExpanded(false)}
                       >
-                        <ChevronDown size={16} />
+                        <X size={16} />
                       </button>
                     </div>
                   )}
@@ -3626,7 +3626,15 @@ function EditorInner({ onBackHome, source, previewSnapshot, readOnly: _readOnly 
                     setAiModalOpen(true)
                   }}
                 >
-                  AI生成
+                  <ShinyText
+                    text="AI生成"
+                    speed={2}
+                    delay={4}
+                    direction="left"
+                    color="rgba(15, 23, 42, 0.92)"
+                    shineColor="rgba(255, 255, 255, 0.95)"
+                    spread={120}
+                  />
                 </button>
                 <button
                   className={styles.assetsBtn}
@@ -3651,7 +3659,7 @@ function EditorInner({ onBackHome, source, previewSnapshot, readOnly: _readOnly 
                   保存到本地
                 </button>
               </div>
-              <div className={styles.topPanelSaveHint}>为了您的数据安全，请及时本地保存</div>
+              <div className={styles.topPanelSaveHint}>为了您的数据隐私，您的数据只会保留在本地，请及时保存</div>
             </Panel>
             )}
           </EdgeLabelLayoutProvider>

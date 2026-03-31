@@ -220,11 +220,23 @@ export function TextNode(props: NodeProps) {
           <textarea
             ref={inputRef}
             value={draft}
-            onChange={(e) => setDraft(e.target.value)}
+            onChange={(e) => {
+              setDraft(e.target.value)
+              // textarea 的 overflow 在多数浏览器会被当成 auto；这里通过自适应高度+强制归零滚动来避免出现系统滚动条
+              e.currentTarget.style.height = 'auto'
+              e.currentTarget.style.height = `${e.currentTarget.scrollHeight}px`
+              e.currentTarget.scrollTop = 0
+              e.currentTarget.scrollLeft = 0
+            }}
             onWheelCapture={(e) => {
               // 避免滚轮把事件冒泡到 ReactFlow / 页面，导致画布平移或出现页面滚动条。
               e.stopPropagation()
               e.preventDefault()
+            }}
+            onScroll={(e) => {
+              const el = e.currentTarget
+              if (el.scrollTop !== 0) el.scrollTop = 0
+              if (el.scrollLeft !== 0) el.scrollLeft = 0
             }}
             onTouchMoveCapture={(e) => {
               e.stopPropagation()
@@ -243,13 +255,13 @@ export function TextNode(props: NodeProps) {
               ...textStyle,
               display: 'block',
               width: '100%',
-              height: '100%',
+              height: 'auto',
               minHeight: MIN_H - PAD_TOTAL,
               border: 'none',
               outline: 'none',
               background: 'transparent',
               resize: 'none',
-              overflow: 'visible',
+              overflow: 'hidden',
               padding: 0,
               margin: 0,
               fontFamily: 'inherit',

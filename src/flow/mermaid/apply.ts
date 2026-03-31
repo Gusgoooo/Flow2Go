@@ -7,7 +7,7 @@ import {
 import { buildPolylineSignature } from '../layout/routing/polylineUtils'
 import { layoutMindMapMindElixirStyle } from '../mindMap/mindElixirLayout'
 import { autoLayoutSwimlane } from '../swimlaneLayout'
-import { normalizeNodeGeometryToGrid, normalizeWaypointsToGrid } from '../grid'
+import { GRID_UNIT, normalizeNodeGeometryToGrid, normalizeWaypointsToGrid } from '../grid'
 import type { FlowDirection, GraphBatchPayload, GraphOperation } from './types'
 
 export type ApplyMermaidContext = {
@@ -895,6 +895,85 @@ function buildRoutePoints(
   const verticalPair =
     (sourceSide === 'top' || sourceSide === 'bottom') &&
     (targetSide === 'top' || targetSide === 'bottom')
+  const mixedPair = !horizontalPair && !verticalPair
+
+  const viaCorridorY = (corridorY: number) =>
+    simplifyPolyline([
+      sourcePoint,
+      srcLead,
+      { x: srcLead.x, y: corridorY },
+      { x: tgtLead.x, y: corridorY },
+      tgtLead,
+      targetPoint,
+    ])
+
+  const viaCorridorX = (corridorX: number) =>
+    simplifyPolyline([
+      sourcePoint,
+      srcLead,
+      { x: corridorX, y: srcLead.y },
+      { x: corridorX, y: tgtLead.y },
+      tgtLead,
+      targetPoint,
+    ])
+
+  const score = (pts: RoutePoint[]) => {
+    let len = 0
+    for (let i = 1; i < pts.length; i += 1) {
+      len += Math.abs(pts[i].x - pts[i - 1].x) + Math.abs(pts[i].y - pts[i - 1].y)
+    }
+    // 拐点更少优先，其次更短；避免“下右下右”这种多弯
+    return pts.length * 1000 + len
+  }
+
+  // Mixed pair（如 s-bottom -> t-left）：
+  // corridor 方案会“写死”一条中线并插入额外拐点，容易出现多弯且末段无法与 in 视觉合并。
+  // 这里严格只生成正交路径，并优先让最后一段与 targetSide 对齐：
+  // - targetSide 为 left/right：最后应水平进入 tgtLead → 优先 corridorX
+  // - targetSide 为 top/bottom：最后应垂直进入 tgtLead → 优先 corridorY
+  if (mixedPair) {
+    // 先尝试「不带 lead」的单拐角 L 形路径：只要没有碰撞，这就是你期望的“向下再向右（或相反）”。
+    // 注意：这里不强行拉出 24px lead，否则会把 L 形强拆成“下右下右”，用户也无法通过拖拽合并。
+    const cornerVH: RoutePoint = { x: sourcePoint.x, y: targetPoint.y + shift }
+    const cornerHV: RoutePoint = { x: targetPoint.x + shift, y: sourcePoint.y }
+    const l1 = simplifyPolyline([sourcePoint, cornerVH, targetPoint])
+    const l2 = simplifyPolyline([sourcePoint, cornerHV, targetPoint])
+
+    const preferCorridorX = targetSide === 'left' || targetSide === 'right'
+    const baseX = preferCorridorX ? tgtLead.x : srcLead.x
+    const baseY = preferCorridorX ? srcLead.y : tgtLead.y
+
+    const candA = preferCorridorX ? viaCorridorX(baseX + shift) : viaCorridorY(baseY + shift)
+    const candB = preferCorridorX ? viaCorridorX(baseX - shift) : viaCorridorY(baseY - shift)
+    const candC = preferCorridorX
+      ? viaCorridorX((srcLead.x + tgtLead.x) / 2 + shift)
+      : viaCorridorY((srcLead.y + tgtLead.y) / 2 + shift)
+    const candD = preferCorridorX
+      ? viaCorridorX((srcLead.x + tgtLead.x) / 2 - shift)
+      : viaCorridorY((srcLead.y + tgtLead.y) / 2 - shift)
+
+    if (mode === 'horizontal') {
+      const bestL = score(l1) <= score(l2) ? l1 : l2
+      const bestC = score(candA) <= score(candB) ? candA : candB
+      return score(bestL) <= score(bestC) ? bestL : bestC
+    }
+    if (mode === 'vertical') {
+      const bestL = score(l1) <= score(l2) ? l1 : l2
+      const bestC = score(candC) <= score(candD) ? candC : candD
+      return score(bestL) <= score(bestC) ? bestL : bestC
+    }
+    const all = [l1, l2, candA, candB, candC, candD]
+    let best = all[0]
+    let bestScore = score(best)
+    for (const c of all) {
+      const s = score(c)
+      if (s < bestScore) {
+        best = c
+        bestScore = s
+      }
+    }
+    return best
+  }
 
   const useHorizontal =
     mode === 'horizontal' ||
@@ -903,25 +982,11 @@ function buildRoutePoints(
 
   if (useHorizontal) {
     const corridorY = (srcLead.y + tgtLead.y) / 2 + shift
-    return simplifyPolyline([
-      sourcePoint,
-      srcLead,
-      { x: srcLead.x, y: corridorY },
-      { x: tgtLead.x, y: corridorY },
-      tgtLead,
-      targetPoint,
-    ])
+    return viaCorridorY(corridorY)
   }
 
   const corridorX = (srcLead.x + tgtLead.x) / 2 + shift
-  return simplifyPolyline([
-    sourcePoint,
-    srcLead,
-    { x: corridorX, y: srcLead.y },
-    { x: corridorX, y: tgtLead.y },
-    tgtLead,
-    targetPoint,
-  ])
+  return viaCorridorX(corridorX)
 }
 
 function getCenters(
@@ -1444,6 +1509,11 @@ function applyFlowchartStrictHandles(
   const decisionOutUsage = new Map<string, Record<Side, number>>()
   const decisionBranchSideByLabel = new Map<string, { yes?: Side; no?: Side }>()
   void direction
+  const isReturnLabel = (text: unknown): boolean => {
+    const t = String(text ?? '').trim()
+    if (!t) return false
+    return /(回流|驳回|退回|重试|回退|返回)/.test(t)
+  }
   return edges.map((e) => {
     let sourceHandle = e.sourceHandle
     let targetHandle = e.targetHandle
@@ -1467,8 +1537,47 @@ function applyFlowchartStrictHandles(
       /(否|不通过|不同意|失败|拒绝|取消)/.test(edgeLabel) ||
       /\bno\b/i.test(edgeLabelLower)
 
+    const existingSemantic = String(((e.data ?? {}) as any)?.semanticType ?? ((e.style ?? {}) as any)?.semanticType ?? '').toLowerCase()
+    const isReturnFlow = existingSemantic === 'returnflow' || isReturnLabel(edgeLabel)
+
+    // 回流边（流程图）：优先用与主流程正交的上下/左右 handle，避免出现“左进右出”这类低效且怪异的连接。
+    // 同时自动开启动画，确保回流语义可见。
+    if (isReturnFlow && srcNode && tgtNode) {
+      const centers = getCenters(e.source, e.target, nodeById)
+      const dy = centers ? centers.tCy - centers.sCy : 0
+      // effectiveDirection 在外层已兜底为 LR/其它，但这里仅用来决定“回流优先走哪条轴”
+      const preferVertical = direction === 'LR' || direction === 'RL'
+      if (preferVertical) {
+        // 主要走上下：向上回流用 top->bottom，向下回流用 bottom->top；同水平时默认走 top->top（更像“回到上一步”）
+        if (Math.abs(dy) <= GRID_UNIT * 2) {
+          sourceHandle = 's-top'
+          targetHandle = 't-top'
+        } else if (dy < 0) {
+          sourceHandle = 's-top'
+          targetHandle = 't-bottom'
+        } else {
+          sourceHandle = 's-bottom'
+          targetHandle = 't-top'
+        }
+      } else {
+        // 主要走左右（主流程上下时，回流用左右绕开）
+        const centers2 = centers ?? { sCx: 0, tCx: 0 }
+        const dx = centers2.tCx - centers2.sCx
+        if (Math.abs(dx) <= GRID_UNIT * 2) {
+          sourceHandle = 's-left'
+          targetHandle = 't-left'
+        } else if (dx < 0) {
+          sourceHandle = 's-left'
+          targetHandle = 't-right'
+        } else {
+          sourceHandle = 's-right'
+          targetHandle = 't-left'
+        }
+      }
+    }
+
     // 流程图双向箭头对角特判：不影响 decision 既有出边策略。
-    if (!srcIsDecision && !tgtIsDecision) {
+    if (!isReturnFlow && !srcIsDecision && !tgtIsDecision) {
       const bidirectionalForced = inferBidirectionalDiagonalHandlesForFlowchart(e, nodeById)
       if (bidirectionalForced) {
         sourceHandle = bidirectionalForced.sourceHandle
@@ -1511,6 +1620,7 @@ function applyFlowchartStrictHandles(
       }
     }
     const d = { ...((e.data ?? {}) as any) }
+    if (isReturnFlow) d.semanticType = 'returnFlow'
     const sourceSide = sourceHandle ? handleToSide(sourceHandle) : null
     const targetSide = targetHandle ? handleToSide(targetHandle) : null
     if (!sourceSide || !targetSide) {
@@ -1518,6 +1628,7 @@ function applyFlowchartStrictHandles(
         ...e,
         ...(sourceHandle ? { sourceHandle } : {}),
         ...(targetHandle ? { targetHandle } : {}),
+        ...(isReturnFlow ? { animated: true } : {}),
         data: d,
       }
     }
@@ -1529,6 +1640,7 @@ function applyFlowchartStrictHandles(
         ...e,
         ...(sourceHandle ? { sourceHandle } : {}),
         ...(targetHandle ? { targetHandle } : {}),
+        ...(isReturnFlow ? { animated: true } : {}),
         data: d,
       }
     }
@@ -1543,6 +1655,7 @@ function applyFlowchartStrictHandles(
         ...e,
         ...(sourceHandle ? { sourceHandle } : {}),
         ...(targetHandle ? { targetHandle } : {}),
+        ...(isReturnFlow ? { animated: true } : {}),
         data: d,
       }
     }
@@ -1579,8 +1692,268 @@ function applyFlowchartStrictHandles(
       ...(sourceHandle ? { sourceHandle } : {}),
       ...(targetHandle ? { targetHandle } : {}),
       type: routedWaypoints.length >= 2 ? 'smoothstep' : e.type,
+      ...(isReturnFlow ? { animated: true } : {}),
       data: { ...d, waypoints: routedWaypoints },
     }
+  })
+}
+
+function quickReviewAndFixFlowchartRoutes(
+  nodes: Array<Node<any>>,
+  edges: Array<Edge<any>>,
+  direction: FlowDirection,
+): Array<Edge<any>> {
+  if (!Array.isArray(edges) || edges.length === 0) return edges
+  const nodeById = new Map(nodes.map((n) => [n.id, n]))
+  const boxes = getNodeExclusionBoxes(nodes)
+  void direction
+
+  const edgeKey = (a: string, b: string) => `${a}→${b}`
+  const edgeSet = new Set(edges.map((e) => edgeKey(e.source, e.target)))
+
+  const nearRowOrCol = (s: { x: number; y: number }, t: { x: number; y: number }) => {
+    const dx = t.x - s.x
+    const dy = t.y - s.y
+    const nearRow = Math.abs(dy) <= GRID_UNIT * 3
+    const nearCol = Math.abs(dx) <= GRID_UNIT * 3
+    return { dx, dy, nearRow, nearCol }
+  }
+
+  const buildBestRouteForHandles = (
+    srcId: string,
+    tgtId: string,
+    sourceHandle: string,
+    targetHandle: string,
+  ): { polyline: RoutePoint[]; waypoints: Array<{ x: number; y: number }> } | null => {
+    const sourceSide = handleToSide(sourceHandle)
+    const targetSide = handleToSide(targetHandle)
+    if (!sourceSide || !targetSide) return null
+    const srcPoint = resolveHandlePoint(srcId, sourceSide, nodeById)
+    const tgtPoint = resolveHandlePoint(tgtId, targetSide, nodeById)
+    if (!srcPoint || !tgtPoint) return null
+
+    // 快速：只尝试少量 shift/mode，避免影响整体性能
+    const shifts = [0, FLOW_ROUTE_SHIFT_STEP, -FLOW_ROUTE_SHIFT_STEP]
+    const modes: Array<'auto' | 'horizontal' | 'vertical'> = ['auto', 'horizontal', 'vertical']
+
+    let best: RoutePoint[] | null = null
+    let bestScore = Number.POSITIVE_INFINITY
+    for (const mode of modes) {
+      for (const shift of shifts) {
+        const polyline = buildRoutePoints(srcPoint, tgtPoint, sourceSide, targetSide, shift, mode)
+        const collision = doesPolylineIntersectAnyExclusionBox(polyline, boxes, [srcId, tgtId])
+        if (collision) continue
+        const bends = Math.max(0, polyline.length - 2)
+        let len = 0
+        for (let i = 1; i < polyline.length; i += 1) {
+          len += Math.abs(polyline[i].x - polyline[i - 1].x) + Math.abs(polyline[i].y - polyline[i - 1].y)
+        }
+        const score = bends * 80 + len
+        if (score < bestScore) {
+          bestScore = score
+          best = polyline
+        }
+      }
+    }
+    if (!best) return null
+    return { polyline: best, waypoints: best.slice(1, -1) }
+  }
+
+  const scoreHandlePair = (args: {
+    srcId: string
+    tgtId: string
+    srcCenter: { x: number; y: number }
+    tgtCenter: { x: number; y: number }
+    isBidirectional: boolean
+    sourceSide: Side
+    targetSide: Side
+    waypoints: Array<{ x: number; y: number }>
+  }): number => {
+    const { dx, dy, nearRow, nearCol } = nearRowOrCol(args.srcCenter, args.tgtCenter)
+    const bends = args.waypoints.length
+    let score = bends * 50
+
+    // 近似同一行：避免“上下混连”造成不规则的下扎/上扎
+    if (nearRow) {
+      const verticalMixed =
+        (args.sourceSide === 'top' || args.sourceSide === 'bottom') &&
+        (args.targetSide === 'top' || args.targetSide === 'bottom') &&
+        args.sourceSide !== args.targetSide
+      if (verticalMixed) score += 220
+      // 主方向应沿 x 推进：反向出边轻微惩罚（不是强制）
+      if (dx >= 0 && args.sourceSide === 'left') score += 80
+      if (dx < 0 && args.sourceSide === 'right') score += 80
+    }
+
+    // 近似同一列：避免“左右混连”
+    if (nearCol) {
+      const horizontalMixed =
+        (args.sourceSide === 'left' || args.sourceSide === 'right') &&
+        (args.targetSide === 'left' || args.targetSide === 'right') &&
+        args.sourceSide !== args.targetSide
+      if (horizontalMixed) score += 220
+      if (dy >= 0 && args.sourceSide === 'top') score += 80
+      if (dy < 0 && args.sourceSide === 'bottom') score += 80
+    }
+
+    // 双向边：更偏好同侧（top-top / bottom-bottom / left-left / right-right）减少“对穿”
+    if (args.isBidirectional) {
+      if (args.sourceSide === args.targetSide) score -= 40
+      else score += 40
+    }
+
+    return score
+  }
+
+  const occupiedRouteSignatures = new Set<string>()
+
+  return edges.map((e) => {
+    const srcNode = nodeById.get(e.source)
+    const tgtNode = nodeById.get(e.target)
+    if (!srcNode || !tgtNode) return e
+
+    const existingWaypoints = Array.isArray(((e.data ?? {}) as any)?.waypoints)
+      ? ((((e.data ?? {}) as any).waypoints as any[]) ?? [])
+      : []
+
+    const centers = getCenters(e.source, e.target, nodeById)
+    const sCenter = centers ? { x: centers.sCx, y: centers.sCy } : { x: srcNode.position?.x ?? 0, y: srcNode.position?.y ?? 0 }
+    const tCenter = centers ? { x: centers.tCx, y: centers.tCy } : { x: tgtNode.position?.x ?? 0, y: tgtNode.position?.y ?? 0 }
+    const isBidirectional = edgeSet.has(edgeKey(e.target, e.source)) || String((e as any).arrowStyle ?? '') === 'both'
+
+    const currentSH = e.sourceHandle
+    const currentTH = e.targetHandle
+    const currentSS = currentSH ? handleToSide(currentSH) : null
+    const currentTS = currentTH ? handleToSide(currentTH) : null
+
+    const inferred = inferHandlesForEdge(e.source, e.target, nodeById)
+    const { dx, dy, nearRow, nearCol } = nearRowOrCol(sCenter, tCenter)
+
+    // 只在“看起来容易不规则/像斜线”的情形触发：
+    // - 近似同一行，却使用上下混连（bottom->top / top->bottom）
+    // - 近似同一列，却使用左右混连（left->right / right->left）
+    // - 双向边近似同排/同列，却不是同侧（top-top / bottom-bottom / left-left / right-right）
+    const verticalMixedNearRow =
+      Boolean(nearRow && currentSS && currentTS) &&
+      (currentSS === 'top' || currentSS === 'bottom') &&
+      (currentTS === 'top' || currentTS === 'bottom') &&
+      currentSS !== currentTS
+    const horizontalMixedNearCol =
+      Boolean(nearCol && currentSS && currentTS) &&
+      (currentSS === 'left' || currentSS === 'right') &&
+      (currentTS === 'left' || currentTS === 'right') &&
+      currentSS !== currentTS
+    const bidiNotSameSide =
+      Boolean(isBidirectional && (nearRow || nearCol) && currentSS && currentTS) && currentSS !== currentTS
+
+    if (!verticalMixedNearRow && !horizontalMixedNearCol && !bidiNotSameSide) {
+      // 复查不介入：保留 strictHandles 已经做好的避障/去重走线
+      const sig = buildPolylineSignature([
+        ...(resolveHandlePoint(e.source, currentSS ?? 'right', nodeById) ? [resolveHandlePoint(e.source, currentSS ?? 'right', nodeById)!] : []),
+        ...existingWaypoints.map((p) => ({ x: Number(p.x) || 0, y: Number(p.y) || 0 })),
+        ...(resolveHandlePoint(e.target, currentTS ?? 'left', nodeById) ? [resolveHandlePoint(e.target, currentTS ?? 'left', nodeById)!] : []),
+      ])
+      if (sig) occupiedRouteSignatures.add(sig)
+      return e
+    }
+
+    const candidates: Array<{ sh: string; th: string }> = []
+    const push = (sh?: string | null, th?: string | null) => {
+      if (!sh || !th) return
+      if (!handleToSide(sh) || !handleToSide(th)) return
+      const key = `${sh}/${th}`
+      if (candidates.some((c) => `${c.sh}/${c.th}` === key)) return
+      candidates.push({ sh, th })
+    }
+
+    push(currentSH, currentTH)
+    push(inferred?.sourceHandle, inferred?.targetHandle)
+
+    if (nearRow) {
+      // 主候选：水平 or 同侧（用于避免 A 下连 B 上这种“不规则”）
+      if (dx >= 0) push('s-right', 't-left')
+      else push('s-left', 't-right')
+      push('s-top', 't-top')
+      push('s-bottom', 't-bottom')
+    } else if (nearCol) {
+      if (dy >= 0) push('s-bottom', 't-top')
+      else push('s-top', 't-bottom')
+      push('s-left', 't-left')
+      push('s-right', 't-right')
+    } else {
+      // 非同排同列：给一个“同侧”备选，常用于规避斜向视觉（不是强制）
+      push('s-top', 't-top')
+      push('s-right', 't-left')
+      push('s-bottom', 't-top')
+      push('s-left', 't-right')
+    }
+
+    let bestEdge = e
+    let bestScore = Number.POSITIVE_INFINITY
+
+    for (const c of candidates) {
+      const route = buildBestRouteForHandles(e.source, e.target, c.sh, c.th)
+      if (!route) continue
+      const sig = buildPolylineSignature(route.polyline)
+      const fullOverlap = sig ? occupiedRouteSignatures.has(sig) : false
+      if (fullOverlap) continue
+      const ss = handleToSide(c.sh)
+      const ts = handleToSide(c.th)
+      if (!ss || !ts) continue
+      const score = scoreHandlePair({
+        srcId: e.source,
+        tgtId: e.target,
+        srcCenter: sCenter,
+        tgtCenter: tCenter,
+        isBidirectional,
+        sourceSide: ss,
+        targetSide: ts,
+        waypoints: route.waypoints,
+      })
+      if (score < bestScore) {
+        bestScore = score
+        bestEdge = {
+          ...e,
+          sourceHandle: c.sh,
+          targetHandle: c.th,
+          type: route.waypoints.length >= 2 ? 'smoothstep' : (e.type ?? 'smoothstep'),
+          data: { ...((e.data ?? {}) as any), waypoints: route.waypoints },
+        }
+      }
+    }
+
+    // 若 current handles 都缺失则保持 best；若 current 存在则仅在“明显更优”时替换（避免强制行为）
+    if (currentSS && currentTS) {
+      const curWaypoints = Array.isArray(((e.data ?? {}) as any)?.waypoints) ? (((e.data ?? {}) as any).waypoints as any[]) : []
+      const curScore = scoreHandlePair({
+        srcId: e.source,
+        tgtId: e.target,
+        srcCenter: sCenter,
+        tgtCenter: tCenter,
+        isBidirectional,
+        sourceSide: currentSS,
+        targetSide: currentTS,
+        waypoints: curWaypoints.map((p) => ({ x: Number(p.x) || 0, y: Number(p.y) || 0 })),
+      })
+      if (bestScore + 60 >= curScore) return e
+    }
+
+    const chosenSS = bestEdge.sourceHandle ? handleToSide(bestEdge.sourceHandle) : currentSS
+    const chosenTS = bestEdge.targetHandle ? handleToSide(bestEdge.targetHandle) : currentTS
+    const chosenSrc = chosenSS ? resolveHandlePoint(bestEdge.source, chosenSS, nodeById) : null
+    const chosenTgt = chosenTS ? resolveHandlePoint(bestEdge.target, chosenTS, nodeById) : null
+    const chosenWaypoints = Array.isArray(((bestEdge.data ?? {}) as any)?.waypoints) ? ((((bestEdge.data ?? {}) as any).waypoints as any[]) ?? []) : []
+    const chosenPolyline: RoutePoint[] =
+      chosenSrc && chosenTgt
+        ? [
+            chosenSrc,
+            ...chosenWaypoints.map((p) => ({ x: Number(p.x) || 0, y: Number(p.y) || 0 })),
+            chosenTgt,
+          ]
+        : []
+    const chosenSig = chosenPolyline.length > 0 ? buildPolylineSignature(chosenPolyline) : null
+    if (chosenSig) occupiedRouteSignatures.add(chosenSig)
+    return bestEdge
   })
 }
 
@@ -1664,12 +2037,12 @@ export async function materializeGraphBatchPayloadToSnapshot(
         if (swimlaneImageImport) {
           nodeData.fill = 'rgba(241, 245, 249, 0.5)'
           nodeData.stroke = 'rgba(203, 213, 225, 0.6)'
-          nodeData.strokeWidth = 1.5
+          nodeData.strokeWidth = 1
           delete nodeData.laneHeaderBackground
           delete nodeData.laneTitleLabelBackground
         } else {
           nodeData.stroke = 'rgba(203, 213, 225, 0.6)'
-          nodeData.strokeWidth = 1.5
+          nodeData.strokeWidth = 1
         }
       }
 
@@ -2049,6 +2422,8 @@ export async function materializeGraphBatchPayloadToSnapshot(
   }
   if (flowchartMode) {
     safeEdges = applyFlowchartStrictHandles(safeNodes, safeEdges, effectiveDirection)
+    // 最后一步快速走线复查：当 handle/路由导致“看起来像斜线/不规则对穿”时，尝试少量替代走线并选择更自然的方案。
+    safeEdges = quickReviewAndFixFlowchartRoutes(safeNodes, safeEdges, effectiveDirection)
   }
 
   safeNodes = normalizeNodesForGrid(safeNodes)

@@ -619,6 +619,7 @@
   flex-direction: column;
   align-items: flex-end;
   gap: 6px;
+  width: fit-content;
   border: none;
   background: transparent;
   backdrop-filter: none;
@@ -628,6 +629,7 @@
   display: inline-flex;
   align-items: center;
   gap: 4px;
+  width: fit-content;
 }
 
 .topPanelSaveHint {
@@ -635,39 +637,9 @@
   line-height: 14px;
   color: rgba(100, 116, 139, 0.75);
   user-select: none;
-  position: relative;
-  background-image: linear-gradient(
-    110deg,
-    rgba(100, 116, 139, 0.75) 0%,
-    rgba(100, 116, 139, 0.75) 40%,
-    rgba(255, 255, 255, 0.95) 50%,
-    rgba(100, 116, 139, 0.75) 60%,
-    rgba(100, 116, 139, 0.75) 100%
-  );
-  background-size: 220% 100%;
-  background-position: 120% 0;
-  -webkit-background-clip: text;
-  background-clip: text;
-  -webkit-text-fill-color: transparent;
-  animation: topPanelSaveHintShine 18s linear infinite;
-}
-
-@keyframes topPanelSaveHintShine {
-  0% {
-    background-position: 120% 0;
-  }
-  16.666% {
-    background-position: -120% 0;
-  }
-  83.333% {
-    background-position: -120% 0;
-  }
-  83.334% {
-    background-position: 120% 0;
-  }
-  100% {
-    background-position: 120% 0;
-  }
+  width: 100%;
+  display: flex;
+  justify-content: center;
 }
 
 .assetsBtn {
@@ -853,15 +825,15 @@
   border: 1px solid #e5e7eb;
   background: #ffffff;
   padding: 0 16px;
-  font-size: 12px;
-  font-weight: 700;
+  font-size: 14px;
+  line-height: 22px;
+  font-weight: 500;
   color: #0f172a;
   cursor: pointer;
   display: inline-flex;
   align-items: center;
   justify-content: center;
   gap: 6px;
-  line-height: 1;
   box-shadow: none;
 }
 

@@ -1339,6 +1339,42 @@ function quantizeStep(values: number[], fallback: number): number {
   return Math.max(0.02, Math.min(0.45, picked))
 }
 
+/**
+ * 将连续中心坐标转为“可跳格”的离散索引，尽量保留相对间距：
+ * - 相邻差值很小：认为近似对齐 → 同一格（inc=0）
+ * - 相邻差值很大：允许跳格 → inc>1
+ */
+function inferGridIndexByCenters(values: Array<{ id: string; v: number | null | undefined }>, fallbackStep: number): Map<string, number> {
+  const valid = values
+    .filter((x): x is { id: string; v: number } => Number.isFinite(x.v))
+    .map((x) => ({ id: x.id, v: x.v as number }))
+    .sort((a, b) => a.v - b.v)
+  const out = new Map<string, number>()
+  if (valid.length === 0) return out
+  if (valid.length === 1) {
+    out.set(valid[0].id, 0)
+    return out
+  }
+  // baseStep 用偏小的“常见相邻间距”（低分位），这样大间距能自然表现为跳列/跳行。
+  const baseStep = quantizeStep(valid.map((x) => x.v), fallbackStep)
+  const nearThreshold = Math.max(0.012, baseStep * 0.4)
+
+  let idx = 0
+  out.set(valid[0].id, idx)
+  for (let i = 1; i < valid.length; i += 1) {
+    const d = valid[i].v - valid[i - 1].v
+    if (d <= nearThreshold) {
+      // 近似同列/同行：保持 idx 不变
+    } else {
+      const raw = Math.max(1, Math.round(d / Math.max(0.0001, baseStep)))
+      const inc = Math.min(12, raw) // 防止极端跳格导致列数爆炸
+      idx += inc
+    }
+    out.set(valid[i].id, idx)
+  }
+  return out
+}
+
 function inferSwimlaneDirectionFromStructured(structured: AiImageStructuredDraft): 'horizontal' | 'vertical' {
   const laneBoxes = structured.groups.filter(
     (g): g is AiImageStructuredGroup & { x: number; y: number; w: number; h: number } =>
@@ -1844,20 +1880,24 @@ export function buildSwimlaneDraftFromImageStructured(structured: AiImageStructu
   for (const lane of lanes) {
     const list = byLane.get(lane.id)
     if (!list || list.length === 0) continue
-    const xs = list.map((n) => n.centerX).filter((v): v is number => Number.isFinite(v))
-    const ys = list.map((n) => n.centerY).filter((v): v is number => Number.isFinite(v))
-    const minX = xs.length > 0 ? Math.min(...xs) : 0
-    const minY = ys.length > 0 ? Math.min(...ys) : 0
-    const stepX = quantizeStep(xs, 0.16)
-    const stepY = quantizeStep(ys, 0.12)
+    // 图生图：尽量保留原图相对间距与排序（允许跳列/跳行），再交给后续泳道布局做近似对齐收敛。
+    const colById = inferGridIndexByCenters(
+      list.map((n) => ({ id: n.id, v: n.centerX })),
+      0.16,
+    )
+    const rowById = inferGridIndexByCenters(
+      list.map((n) => ({ id: n.id, v: n.centerY })),
+      0.12,
+    )
 
     for (let i = 0; i < list.length; i += 1) {
       const node = list[i]
-      node.laneCol = node.centerX != null ? Math.max(0, Math.round((node.centerX - minX) / stepX)) : i
-      node.laneRow = node.centerY != null ? Math.max(0, Math.round((node.centerY - minY) / stepY)) : 0
+      node.laneCol = colById.has(node.id) ? (colById.get(node.id) as number) : i
+      node.laneRow = rowById.has(node.id) ? (rowById.get(node.id) as number) : 0
     }
 
     list.sort((a, b) => {
+      // 以原图几何为主（col/row 已包含跳格信息），稳定回退 sourceIndex
       if (a.laneCol !== b.laneCol) return a.laneCol - b.laneCol
       if (a.laneRow !== b.laneRow) return a.laneRow - b.laneRow
       return a.sourceIndex - b.sourceIndex
@@ -1992,6 +2032,174 @@ function sanitizeEdgeLabelForImageSwimlane(label: unknown, relation: unknown): s
   return t.slice(0, 12)
 }
 
+function quickReviewAndFixImageSwimlaneEdges(args: {
+  nodes: any[]
+  edges: any[]
+  direction: 'horizontal' | 'vertical'
+}): any[] {
+  const { nodes, edges, direction } = args
+  if (!Array.isArray(edges) || edges.length === 0) return edges
+
+  const nodeById = new Map<string, any>(nodes.map((n) => [String(n?.id ?? ''), n]))
+  const laneById = new Map<string, any>(
+    nodes
+      .filter((n) => n?.type === 'group' && n?.data?.role === 'lane')
+      .map((n) => [String(n.id), n]),
+  )
+
+  const absMemo = new Map<string, { x: number; y: number }>()
+  const absPosById = (id: string, seen?: Set<string>): { x: number; y: number } => {
+    const cached = absMemo.get(id)
+    if (cached) return cached
+    const node = nodeById.get(id)
+    if (!node) return { x: 0, y: 0 }
+    const x = Number(node?.position?.x) || 0
+    const y = Number(node?.position?.y) || 0
+    const pid = typeof node?.parentId === 'string' ? node.parentId : undefined
+    if (!pid || !nodeById.has(pid)) {
+      const abs = { x, y }
+      absMemo.set(id, abs)
+      return abs
+    }
+    const nextSeen = seen ?? new Set<string>()
+    if (nextSeen.has(id)) {
+      const abs = { x, y }
+      absMemo.set(id, abs)
+      return abs
+    }
+    nextSeen.add(id)
+    const p = absPosById(pid, nextSeen)
+    const abs = { x: p.x + x, y: p.y + y }
+    absMemo.set(id, abs)
+    return abs
+  }
+
+  const nodeCenter = (node: any): { x: number; y: number } => {
+    const id = String(node?.id ?? '')
+    const abs = absPosById(id)
+    const w = Number(node?.width ?? node?.style?.width ?? 0) || GRID_UNIT * 10
+    const h = Number(node?.height ?? node?.style?.height ?? 0) || GRID_UNIT * 6
+    return { x: abs.x + w * 0.5, y: abs.y + h * 0.5 }
+  }
+
+  const laneIdOf = (node: any): string | undefined => {
+    const fromData = String((node?.data as any)?.laneId ?? '').trim()
+    if (fromData && laneById.has(fromData)) return fromData
+    const pid = String(node?.parentId ?? '').trim()
+    if (pid && laneById.has(pid)) return pid
+    return undefined
+  }
+
+  const semanticOf = (node: any): string => String((node?.data as any)?.semanticType ?? (node?.data as any)?.semantic ?? '').trim().toLowerCase()
+
+  // 0) 基础清洗：去掉明显非法/重复
+  const seenPair = new Set<string>()
+  const cleaned: any[] = []
+  for (const e of edges) {
+    const source = String(e?.source ?? '').trim()
+    const target = String(e?.target ?? '').trim()
+    if (!source || !target) continue
+    if (source === target) continue
+    if (!nodeById.has(source) || !nodeById.has(target)) continue
+    const key = `${source}→${target}`
+    if (seenPair.has(key)) continue
+    seenPair.add(key)
+    cleaned.push(e)
+  }
+
+  // 1) 语义修正（不重布线，只修 relation/semanticType 并做极少量删除）
+  const outBySrc = new Map<string, any[]>()
+  const inByTgt = new Map<string, any[]>()
+  for (const e of cleaned) {
+    const s = String(e.source)
+    const t = String(e.target)
+    if (!outBySrc.has(s)) outBySrc.set(s, [])
+    if (!inByTgt.has(t)) inByTgt.set(t, [])
+    outBySrc.get(s)!.push(e)
+    inByTgt.get(t)!.push(e)
+  }
+
+  const isYesNo = (r: string) => r === 'yes' || r === 'no'
+  const isReturn = (r: string) => r === 'return_to' || r === 'cancel_to'
+
+  // 1.1 end 节点不应再有 next/yes/no 出边（保留 return_to/cancel_to）
+  const pruned: any[] = []
+  for (const e of cleaned) {
+    const src = nodeById.get(String(e.source))
+    const rel = toRelationToken((e?.data as any)?.relation)
+    const srcSem = semanticOf(src)
+    if (srcSem === 'end' && !isReturn(rel)) continue
+    pruned.push(e)
+  }
+
+  // 1.2 decision：最多保留 2 条 yes/no（按几何“更像分支”优先）
+  const final: any[] = []
+  const dropped = new Set<any>()
+  for (const [srcId, list] of outBySrc.entries()) {
+    const srcNode = nodeById.get(srcId)
+    if (!srcNode) continue
+    const srcSem = semanticOf(srcNode)
+    const yesNo = list.filter((e) => isYesNo(toRelationToken((e?.data as any)?.relation)))
+    if (srcSem !== 'decision' || yesNo.length <= 2) continue
+
+    const sC = nodeCenter(srcNode)
+    const scored = yesNo
+      .map((e) => {
+        const tgt = nodeById.get(String(e.target))
+        const tC = tgt ? nodeCenter(tgt) : { x: 0, y: 0 }
+        const dx = tC.x - sC.x
+        const dy = tC.y - sC.y
+        // 行泳道更看重左右推进；列泳道更看重上下推进
+        const primary = direction === 'horizontal' ? dx : dy
+        const secondary = direction === 'horizontal' ? Math.abs(dy) : Math.abs(dx)
+        // 更“向前”的 + 适度分叉（secondary）优先
+        const score = primary * 1.0 + secondary * 0.35
+        return { e, score }
+      })
+      .sort((a, b) => b.score - a.score)
+
+    for (let i = 2; i < scored.length; i += 1) dropped.add(scored[i].e)
+  }
+
+  for (const e of pruned) {
+    if (dropped.has(e)) continue
+    const src = nodeById.get(String(e.source))
+    const tgt = nodeById.get(String(e.target))
+    const srcLane = src ? laneIdOf(src) : undefined
+    const tgtLane = tgt ? laneIdOf(tgt) : undefined
+    const isCross = !!srcLane && !!tgtLane && srcLane !== tgtLane
+
+    const rel = toRelationToken((e?.data as any)?.relation) || 'next'
+    const srcSem = semanticOf(src)
+
+    // 非 decision 上的 yes/no：快速纠正为 next（避免“乱连线”语义污染）
+    const nextRel = srcSem === 'decision' ? rel : (isYesNo(rel) ? 'next' : rel)
+    const nextSemantic =
+      isReturn(nextRel)
+        ? 'returnFlow'
+        : isYesNo(nextRel)
+          ? 'conditional'
+          : isCross
+            ? 'crossLane'
+            : 'normal'
+
+    final.push({
+      ...e,
+      label: sanitizeEdgeLabelForImageSwimlane(e.label, nextRel),
+      data: {
+        ...((e?.data ?? {}) as Record<string, unknown>),
+        relation: nextRel,
+        semanticType: nextSemantic,
+        layoutProfile: 'swimlane',
+        autoGeneratedSwimlane: true,
+        labelTextOnly: true,
+      },
+    })
+  }
+
+  return final
+}
+
 /** 图生图泳道：与 GroupNode `.laneNode` 一致的默认区底色，禁止沿用识图模型配色 */
 const SWIMLANE_IMAGE_LANE_BODY_FILL = 'rgba(241, 245, 249, 0.5)'
 const SWIMLANE_IMAGE_LANE_STROKE = 'rgba(203, 213, 225, 0.6)'
@@ -2001,7 +2209,7 @@ function applySwimlaneImageDefaultLaneGroupPaint(node: any): any {
   const d = { ...(node.data ?? {}) }
   d.fill = SWIMLANE_IMAGE_LANE_BODY_FILL
   d.stroke = SWIMLANE_IMAGE_LANE_STROKE
-  d.strokeWidth = 1.5
+  d.strokeWidth = 1
   d.titleColor = '#334155'
   delete d.laneHeaderBackground
   delete d.laneTitleLabelBackground
@@ -2335,6 +2543,141 @@ function autoFixSwimlaneImageLayoutNodes(
     }
   }
 
+  // 4) 跨泳道近似对齐（图生图保真 + 工整的折中）：
+  // - 行泳道（horizontal）：把不同泳道中“近似同一列”的节点对齐到同一条 X 中心线
+  // - 列泳道（vertical）：把不同泳道中“近似同一行”的节点对齐到同一条 Y 中心线
+  // 只在偏差 <= 3 * GRID_UNIT 时触发，且确保节点仍落在泳道内容区内。
+  if (laneNodes.length > 1) {
+    rebuildRelations()
+    clearAbsMemo()
+
+    const clamp = (v: number, min: number, max: number) => Math.max(min, Math.min(max, v))
+    const median = (values: number[]): number => {
+      if (!Array.isArray(values) || values.length === 0) return 0
+      const a = [...values].sort((x, y) => x - y)
+      const mid = Math.floor(a.length / 2)
+      if (a.length % 2 === 1) return a[mid]
+      return (a[mid - 1] + a[mid]) / 2
+    }
+
+    const getLaneHeaderAndBounds = (lane: any) => {
+      const laneAbs = getAbsPos(lane)
+      const laneSize = readNodeSize(lane)
+      const laneData = (lane?.data ?? {}) as Record<string, unknown>
+      const laneTitlePosition = String(laneData.titlePosition ?? '')
+      const laneAxisMeta = String((laneData.laneMeta as any)?.laneAxis ?? '')
+      const laneHeaderOnLeft =
+        laneTitlePosition === 'left-center'
+          ? true
+          : laneTitlePosition === 'top-center'
+            ? false
+            : laneAxisMeta !== 'column'
+      const laneHeaderRaw = Number((laneData.laneMeta as any)?.headerSize)
+      const laneHeaderSize = Number.isFinite(laneHeaderRaw) && laneHeaderRaw > 0
+        ? laneHeaderRaw
+        : SWIMLANE_IMAGE_HEADER_DEFAULT_SIZE
+      const contentMinX = laneAbs.x + (laneHeaderOnLeft ? laneHeaderSize : 0) + SWIMLANE_IMAGE_CONTENT_PAD
+      const contentMinY = laneAbs.y + (laneHeaderOnLeft ? SWIMLANE_IMAGE_CONTENT_PAD : laneHeaderSize + SWIMLANE_IMAGE_TOP_HEADER_NODE_GAP)
+      const contentMaxX = laneAbs.x + laneSize.w - SWIMLANE_IMAGE_CONTENT_PAD
+      const contentMaxY = laneAbs.y + laneSize.h - SWIMLANE_IMAGE_CONTENT_PAD
+      return { laneAbs, laneSize, laneHeaderOnLeft, laneHeaderSize, contentMinX, contentMinY, contentMaxX, contentMaxY }
+    }
+
+    type AlignCandidate = {
+      laneId: string
+      node: any
+      center: number
+      absX: number
+      absY: number
+      w: number
+      h: number
+      bounds: ReturnType<typeof getLaneHeaderAndBounds>
+    }
+
+    const candidates: AlignCandidate[] = []
+    for (const lane of laneNodes) {
+      const bounds = getLaneHeaderAndBounds(lane)
+      const children = (childrenByParent.get(String(lane.id)) ?? []).filter((n) => n?.type === 'quad')
+      for (const child of children) {
+        const abs = getAbsPos(child)
+        const size = readNodeSize(child)
+        const center = direction === 'horizontal'
+          ? abs.x + size.w * 0.5
+          : abs.y + size.h * 0.5
+        candidates.push({
+          laneId: String(lane.id),
+          node: child,
+          center,
+          absX: abs.x,
+          absY: abs.y,
+          w: size.w,
+          h: size.h,
+          bounds,
+        })
+      }
+    }
+
+    const TH = GRID_UNIT * 3
+    // 以“网格线桶”为第一归并维度，让结果更像肉眼看到的“一列/一行”。
+    // 然后对桶中心做一次“中位数 -> 网格吸附”作为最终目标中心线。
+    const bucketByKey = new Map<number, AlignCandidate[]>()
+    for (const c of candidates) {
+      const key = snapToGrid(c.center, GRID_UNIT)
+      const list = bucketByKey.get(key)
+      if (list) list.push(c)
+      else bucketByKey.set(key, [c])
+    }
+
+    const bucketKeys = Array.from(bucketByKey.keys()).sort((a, b) => a - b)
+    const clusters: AlignCandidate[][] = []
+    let curKeys: number[] = []
+    for (const k of bucketKeys) {
+      if (curKeys.length === 0) {
+        curKeys = [k]
+        continue
+      }
+      const prevK = curKeys[curKeys.length - 1]
+      // 若两个桶中心足够近，合并为同一 cluster（处理“同一列略偏到相邻网格线”的情况）
+      if (Math.abs(k - prevK) <= TH) {
+        curKeys.push(k)
+      } else {
+        const merged: AlignCandidate[] = []
+        for (const kk of curKeys) merged.push(...(bucketByKey.get(kk) ?? []))
+        clusters.push(merged)
+        curKeys = [k]
+      }
+    }
+    if (curKeys.length) {
+      const merged: AlignCandidate[] = []
+      for (const kk of curKeys) merged.push(...(bucketByKey.get(kk) ?? []))
+      clusters.push(merged)
+    }
+
+    for (const cluster of clusters) {
+      if (cluster.length < 2) continue
+      const laneSet = new Set(cluster.map((c) => c.laneId))
+      if (laneSet.size < 2) continue
+
+      const targetCenter = snapToGrid(median(cluster.map((c) => c.center)), GRID_UNIT)
+
+      for (const c of cluster) {
+        if (direction === 'horizontal') {
+          if (Math.abs(c.center - targetCenter) > TH) continue
+          const minX = c.bounds.contentMinX
+          const maxX = c.bounds.contentMaxX - c.w
+          const nextAbsX = clamp(snapToGrid(targetCenter - c.w * 0.5), minX, maxX)
+          setAbsPos(c.node, nextAbsX, c.absY)
+        } else {
+          if (Math.abs(c.center - targetCenter) > TH) continue
+          const minY = c.bounds.contentMinY
+          const maxY = c.bounds.contentMaxY - c.h
+          const nextAbsY = clamp(snapToGrid(targetCenter - c.h * 0.5), minY, maxY)
+          setAbsPos(c.node, c.absX, nextAbsY)
+        }
+      }
+    }
+  }
+
   return nodes
 }
 
@@ -2653,9 +2996,14 @@ export function buildSwimlanePreserveLayoutDraftFromImageStructured(
     return autoFixSwimlaneImageLayoutNodes(nodes, direction)
   }
 
-  const finalNodes = absorbSwimlaneNodes().map((n: any) => applySwimlaneImageDefaultLaneGroupPaint(n))
+  // 关键：absorbSwimlaneNodes 会“重算 parentId/laneId”，此前的对齐可能因早期 parent 关系不稳定而未触发。
+  // 因此在 absorb 之后再跑一遍 autoFix，让跨泳道近似对齐真正对最终归属生效。
+  const absorbedNodes = absorbSwimlaneNodes()
+  const finalNodes = autoFixSwimlaneImageLayoutNodes(absorbedNodes, direction).map((n: any) =>
+    applySwimlaneImageDefaultLaneGroupPaint(n),
+  )
   const nodeById = new Map(finalNodes.map((n: any) => [n.id, n]))
-  const nextEdges = (base.edges as any[]).map((edge) => {
+  const nextEdgesRaw = (base.edges as any[]).map((edge) => {
     const srcNode = nodeById.get(edge.source)
     const tgtNode = nodeById.get(edge.target)
     const srcLaneId = (srcNode?.data as any)?.laneId ?? srcNode?.parentId
@@ -2686,6 +3034,7 @@ export function buildSwimlanePreserveLayoutDraftFromImageStructured(
       },
     }
   })
+  const nextEdges = quickReviewAndFixImageSwimlaneEdges({ nodes: finalNodes, edges: nextEdgesRaw, direction })
 
   return {
     schema: 'flow2go.ai.diagram.v1',

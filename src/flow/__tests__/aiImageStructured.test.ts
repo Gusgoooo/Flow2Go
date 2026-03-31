@@ -644,6 +644,93 @@ describe('ai image structured pipeline', () => {
     }
   })
 
+  it('cross-lane micro-aligns near columns after lane absorption in preserve mode', () => {
+    const refined = refineImageStructuredDraft({
+      schema: 'flow2go.image.structure.v2',
+      title: '跨泳道近似对齐（absorb 后生效）',
+      sceneHint: 'swimlane',
+      lanes: ['用户', '系统'],
+      groups: [
+        { id: 'lane-1', label: '用户', kind: 'lane', x: 0.08, y: 0.10, w: 0.84, h: 0.22 },
+        { id: 'lane-2', label: '系统', kind: 'lane', x: 0.08, y: 0.42, w: 0.84, h: 0.22 },
+      ],
+      nodes: [
+        // 刻意不提供 parentId，让 absorbSwimlaneNodes 通过几何重算 lane 归属
+        { id: 'u1', label: '用户步骤', type: 'process', lane: '用户', x: 0.22, y: 0.16, w: 0.12, h: 0.08 },
+        // 与 u1 的 x 很接近但略有偏差，应在 absorb 后跨泳道吸附到同一列中心线
+        { id: 's1', label: '系统步骤', type: 'process', lane: '系统', x: 0.235, y: 0.48, w: 0.12, h: 0.08 },
+      ],
+      edges: [{ from: 'u1', to: 's1', relation: 'next' }],
+      rawText: '{}',
+    })
+
+    const draft = buildSwimlanePreserveLayoutDraftFromImageStructured(refined)
+    const nodes = (draft.nodes as any[]).filter(Boolean)
+    const byId = new Map(nodes.map((n) => [n.id, n]))
+    const laneNodes = nodes.filter((n) => n.type === 'group' && n?.data?.role === 'lane')
+    expect(laneNodes.length).toBe(2)
+
+    const absPos = (node: any) => {
+      let x = Number(node?.position?.x) || 0
+      let y = Number(node?.position?.y) || 0
+      let cur = node
+      const seen = new Set<string>()
+      while (cur?.parentId && !seen.has(cur.id)) {
+        seen.add(cur.id)
+        const p = byId.get(cur.parentId)
+        if (!p) break
+        x += Number(p?.position?.x) || 0
+        y += Number(p?.position?.y) || 0
+        cur = p
+      }
+      return { x, y }
+    }
+
+    const u1 = byId.get('u1')
+    const s1 = byId.get('s1')
+    expect(u1?.parentId).toBe('lane-1')
+    expect(s1?.parentId).toBe('lane-2')
+
+    const u1Abs = absPos(u1)
+    const s1Abs = absPos(s1)
+    const u1CenterX = u1Abs.x + (Number(u1?.width ?? u1?.style?.width ?? 0) || 0) * 0.5
+    const s1CenterX = s1Abs.x + (Number(s1?.width ?? s1?.style?.width ?? 0) || 0) * 0.5
+    expect(Math.abs(u1CenterX - s1CenterX)).toBeLessThanOrEqual(GRID_UNIT)
+  })
+
+  it('quickly prunes extra decision yes/no edges in preserve swimlane mode', () => {
+    const refined = refineImageStructuredDraft({
+      schema: 'flow2go.image.structure.v2',
+      title: '决策分支走线复查',
+      sceneHint: 'swimlane',
+      lanes: ['用户', '系统'],
+      groups: [
+        { id: 'lane-1', label: '用户', kind: 'lane', x: 0.08, y: 0.10, w: 0.84, h: 0.22 },
+        { id: 'lane-2', label: '系统', kind: 'lane', x: 0.08, y: 0.42, w: 0.84, h: 0.22 },
+      ],
+      nodes: [
+        { id: 'd1', label: '判断', type: 'decision', lane: '用户', x: 0.18, y: 0.16, w: 0.14, h: 0.10 },
+        { id: 't1', label: '分支1', type: 'process', lane: '系统', x: 0.52, y: 0.44, w: 0.12, h: 0.08 },
+        { id: 't2', label: '分支2', type: 'process', lane: '系统', x: 0.66, y: 0.50, w: 0.12, h: 0.08 },
+        { id: 't3', label: '分支3', type: 'process', lane: '系统', x: 0.76, y: 0.56, w: 0.12, h: 0.08 },
+      ],
+      edges: [
+        { from: 'd1', to: 't1', relation: 'yes' },
+        { from: 'd1', to: 't2', relation: 'no' },
+        { from: 'd1', to: 't3', relation: 'yes' }, // 多余的 yes/no，应被快速复查移除
+      ],
+      rawText: '{}',
+    })
+
+    const draft = buildSwimlanePreserveLayoutDraftFromImageStructured(refined)
+    const edges = (draft.edges as any[]).filter((e) => String(e?.source ?? '') === 'd1')
+    const yesNo = edges.filter((e) => {
+      const rel = String(e?.data?.relation ?? '').toLowerCase()
+      return rel === 'yes' || rel === 'no'
+    })
+    expect(yesNo.length).toBeLessThanOrEqual(2)
+  })
+
   it('removes redundant frame when it duplicates lane title and bounds', () => {
     const refined = refineImageStructuredDraft({
       schema: 'flow2go.image.structure.v2',

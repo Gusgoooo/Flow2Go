@@ -67,7 +67,7 @@ export function GroupNode(props: NodeProps) {
     groupStyle.boxShadow = 'none'
   } else {
     // 统一外描边：不挤占 group/lane 内部布局空间。
-    const defaultStrokeWidth = data.role === 'lane' ? 1.5 : 2
+    const defaultStrokeWidth = data.role === 'lane' ? 1 : 2
     const effectiveStrokeWidth = Number.isFinite(strokeWidth as number) ? Math.max(0, Number(strokeWidth)) : defaultStrokeWidth
     groupStyle.boxShadow = `0 0 0 ${effectiveStrokeWidth}px ${stroke}`
   }

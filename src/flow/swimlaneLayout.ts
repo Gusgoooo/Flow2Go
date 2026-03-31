@@ -7,6 +7,7 @@ import type { Edge, Node } from '@xyflow/react'
 import type { FlowDirection } from './mermaid/types'
 import { doesPolylineIntersectAnyExclusionBox, getNodeExclusionBoxes } from './layout/routing/exclusion'
 import {
+  GRID_UNIT,
   HANDLE_ALIGN_UNIT,
   SIZE_STEP_RATIO,
   normalizeNodeGeometryToGrid,
@@ -29,6 +30,18 @@ const CANVAS_START_X = 80
 const CANVAS_START_Y = 80
 const NODE_GAP_X = 48
 const NODE_GAP_Y = 32
+
+function median(values: number[]): number {
+  if (!Array.isArray(values) || values.length === 0) return 0
+  const a = [...values].sort((x, y) => x - y)
+  const mid = Math.floor(a.length / 2)
+  if (a.length % 2 === 1) return a[mid]
+  return (a[mid - 1] + a[mid]) / 2
+}
+
+function clamp(n: number, min: number, max: number): number {
+  return Math.max(min, Math.min(max, n))
+}
 
 const DEFAULT_NODE_SIZES: Record<string, { w: number; h: number }> = {
   rect: { w: 160, h: 48 },
@@ -423,9 +436,16 @@ export function autoLayoutSwimlane(args: {
         item.child.width = item.size.w
         item.child.height = item.size.h
         item.child.style = { ...(item.child.style as any), width: item.size.w, height: item.size.h }
+
+        // 最后一步「微调对齐」：
+        // - 同行节点：默认中心对齐；当高度差很小（<= HANDLE_ALIGN_UNIT）时，改为顶边对齐，视觉更“齐”。
+        // - 同列节点：默认中心对齐；当宽度差很小（<= HANDLE_ALIGN_UNIT）时，改为左边对齐，减少细微左右抖动。
+        const MICRO_ALIGN_THRESHOLD = GRID_UNIT * 3
+        const microTopAlign = rowH - item.size.h <= MICRO_ALIGN_THRESHOLD
+        const microLeftAlign = colW - item.size.w <= MICRO_ALIGN_THRESHOLD
         item.child.position = {
-          x: padLeft + colStartRel + (colW - item.size.w) / 2,
-          y: rowStart + (rowH - item.size.h) / 2,
+          x: padLeft + colStartRel + (microLeftAlign ? 0 : (colW - item.size.w) / 2),
+          y: rowStart + (microTopAlign ? 0 : (rowH - item.size.h) / 2),
         }
       }
 
@@ -485,6 +505,76 @@ export function autoLayoutSwimlane(args: {
       lane.height = unifiedH
       lane.style = { ...(lane.style as any), width: w, height: unifiedH }
       cx = snapToGrid(cx + w + LANE_GAP, LANE_STACK_STEP)
+    }
+  }
+
+  // ── Phase B2: 跨泳道近似对齐（微调） ──
+  // horizontal（泳道从上到下）：对齐“近似同一列”的节点（绝对 centerX）
+  // vertical（泳道从左到右）：对齐“近似同一行”的节点（绝对 centerY）
+  // 仅当一个簇跨越 >=2 个泳道时触发，避免单泳道内部被过度干预。
+  if (laneGridPending.length > 1) {
+    const MICRO_CROSS_LANE_THRESHOLD = GRID_UNIT * 3
+    const laneGeom = new Map<
+      string,
+      { padLeft: number; padRight: number; padTop: number; padBottom: number; absX: number; absY: number; w: number; h: number }
+    >()
+    for (const p of laneGridPending) {
+      const lane = p.lane
+      const absX = Number(lane.position?.x) || 0
+      const absY = Number(lane.position?.y) || 0
+      const w = Number(lane.width ?? (lane.style as any)?.width) || 0
+      const h = Number(lane.height ?? (lane.style as any)?.height) || 0
+      laneGeom.set(String(lane.id), { padLeft: p.padLeft, padRight: p.padRight, padTop: p.padTop, padBottom: p.padBottom, absX, absY, w, h })
+    }
+
+    type ItemRef = { node: Node<any>; laneId: string; center: number }
+    const items: ItemRef[] = []
+    for (const p of laneGridPending) {
+      for (const it of p.layoutItems) {
+        const laneId = String(p.lane.id)
+        const g = laneGeom.get(laneId)
+        if (!g) continue
+        const nx = Number(it.child.position?.x) || 0
+        const ny = Number(it.child.position?.y) || 0
+        const w = Number(it.child.width ?? (it.child.style as any)?.width) || it.size.w
+        const h = Number(it.child.height ?? (it.child.style as any)?.height) || it.size.h
+        const absCenter = isHorizontal ? g.absX + nx + w / 2 : g.absY + ny + h / 2
+        items.push({ node: it.child, laneId, center: absCenter })
+      }
+    }
+    items.sort((a, b) => a.center - b.center)
+    const clusters: ItemRef[][] = []
+    for (const it of items) {
+      const last = clusters[clusters.length - 1]
+      if (!last) {
+        clusters.push([it])
+        continue
+      }
+      const lastCenter = last[last.length - 1].center
+      if (Math.abs(it.center - lastCenter) <= MICRO_CROSS_LANE_THRESHOLD) last.push(it)
+      else clusters.push([it])
+    }
+    for (const cluster of clusters) {
+      const laneSet = new Set(cluster.map((c) => c.laneId))
+      if (laneSet.size < 2) continue
+      const targetCenter = snapToGrid(median(cluster.map((c) => c.center)), GRID_UNIT)
+      for (const c of cluster) {
+        const g = laneGeom.get(c.laneId)
+        if (!g) continue
+        const w = Number(c.node.width ?? (c.node.style as any)?.width) || 160
+        const h = Number(c.node.height ?? (c.node.style as any)?.height) || 48
+        if (isHorizontal) {
+          const minX = g.padLeft
+          const maxX = Math.max(minX, g.w - g.padRight - w)
+          const nextLocalX = clamp(snapToGrid(targetCenter - g.absX - w / 2, GRID_UNIT), minX, maxX)
+          c.node.position = { ...(c.node.position ?? { x: 0, y: 0 }), x: nextLocalX }
+        } else {
+          const minY = g.padTop
+          const maxY = Math.max(minY, g.h - g.padBottom - h)
+          const nextLocalY = clamp(snapToGrid(targetCenter - g.absY - h / 2, GRID_UNIT), minY, maxY)
+          c.node.position = { ...(c.node.position ?? { x: 0, y: 0 }), y: nextLocalY }
+        }
+      }
     }
   }
 
