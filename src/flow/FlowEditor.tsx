@@ -29,7 +29,6 @@ import {
   type Node,
   type NodeChange,
   type EdgeChange,
-  type OnSelectionChangeParams,
 } from '@xyflow/react'
 import JSZip from 'jszip'
 import {
@@ -390,8 +389,6 @@ const DEFAULT_MARKER_END = {
   color: DEFAULT_EDGE_COLOR,
 } as const
 const OPENROUTER_MASK = '*****'
-const GITLAB_PREFILL_KEY_ENC =
-  '*****c2stb3ItdjEtNmRhYTdlOGFhYzk2MTZlMzhlODI0ZGYwMDkzOWY2NDEzMWZiZTE1ODczYmRjYTBiNjUwNDI4ZTIyYjVhNGNhZA==*****'
 
 function decodeOpenRouterKey(raw: string): string {
   const t = raw.trim()
@@ -400,9 +397,10 @@ function decodeOpenRouterKey(raw: string): string {
   const core = wrapped ? t.slice(OPENROUTER_MASK.length, t.length - OPENROUTER_MASK.length) : t
   try {
     const decoded = atob(core)
-    return decoded.startsWith('sk-or-') ? decoded : ''
+    return decoded.trim()
   } catch {
-    return t.startsWith('sk-or-') ? t : ''
+    // 兼容旧数据：若不是 base64 包裹，就直接当作明文 key
+    return t
   }
 }
 
@@ -413,10 +411,10 @@ function encodeOpenRouterKey(raw: string): string {
 }
 
 function readPrefilledOpenRouterKey(): string {
-  // 预填 AK（优先环境变量，其次内置加密值）
+  // 预填 AK：只允许来自环境变量（避免把任何默认 key 写进仓库）
   const envGitlab = (import.meta as any)?.env?.VITE_OPENROUTER_KEY_ENC_GITLAB
   if (typeof envGitlab === 'string' && envGitlab.trim()) return decodeOpenRouterKey(envGitlab)
-  return decodeOpenRouterKey(GITLAB_PREFILL_KEY_ENC)
+  return ''
 }
 
 function readStoredOpenRouterKey(): string {
@@ -972,7 +970,7 @@ function EditorInner({ onBackHome, source, previewSnapshot, readOnly: _readOnly 
   const [fileName, setFileName] = useState(initial.name)
   
   // Save state tracking
-  const [_hasUnsavedChanges, setHasUnsavedChanges] = useState(false)
+  const [, setHasUnsavedChanges] = useState(false)
   const [saveModalOpen, setSaveModalOpen] = useState(false)
   const [exportFileName, setExportFileName] = useState('')
   const initialLoadRef = useRef(true)
@@ -1561,7 +1559,7 @@ function EditorInner({ onBackHome, source, previewSnapshot, readOnly: _readOnly 
     [nodes, pushHistory],
   )
 
-  const onSelectionChange = useCallback((_params: OnSelectionChangeParams) => {
+  const onSelectionChange = useCallback(() => {
     // no-op
   }, [])
 
@@ -3727,7 +3725,7 @@ function EditorInner({ onBackHome, source, previewSnapshot, readOnly: _readOnly 
                         setAiModalKey(e.target.value)
                         persistOpenRouterKey(e.target.value)
                       }}
-                      placeholder="sk-or-..."
+                      placeholder="填写 Routify API Key"
                     />
                     <div style={{ fontSize: 12, fontWeight: 700, color: '#475569' }}>文本生成模型</div>
                     <input
