@@ -390,6 +390,8 @@ const DEFAULT_MARKER_END = {
 } as const
 const OPENROUTER_MASK = '*****'
 
+const DEFAULT_ROUTIFY_VISION_MODEL = 'gpt-5.4-2026-03-05'
+
 function decodeOpenRouterKey(raw: string): string {
   const t = raw.trim()
   if (!t) return ''
@@ -787,22 +789,9 @@ function EditorInner({ onBackHome, source, previewSnapshot, readOnly: _readOnly 
   const aiModalAbortRef = useRef<AbortController | null>(null)
   const [handleLimitNotices, setHandleLimitNotices] = useState<Array<{ id: string; message: string }>>([])
   const [helpExpanded, setHelpExpanded] = useState(false)
-  const [aiModalModel, setAiModalModel] = useState<string>(() => {
-    try {
-      return localStorage.getItem('flow2go-openrouter-model') || DEFAULT_ROUTIFY_TEXT_MODEL
-    } catch {
-      return DEFAULT_ROUTIFY_TEXT_MODEL
-    }
-  })
-  const [aiModalVisionModel, setAiModalVisionModel] = useState<string>(() => {
-    try {
-      const stored = localStorage.getItem('flow2go-openrouter-vision-model')
-      if (!stored || !stored.trim() || stored === 'openai/gpt-5.4-pro') return 'qwen/qwen2.5-vl-72b-instruct'
-      return stored
-    } catch {
-      return 'qwen/qwen2.5-vl-72b-instruct'
-    }
-  })
+  // 模型固定：文本生成与图片识图统一使用同一模型，不在 UI 暴露选择，避免配置复杂度与线上不一致
+  const aiModalModel = DEFAULT_ROUTIFY_TEXT_MODEL
+  const aiModalVisionModel = DEFAULT_ROUTIFY_VISION_MODEL
   const [aiModalKey, setAiModalKey] = useState<string>(() => {
     return readStoredOpenRouterKey()
   })
@@ -3726,26 +3715,6 @@ function EditorInner({ onBackHome, source, previewSnapshot, readOnly: _readOnly 
                         persistOpenRouterKey(e.target.value)
                       }}
                       placeholder="填写 Routify API Key"
-                    />
-                    <div style={{ fontSize: 12, fontWeight: 700, color: '#475569' }}>文本生成模型</div>
-                    <input
-                      className={styles.aiApiKeyInput}
-                      value={aiModalModel}
-                      onChange={(e) => {
-                        setAiModalModel(e.target.value)
-                        try { localStorage.setItem('flow2go-openrouter-model', e.target.value) } catch {}
-                      }}
-                      placeholder={DEFAULT_ROUTIFY_TEXT_MODEL}
-                    />
-                    <div style={{ fontSize: 12, fontWeight: 700, color: '#475569' }}>图片识图模型</div>
-                    <input
-                      className={styles.aiApiKeyInput}
-                      value={aiModalVisionModel}
-                      onChange={(e) => {
-                        setAiModalVisionModel(e.target.value)
-                        try { localStorage.setItem('flow2go-openrouter-vision-model', e.target.value) } catch {}
-                      }}
-                      placeholder="qwen/qwen2.5-vl-72b-instruct"
                     />
                     <div className={styles.aiNote} style={{ opacity: 0.9 }}>
                       配置只保存在本地浏览器。未配置 Key 时，无法发起生成。
