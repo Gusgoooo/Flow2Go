@@ -36,15 +36,15 @@ function WelcomeTip({ onClose }: { onClose: () => void }) {
 
 function App() {
   const [projectId, setProjectId] = useState<string | null>(null)
-  const [showWelcome, setShowWelcome] = useState(false)
+  const [showWelcome, setShowWelcome] = useState(() => {
+    try {
+      return !localStorage.getItem(FIRST_VISIT_KEY)
+    } catch {
+      return false
+    }
+  })
 
   useEffect(() => {
-    // Check if first visit
-    const visited = localStorage.getItem(FIRST_VISIT_KEY)
-    if (!visited) {
-      setShowWelcome(true)
-    }
-
     // Load or create project
     const lastId = loadLastProjectId()
     let proj = lastId ? getProject(lastId) : null

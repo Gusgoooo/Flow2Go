@@ -177,7 +177,9 @@ export function ColorEditor({
   }, [])
 
   const valueRef = useRef(value)
-  valueRef.current = value
+  useEffect(() => {
+    valueRef.current = value
+  }, [value])
 
   const { hex, alpha } = useMemo(() => {
     const rgba = parseRgba(value)

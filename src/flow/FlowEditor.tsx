@@ -29,7 +29,6 @@ import {
   type Node,
   type NodeChange,
   type EdgeChange,
-  type OnSelectionChangeParams,
 } from '@xyflow/react'
 import JSZip from 'jszip'
 import {
@@ -972,7 +971,7 @@ function EditorInner({ onBackHome, source, previewSnapshot, readOnly: _readOnly 
   const [fileName, setFileName] = useState(initial.name)
   
   // Save state tracking
-  const [_hasUnsavedChanges, setHasUnsavedChanges] = useState(false)
+  const [, setHasUnsavedChanges] = useState(false)
   const [saveModalOpen, setSaveModalOpen] = useState(false)
   const [exportFileName, setExportFileName] = useState('')
   const initialLoadRef = useRef(true)
@@ -1561,7 +1560,7 @@ function EditorInner({ onBackHome, source, previewSnapshot, readOnly: _readOnly 
     [nodes, pushHistory],
   )
 
-  const onSelectionChange = useCallback((_params: OnSelectionChangeParams) => {
+  const onSelectionChange = useCallback(() => {
     // no-op
   }, [])
 
