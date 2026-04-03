@@ -8,6 +8,8 @@ export type TextNodeData = {
   labelFontSize?: number
   labelFontWeight?: string
   labelColor?: string
+  /** 仅新建当次生效：自动进入编辑态，进入后会被清除 */
+  autoEdit?: boolean
 }
 
 const DEFAULT_FONT_SIZE = 14
@@ -21,12 +23,26 @@ export function TextNode(props: NodeProps) {
   const rf = useReactFlow()
   const updateNodeInternals = useUpdateNodeInternals()
 
-  const isNew = (data.label ?? '').trim() === ''
-  const [editing, setEditing] = useState(() => isNew)
+  const autoEdit = Boolean(data.autoEdit)
+  const [editing, setEditing] = useState(() => autoEdit)
   const [draft, setDraft] = useState(data.label ?? '')
   const inputRef = useRef<HTMLTextAreaElement>(null)
   const measureRef = useRef<HTMLDivElement>(null)
   const lastAppliedRef = useRef({ w: 0, h: 0 })
+  const autoEditClearedRef = useRef(false)
+
+  // autoEdit 仅触发一次；立即清除，避免下次重进画布再次进入编辑态
+  useEffect(() => {
+    if (!autoEdit || autoEditClearedRef.current) return
+    autoEditClearedRef.current = true
+    rf.setNodes((nds) =>
+      nds.map((n) =>
+        n.id === props.id
+          ? { ...n, data: { ...(n.data ?? {}), autoEdit: false } }
+          : n,
+      ),
+    )
+  }, [autoEdit, props.id, rf])
 
   useEffect(() => {
     if (!editing) {

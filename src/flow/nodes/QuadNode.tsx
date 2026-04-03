@@ -50,6 +50,8 @@ type QuadNodeData = {
   laneId?: string
   phaseIndex?: number
   nodeOrder?: number
+  /** 仅新建当次生效：自动进入标题编辑态，进入后会被清除 */
+  autoEditTitle?: boolean
 }
 
 const DEFAULT_TITLE_FS = 12
@@ -70,15 +72,28 @@ export function QuadNode(props: NodeProps) {
   const data = (props.data ?? {}) as QuadNodeData
   const rf = useReactFlow()
 
-  const isNewTitle = (data.title ?? data.label ?? '').trim() === ''
-
-  const [editingTitle, setEditingTitle] = useState(() => isNewTitle)
+  const autoEditTitle = Boolean(data.autoEditTitle)
+  const [editingTitle, setEditingTitle] = useState(() => autoEditTitle)
   const [editingSubtitle, setEditingSubtitle] = useState(false)
   const [draftTitle, setDraftTitle] = useState(data.title ?? data.label ?? '')
   const [draftSubtitle, setDraftSubtitle] = useState(data.subtitle ?? '')
 
   const titleInputRef = useRef<HTMLTextAreaElement>(null)
   const subtitleInputRef = useRef<HTMLTextAreaElement>(null)
+  const autoEditClearedRef = useRef(false)
+
+  // autoEditTitle 仅触发一次；立即清除，避免重进画布再次进入编辑态
+  useEffect(() => {
+    if (!autoEditTitle || autoEditClearedRef.current) return
+    autoEditClearedRef.current = true
+    rf.setNodes((nds) =>
+      nds.map((n) =>
+        n.id === props.id
+          ? { ...n, data: { ...(n.data ?? {}), autoEditTitle: false } }
+          : n,
+      ),
+    )
+  }, [autoEditTitle, props.id, rf])
 
   useEffect(() => {
     if (!editingTitle && !editingSubtitle) {

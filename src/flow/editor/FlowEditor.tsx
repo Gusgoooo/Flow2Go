@@ -2384,7 +2384,7 @@ function EditorInner({ onBackHome, source, previewSnapshot, readOnly: _readOnly 
         height: defaultSize.h,
         style: { width: defaultSize.w, height: defaultSize.h },
         // 文本节点空标签：立即进入编辑态，并由 TextNode 按内容自适应宽高（类 Figma）
-        data: { label: nodeType === 'quad' ? '节点' : '' },
+        data: nodeType === 'text' ? { label: '', autoEdit: true } : { label: '节点' },
       }
       setNodes((nds) => {
         const next = nds.concat(base)
@@ -2533,7 +2533,7 @@ function EditorInner({ onBackHome, source, previewSnapshot, readOnly: _readOnly 
             : nodeType === 'text'
               ? { width: DEFAULT_TEXT_SIZE.w, height: DEFAULT_TEXT_SIZE.h }
               : undefined,
-        data: { label: nodeType === 'text' ? '' : '节点' },
+        data: nodeType === 'text' ? { label: '', autoEdit: true } : { label: '节点' },
       }
 
       setNodes((nds) => {
