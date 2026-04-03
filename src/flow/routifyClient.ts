@@ -1,33 +1,53 @@
 /**
  * Routify OpenAI-compatible 统一网关客户端。
  *
- * 所有模型相关 HTTP 调用经此出口，通过服务端代理 `/api/routify/*`
- * 转发到 Routify 网关。API Key 由服务端环境变量 `ROUTIFY_API_KEY` 注入，
- * 前端无需持有任何密钥。
+ * 双模式自动切换：
+ * 1. 服务端代理模式（推荐）：Express server 运行时，走 `/api/routify/*`，
+ *    API Key 由服务端 `process.env.ROUTIFY_API_KEY` 注入，前端零密钥。
+ * 2. 直连回退模式：未部署 Express server 时，若构建阶段设置了
+ *    `VITE_ROUTIFY_API_KEY`，则直连 Routify 网关（本地开发由 Vite 代理解决 CORS）。
  */
 
+const ROUTIFY_OPENAI_BASE_REMOTE = 'https://routify.alibaba-inc.com/protocol/openai/v1'
 const SERVER_PROXY_BASE = '/api/routify'
 
-/**
- * 当前应使用的 OpenAI 兼容 base。
- * 始终走服务端代理（服务端注入 AK，前端无需感知）。
- */
-export function getRoutifyOpenAIBase(): string {
-  return SERVER_PROXY_BASE
+function getViteRoutifyKey(): string {
+  try {
+    const v = (import.meta as { env?: { VITE_ROUTIFY_API_KEY?: string } }).env?.VITE_ROUTIFY_API_KEY
+    if (typeof v === 'string' && v.trim()) return v.trim()
+  } catch { /* ignore */ }
+  return ''
 }
 
-export const ROUTIFY_OPENAI_BASE = SERVER_PROXY_BASE
-export const ROUTIFY_CHAT_COMPLETIONS_URL = `${SERVER_PROXY_BASE}/chat/completions`
+function isServerProxyAvailable(): boolean {
+  const viteKey = getViteRoutifyKey()
+  if (viteKey) return false
+  return true
+}
+
+export function getRoutifyOpenAIBase(): string {
+  if (isServerProxyAvailable()) return SERVER_PROXY_BASE
+  if (typeof window !== 'undefined') {
+    const h = window.location.hostname
+    if (h === 'localhost' || h === '127.0.0.1' || h === '[::1]') {
+      return '/protocol/openai/v1'
+    }
+  }
+  return ROUTIFY_OPENAI_BASE_REMOTE
+}
 
 export function getRoutifyApiKey(): string {
-  return '(server-managed)'
+  if (isServerProxyAvailable()) return '(server-managed)'
+  return getViteRoutifyKey()
 }
+
+export const ROUTIFY_OPENAI_BASE = ROUTIFY_OPENAI_BASE_REMOTE
+export const ROUTIFY_CHAT_COMPLETIONS_URL = `${ROUTIFY_OPENAI_BASE_REMOTE}/chat/completions`
 
 export type RoutifyOpenAIPostOptions = {
   body?: unknown
   signal?: AbortSignal
   method?: 'POST' | 'GET'
-  /** @deprecated 前端不再需要传 key，保留签名以兼容存量调用 */
   bearerFallback?: string
   headers?: Record<string, string>
 }
@@ -37,15 +57,27 @@ export async function routifyOpenAICompatiblePost(
   opts: RoutifyOpenAIPostOptions = {},
 ): Promise<Response> {
   const clean = path.replace(/^\/+/, '')
-  const url = `${SERVER_PROXY_BASE}/${clean}`
+  const base = getRoutifyOpenAIBase()
+  const url = `${base}/${clean}`
   const method = opts.method ?? 'POST'
-  const headers: Record<string, string> = {
-    ...opts.headers,
+
+  const headers: Record<string, string> = { ...opts.headers }
+
+  if (!isServerProxyAvailable()) {
+    const token = getViteRoutifyKey() || (opts.bearerFallback ?? '').trim()
+    if (!token) {
+      throw new Error(
+        '未配置 Routify API Key。请设置环境变量 VITE_ROUTIFY_API_KEY（前端构建），或启动 Express 代理服务器（npm run dev:server）并配置 ROUTIFY_API_KEY。',
+      )
+    }
+    headers['Authorization'] = `Bearer ${token}`
   }
+
   const hasBody = opts.body !== undefined && method !== 'GET'
   if (hasBody) {
     headers['Content-Type'] = headers['Content-Type'] ?? 'application/json'
   }
+
   return fetch(url, {
     method,
     headers,
@@ -57,7 +89,6 @@ export async function routifyOpenAICompatiblePost(
 export type RoutifyChatCompletionsOptions = {
   body: Record<string, unknown>
   signal?: AbortSignal
-  /** @deprecated 服务端注入 key，前端无需传 */
   bearerFallback?: string
 }
 
@@ -65,6 +96,7 @@ export async function routifyChatCompletions(opts: RoutifyChatCompletionsOptions
   return routifyOpenAICompatiblePost('chat/completions', {
     body: opts.body,
     signal: opts.signal,
+    bearerFallback: opts.bearerFallback,
   })
 }
 
@@ -76,6 +108,7 @@ export async function routifyImagesGenerations(opts: {
   return routifyOpenAICompatiblePost('images/generations', {
     body: opts.body,
     signal: opts.signal,
+    bearerFallback: opts.bearerFallback,
   })
 }
 
@@ -87,15 +120,16 @@ export async function routifyEmbeddings(opts: {
   return routifyOpenAICompatiblePost('embeddings', {
     body: opts.body,
     signal: opts.signal,
+    bearerFallback: opts.bearerFallback,
   })
 }
 
 export const routifyOpenAICompatible = {
   get baseUrl() {
-    return SERVER_PROXY_BASE
+    return getRoutifyOpenAIBase()
   },
   get chatCompletionsUrl() {
-    return `${SERVER_PROXY_BASE}/chat/completions`
+    return `${getRoutifyOpenAIBase()}/chat/completions`
   },
   getApiKey: getRoutifyApiKey,
   post: routifyOpenAICompatiblePost,
