@@ -11,6 +11,10 @@ const proxyRules = {
     target: `http://127.0.0.1:${SERVER_PORT}`,
     changeOrigin: true,
   },
+  '/protocol/openai/v1': {
+    target: 'https://routify.alibaba-inc.com',
+    changeOrigin: true,
+  },
 } as const
 
 export default defineConfig({
