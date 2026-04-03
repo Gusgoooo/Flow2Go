@@ -2,7 +2,7 @@ import { Position } from '@xyflow/react'
 import { getDefaultOrthogonalPoints, type OrthogonalPoint } from './defaultOrthogonalPath'
 import { doesPolylineIntersectAnyExclusionBox, doesSegmentIntersectRect, type NodeExclusionBox } from './exclusion'
 
-/** 绕行线与节点包络的额外间隙（保持正值，避免“看起来可走 2 弯却被迫 4 弯”） */
+/** 绕行线与节点包络的额外间隙（保持正值，避免"看起来可走 2 弯却被迫 4 弯"） */
 const ROUTE_CLEAR = 8
 
 function getIntersectingBoxes(
@@ -137,8 +137,6 @@ function simplifyOrthogonal(points: OrthogonalPoint[]): OrthogonalPoint[] {
     const c = dedup[i + 1]
     const sameX = Math.abs(a.x - b.x) < 1e-6 && Math.abs(b.x - c.x) < 1e-6
     const sameY = Math.abs(a.y - b.y) < 1e-6 && Math.abs(b.y - c.y) < 1e-6
-    // 只有在 b 位于 a 与 c 之间时，才可安全删去共线中间点；
-    // 若 b 在外侧（方向反转的折返点），必须保留。
     if (sameX && isBetween1D(a.y, b.y, c.y)) continue
     if (sameY && isBetween1D(a.x, b.x, c.x)) continue
     out.push(b)
@@ -160,64 +158,83 @@ function countTurns(points: OrthogonalPoint[]): number {
   return turns
 }
 
-function isExtremeOuterCorridorCase(args: {
-  sourceX: number
-  sourceY: number
-  targetX: number
-  targetY: number
-  sourcePosition: Position
-  targetPosition: Position
-}): boolean {
-  const {
-    sourceX,
-    sourceY,
-    targetX,
-    targetY,
-    sourcePosition,
-    targetPosition,
-  } = args
+/**
+ * Verify that the first/last segments of a path are on-axis and outward/inward
+ * relative to the source/target port direction. Prevents collapse from producing
+ * paths that go backward through the source or target node body.
+ */
+function isTerminalDirectionValid(
+  points: OrthogonalPoint[],
+  sourcePosition: Position,
+  targetPosition: Position,
+): boolean {
+  if (points.length < 2) return true
   const EPS = 1e-6
-  // 仅保护两个已验证会被“过度压弯”导致埋线的极端场景：
-  // 1) A 在 B 左上，Top -> Bottom
-  if (
-    sourcePosition === Position.Top &&
-    targetPosition === Position.Bottom &&
-    sourceX <= targetX - EPS &&
-    sourceY <= targetY - EPS
-  ) {
-    return true
+  const s = points[0]
+  const first = points[1]
+  const t = points[points.length - 1]
+  const last = points[points.length - 2]
+
+  const sourceHoriz = sourcePosition === Position.Left || sourcePosition === Position.Right
+  if (sourceHoriz) {
+    if (Math.abs(first.y - s.y) > EPS) return false
+    if (sourcePosition === Position.Right && first.x < s.x - EPS) return false
+    if (sourcePosition === Position.Left && first.x > s.x + EPS) return false
+  } else {
+    if (Math.abs(first.x - s.x) > EPS) return false
+    if (sourcePosition === Position.Bottom && first.y < s.y - EPS) return false
+    if (sourcePosition === Position.Top && first.y > s.y + EPS) return false
   }
-  // 2) A 在 B 左上，Left -> Right
-  if (
-    sourcePosition === Position.Left &&
-    targetPosition === Position.Right &&
-    sourceX <= targetX - EPS &&
-    sourceY <= targetY - EPS
-  ) {
-    return true
+
+  const targetHoriz = targetPosition === Position.Left || targetPosition === Position.Right
+  if (targetHoriz) {
+    if (Math.abs(last.y - t.y) > EPS) return false
+    if (targetPosition === Position.Left && last.x > t.x + EPS) return false
+    if (targetPosition === Position.Right && last.x < t.x - EPS) return false
+  } else {
+    if (Math.abs(last.x - t.x) > EPS) return false
+    if (targetPosition === Position.Top && last.y > t.y + EPS) return false
+    if (targetPosition === Position.Bottom && last.y < t.y - EPS) return false
   }
-  // 3) B 在 A 右上，Right -> Left（source 在 target 右上）
-  // 该场景若被压成少弯，容易出现贴节点/埋线，需保留外廊多弯。
-  if (
-    sourcePosition === Position.Right &&
-    targetPosition === Position.Left &&
-    sourceX >= targetX + EPS &&
-    sourceY <= targetY - EPS
-  ) {
-    return true
+
+  return true
+}
+
+function hasUTurn(points: OrthogonalPoint[]): boolean {
+  for (let i = 0; i < points.length - 2; i++) {
+    const a = points[i]
+    const b = points[i + 1]
+    const c = points[i + 2]
+    const d1 = segmentDirection(a, b)
+    const d2 = segmentDirection(b, c)
+    if (d1 && d2 && d1 === d2) {
+      if (d1 === 'h') {
+        const s1 = Math.sign(b.x - a.x)
+        const s2 = Math.sign(c.x - b.x)
+        if (s1 !== 0 && s2 !== 0 && s1 !== s2) return true
+      } else {
+        const s1 = Math.sign(b.y - a.y)
+        const s2 = Math.sign(c.y - b.y)
+        if (s1 !== 0 && s2 !== 0 && s1 !== s2) return true
+      }
+    }
   }
   return false
 }
 
 /**
- * Z 型 4 弯压缩：
- * 当出现 [seg2 || seg4] 且 seg3 垂直于它们时，尝试删除 seg3 并合并 seg2+seg4，
- * 将 4 弯（5 段）压缩为 2 弯（3 段），前提是不会撞节点。
+ * Z-shape 4-turn compression:
+ * When [seg2 || seg4] and seg3 is perpendicular, try to merge seg2+seg4,
+ * compressing 4 turns (5 segments) to 2 turns (3 segments),
+ * provided the result doesn't hit obstacles, respects terminal directions,
+ * and doesn't introduce U-turns (direction reversals on the same axis).
  */
 function collapseZFourTurnsToTwo(
   points: OrthogonalPoint[],
   obstacleBoxes: NodeExclusionBox[],
   ignoreNodeIds: string[],
+  sourcePosition: Position,
+  targetPosition: Position,
 ): OrthogonalPoint[] {
   let path = simplifyOrthogonal(orthogonalizePolyline(points))
   if (path.length < 6) return path
@@ -240,7 +257,7 @@ function collapseZFourTurnsToTwo(
       const d4 = segmentDirection(p4, p5)
       if (!d0 || !d1 || !d2 || !d3 || !d4) continue
 
-      // Match Z window: seg2 // seg4, seg3 ⟂ seg2, and terminal seg1/seg5 aligned.
+      // Match Z window: seg2 // seg4, seg3 perpendicular to seg2, and terminal seg1/seg5 aligned.
       if (d1 !== d3) continue
       if (d2 === d1) continue
       if (d0 !== d4) continue
@@ -258,6 +275,8 @@ function collapseZFourTurnsToTwo(
 
       if (afterTurns !== 2 || afterTurns >= beforeTurns) continue
       if (candidate.length >= path.length) continue
+      if (!isTerminalDirectionValid(candidate, sourcePosition, targetPosition)) continue
+      if (hasUTurn(candidate)) continue
       if (doesPolylineIntersectAnyExclusionBox(candidate, obstacleBoxes, ignoreNodeIds)) continue
 
       path = candidate
@@ -270,8 +289,9 @@ function collapseZFourTurnsToTwo(
 }
 
 /**
- * 在默认 Z/C/L 与节点包络相交时，尝试「多一折」的正交绕行（常见为 5 段 / 4 个弯）。
- * 无用户 waypoints 时在边渲染层调用，随节点拖动每帧更新，保证连续。
+ * When the default Z/C/L path intersects node exclusion boxes, try orthogonal
+ * detour alternatives (typically 5-segment / 4-turn). Called without user
+ * waypoints in the edge render layer, updated every frame as nodes are dragged.
  */
 export function resolveOrthogonalPathAvoidingObstacles(args: {
   sourceX: number
@@ -284,11 +304,6 @@ export function resolveOrthogonalPathAvoidingObstacles(args: {
   obstacleBoxes: NodeExclusionBox[]
   sourceNodeId: string
   targetNodeId: string
-  /**
-   * 仅用于特定调用场景（如 AI 生成泳道图）：
-   * 关闭“极端象限外廊保护”，允许回到更少弯策略。
-   */
-  disableExtremeOuterCorridor?: boolean
 }): OrthogonalPoint[] {
   const {
     sourceX,
@@ -301,26 +316,14 @@ export function resolveOrthogonalPathAvoidingObstacles(args: {
     obstacleBoxes,
     sourceNodeId,
     targetNodeId,
-    disableExtremeOuterCorridor = false,
   } = args
 
   const ignore = [sourceNodeId, targetNodeId]
-  const protectExtremeOuterCorridor = !disableExtremeOuterCorridor &&
-    isExtremeOuterCorridorCase({
-      sourceX,
-      sourceY,
-      targetX,
-      targetY,
-      sourcePosition,
-      targetPosition,
-    })
   const defaultPts = simplifyOrthogonal(
     getDefaultOrthogonalPoints(sourceX, sourceY, targetX, targetY, sourcePosition, targetPosition, offset, 0),
   )
   const defaultBase = orthogonalizePolyline(defaultPts)
-  const defaultOrtho = protectExtremeOuterCorridor
-    ? defaultBase
-    : collapseZFourTurnsToTwo(defaultBase, obstacleBoxes, ignore)
+  const defaultOrtho = collapseZFourTurnsToTwo(defaultBase, obstacleBoxes, ignore, sourcePosition, targetPosition)
 
   if (obstacleBoxes.length === 0) {
     return defaultOrtho
@@ -337,7 +340,6 @@ export function resolveOrthogonalPathAvoidingObstacles(args: {
   const isHorizontalTarget = targetPosition === Position.Left || targetPosition === Position.Right
   const isCShape2 = sourcePosition === targetPosition
 
-  // 只根据「当前默认路径实际撞到的节点」确定绕行外廊，避免全局最值导致过度绕远。
   const hitBoxes = getIntersectingBoxes(defaultOrtho, obstacleBoxes, ignore)
   const scopeBoxes = hitBoxes.length > 0 ? hitBoxes : obstacleBoxes
 
@@ -348,27 +350,24 @@ export function resolveOrthogonalPathAvoidingObstacles(args: {
 
   const candidates: OrthogonalPoint[][] = []
 
-  // ─── 水平 Z：Right↔Left（或 Left↔Right）→ 从左右两侧「外廊」绕行，再沿底/顶横穿 ───
   if (isHorizontalSource && isHorizontalTarget && !isCShape2) {
     if (sourcePosition === Position.Right && targetPosition === Position.Left) {
-      // 优先尝试 2 弯：同一条外廊竖线（很多场景足够，不需要强行 3 弯）
       const xFar = Math.max(east, s.x + offset, t.x + offset)
       const xEast = Math.max(s.x, east)
       const xWest = Math.min(s.x, west)
       candidates.push(
-        ...(protectExtremeOuterCorridor ? [] : [[s, { x: xFar, y: s.y }, { x: xFar, y: t.y }, t] as OrthogonalPoint[]]),
+        [s, { x: xFar, y: s.y }, { x: xFar, y: t.y }, t],
         [s, { x: xEast, y: s.y }, { x: xEast, y: south }, { x: t.x, y: south }, t],
         [s, { x: xEast, y: s.y }, { x: xEast, y: north }, { x: t.x, y: north }, t],
         [s, { x: xWest, y: s.y }, { x: xWest, y: south }, { x: t.x, y: south }, t],
         [s, { x: xWest, y: s.y }, { x: xWest, y: north }, { x: t.x, y: north }, t],
       )
     } else if (sourcePosition === Position.Left && targetPosition === Position.Right) {
-      // 优先尝试 2 弯：同一条外廊竖线
       const xFar = Math.min(west, s.x - offset, t.x - offset)
       const xWest = Math.min(s.x, west)
       const xEast = Math.max(s.x, east)
       candidates.push(
-        ...(protectExtremeOuterCorridor ? [] : [[s, { x: xFar, y: s.y }, { x: xFar, y: t.y }, t] as OrthogonalPoint[]]),
+        [s, { x: xFar, y: s.y }, { x: xFar, y: t.y }, t],
         [s, { x: xWest, y: s.y }, { x: xWest, y: south }, { x: t.x, y: south }, t],
         [s, { x: xWest, y: s.y }, { x: xWest, y: north }, { x: t.x, y: north }, t],
         [s, { x: xEast, y: s.y }, { x: xEast, y: south }, { x: t.x, y: south }, t],
@@ -377,11 +376,8 @@ export function resolveOrthogonalPathAvoidingObstacles(args: {
     }
   }
 
-  // ─── 垂直 Z：Bottom↔Top → 上下外廊 + 左右横穿 ───
   if (!isHorizontalSource && !isHorizontalTarget && !isCShape2) {
-    // Bottom 出发先向下；Top 出发先向上，避免第一段与端口方向相反
     if (sourcePosition === Position.Bottom && targetPosition === Position.Top) {
-      // 优先尝试 2 弯：同一条中间水平线（若区间可行）
       const yNear = (s.y + t.y) / 2
       const yFar = Math.min(t.y - offset, Math.max(s.y + offset, yNear))
       const ySouth = Math.max(s.y, south)
@@ -393,7 +389,6 @@ export function resolveOrthogonalPathAvoidingObstacles(args: {
         [s, { x: s.x, y: ySouth }, { x: xWest, y: ySouth }, { x: xWest, y: t.y }, t],
       )
     } else if (sourcePosition === Position.Top && targetPosition === Position.Bottom) {
-      // 优先尝试 2 弯：同一条中间水平线（若区间可行）
       const yNear = (s.y + t.y) / 2
       const yFar = Math.max(t.y + offset, Math.min(s.y - offset, yNear))
       const yNorth = Math.min(s.y, north)
@@ -407,7 +402,6 @@ export function resolveOrthogonalPathAvoidingObstacles(args: {
     }
   }
 
-  // ─── C 型：把外廓再推远一层 ───
   if (isCShape2 && isHorizontalSource) {
     const isRight = sourcePosition === Position.Right
     const outerFar = isRight ? maxRight(scopeBoxes) + offset + ROUTE_CLEAR : minLeft(scopeBoxes) - offset - ROUTE_CLEAR
@@ -427,7 +421,6 @@ export function resolveOrthogonalPathAvoidingObstacles(args: {
     )
   }
 
-  // ─── L 型：先尝试「绕远角」的 5 点折线 ───
   if (isHorizontalSource !== isHorizontalTarget) {
     if (isHorizontalSource) {
       candidates.push(
@@ -451,7 +444,6 @@ export function resolveOrthogonalPathAvoidingObstacles(args: {
   for (const pts of uniquePaths(candidates)) {
     if (pts.length < 3) continue
     const fixed = orthogonalizePolyline(simplifyOrthogonal(pts))
-    if (protectExtremeOuterCorridor && countTurns(fixed) < 4) continue
     if (doesPolylineIntersectAnyExclusionBox(fixed, obstacleBoxes, ignore)) continue
     const len = polylineLength(fixed)
     if (len < bestLen) {
@@ -459,7 +451,7 @@ export function resolveOrthogonalPathAvoidingObstacles(args: {
       bestLen = len
     }
   }
-  if (best) return protectExtremeOuterCorridor ? best : collapseZFourTurnsToTwo(best, obstacleBoxes, ignore)
+  if (best) return collapseZFourTurnsToTwo(best, obstacleBoxes, ignore, sourcePosition, targetPosition)
 
   return defaultOrtho
 }

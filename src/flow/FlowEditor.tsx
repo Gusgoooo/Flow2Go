@@ -92,6 +92,7 @@ import {
 } from './semanticAssetCatalog'
 import { getDiagramSpec, validateDiagramSpec } from './diagramSpec'
 import { AI_SCENE_CAPSULE_PRESETS } from './aiPromptPresets'
+import { generateBigMapFromText, generateBigMapFromImage } from './businessBigMap'
 import { AiSceneCapsules } from './AiSceneCapsules'
 import { BUILTIN_ASSETS } from './builtinAssets'
 import {
@@ -444,6 +445,7 @@ function sceneHintToPipeline(scene: AiDiagramSceneHint | null): SemanticPipeline
   if (scene === 'mind-map') return 'mind-map'
   if (scene === 'flowchart') return 'flowchart'
   if (scene === 'free-layout') return 'free-layout-image'
+  if (scene === 'business-big-map') return 'business-big-map-text'
   return 'auto'
 }
 
@@ -3845,6 +3847,67 @@ function EditorInner({ onBackHome, source, previewSnapshot, readOnly: _readOnly 
                         try {
                           const ac = new AbortController()
                           aiModalAbortRef.current = ac
+                          // ── 业务大图：图+胶囊 → 强制走业务大图图生图 ──
+                          if (aiModalScene === 'business-big-map' && aiModalImageDataUrl) {
+                            setAiModalProgress({ phase: '识图结构化', detail: '读取图中业务大图结构…' })
+                            const { draft } = await generateBigMapFromImage({
+                              apiKey: aiModalKey.trim(),
+                              model: aiModalVisionModel.trim() || DEFAULT_ROUTIFY_TEXT_MODEL,
+                              imageDataUrl: aiModalImageDataUrl,
+                              prompt: p || undefined,
+                              signal: ac.signal,
+                              onProgress: (info: AiGenerateProgressInfo) => {
+                                setAiModalProgress({ phase: info.phase, detail: info.detail })
+                              },
+                            })
+                            setAiDiagramDraft(draft)
+                            await applyAiDraftWithReferenceImage(draft, aiModalImageDataUrl, aiModalImageName)
+                            recordSemanticRun({
+                              pipeline: 'business-big-map-image',
+                              semanticFormat: 'image-structured',
+                              semanticPayload: { type: 'business-big-map' },
+                              draft,
+                              sceneHint: aiModalScene,
+                              prompt: p || undefined,
+                              textModel: aiModalModel.trim() || DEFAULT_ROUTIFY_TEXT_MODEL,
+                              visionModel: aiModalVisionModel.trim() || DEFAULT_ROUTIFY_TEXT_MODEL,
+                              imageDataUrl: aiModalImageDataUrl,
+                            })
+                            requestAnimationFrame(() => { requestAnimationFrame(() => { customFitView() }) })
+                            setAiModalOpen(false)
+                            setAiModalImageDataUrl(null)
+                            setAiModalImageName(null)
+                            return
+                          }
+                          // ── 业务大图：纯文生图 ──
+                          if (aiModalScene === 'business-big-map') {
+                            if (!p) throw new Error('业务大图请先输入文本描述')
+                            const { draft } = await generateBigMapFromText({
+                              apiKey: aiModalKey.trim(),
+                              model: aiModalModel.trim() || DEFAULT_ROUTIFY_TEXT_MODEL,
+                              prompt: p,
+                              signal: ac.signal,
+                              onProgress: (info: AiGenerateProgressInfo) => {
+                                setAiModalProgress({ phase: info.phase, detail: info.detail })
+                              },
+                            })
+                            setAiDiagramDraft(draft)
+                            applyAiDraftDirect(draft, 'ai-business-big-map')
+                            recordSemanticRun({
+                              pipeline: 'business-big-map-text',
+                              semanticFormat: 'raw-text',
+                              semanticPayload: { rawText: draft.rawText },
+                              draft,
+                              sceneHint: aiModalScene,
+                              prompt: p,
+                              textModel: aiModalModel.trim() || DEFAULT_ROUTIFY_TEXT_MODEL,
+                            })
+                            requestAnimationFrame(() => { requestAnimationFrame(() => { customFitView() }) })
+                            setAiModalOpen(false)
+                            setAiModalGenerating(false)
+                            setAiModalProgress(null)
+                            return
+                          }
                           if (aiModalImageDataUrl) {
                             setAiModalProgress({ phase: '识图结构化', detail: '读取图中节点和连线…' })
                             const { draft, structured } = await openRouterGenerateDiagramFromImage({

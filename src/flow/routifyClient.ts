@@ -101,12 +101,28 @@ export async function routifyOpenAICompatiblePost(
     headers['Content-Type'] = headers['Content-Type'] ?? 'application/json'
   }
 
-  return fetch(url, {
-    method,
-    headers,
-    body: hasBody ? JSON.stringify(opts.body) : undefined,
-    signal: opts.signal,
-  })
+  try {
+    return await fetch(url, {
+      method,
+      headers,
+      body: hasBody ? JSON.stringify(opts.body) : undefined,
+      signal: opts.signal,
+    })
+  } catch (e: unknown) {
+    // 浏览器 CORS/预检失败时，fetch 往往直接抛 TypeError: Failed to fetch（没有 status / response）
+    if (e instanceof TypeError) {
+      throw new Error(
+        [
+          '网络请求失败（可能是 CORS 预检被拦截）。',
+          `当前请求地址：${url}`,
+          '解决方式（二选一）：',
+          '1) 让 Routify 网关侧为你的线上域名放行 CORS（允许 OPTIONS 预检，允许 Authorization / Content-Type 头）。',
+          '2) 在生产环境设置 VITE_ROUTIFY_BASE_URL 指向你自己的同源反代/外部代理（例如 Cloudflare Worker / Vercel）。',
+        ].join('\n'),
+      )
+    }
+    throw e
+  }
 }
 
 export type RoutifyChatCompletionsOptions = {

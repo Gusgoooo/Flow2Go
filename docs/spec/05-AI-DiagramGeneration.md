@@ -65,8 +65,8 @@
 
 #### 3.2 API 调用（文本生成）
 
-- Base：`http://routify.alibaba-inc.com/protocol/openai/v1`
-- Endpoint：`http://routify.alibaba-inc.com/protocol/openai/v1/chat/completions`
+- Base：`https://routify.alibaba-inc.com/protocol/openai/v1`
+- Endpoint：`https://routify.alibaba-inc.com/protocol/openai/v1/chat/completions`
 - 鉴权：`Authorization: Bearer ${ROUTIFY_API_KEY}`（或前端构建注入的 `VITE_ROUTIFY_API_KEY`）
 - 统一实现：`src/flow/routifyClient.ts`
 - 请求必须支持：

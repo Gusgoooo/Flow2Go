@@ -135,7 +135,7 @@ describe('orthogonalObstacleDetour', () => {
     expect(points[points.length - 2].x).toBeGreaterThan(points[points.length - 1].x)
   })
 
-  it('collapses Z-like 4-turn polyline to 2 turns when seg2/seg4 are parallel (non-protected quadrant)', () => {
+  it('preserves multi-bend for crossing Right->Left when collapse would create U-turn', () => {
     const points = resolveOrthogonalPathAvoidingObstacles({
       sourceX: 200,
       sourceY: 180,
@@ -149,7 +149,7 @@ describe('orthogonalObstacleDetour', () => {
       targetNodeId: 'B',
     })
     expect(hasDiagonal(points)).toBe(false)
-    expect(countTurns(points)).toBe(2)
+    expect(countTurns(points)).toBeGreaterThanOrEqual(4)
   })
 
   it('keeps straight line when horizontal out/in directions are naturally aligned', () => {
@@ -226,21 +226,20 @@ describe('orthogonalObstacleDetour', () => {
     expect(points[points.length - 2].x).toBeLessThanOrEqual(points[points.length - 1].x)
   })
 
-  it('can relax extreme outer-corridor protection for generated swimlane edges', () => {
+  it('uses L-shape (1 bend) for compatible mixed-orientation edges', () => {
     const points = resolveOrthogonalPathAvoidingObstacles({
-      sourceX: 260,
+      sourceX: 100,
       sourceY: 100,
-      targetX: 100,
-      targetY: 220,
+      targetX: 300,
+      targetY: 200,
       sourcePosition: Position.Right,
-      targetPosition: Position.Left,
+      targetPosition: Position.Top,
       offset: 16,
       obstacleBoxes: [],
-      sourceNodeId: 'B',
-      targetNodeId: 'A',
-      disableExtremeOuterCorridor: true,
+      sourceNodeId: 'A',
+      targetNodeId: 'B',
     })
     expect(hasDiagonal(points)).toBe(false)
-    expect(countTurns(points)).toBeLessThanOrEqual(2)
+    expect(countTurns(points)).toBeLessThanOrEqual(1)
   })
 })

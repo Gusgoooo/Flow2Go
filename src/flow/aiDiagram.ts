@@ -16,6 +16,7 @@ export type AiDiagramSceneHint =
   | 'flowchart'
   | 'swimlane'
   | 'free-layout'
+  | 'business-big-map'
 
 /** 生成进度：用于 UI 与控制台排查「慢 / 卡住 / 失败」 */
 export type AiGenerateProgressInfo = {
@@ -666,7 +667,8 @@ const IMAGE_TO_STRUCTURED_STAGE1_SYSTEM_PROMPT = [
   '强制输出 schema：',
   `- "schema": "${IMAGE_STRUCTURE_SCHEMA}"`,
   '',
-  'sceneHint 只能是：mind-map | flowchart | swimlane | free-layout | auto。',
+  'sceneHint 只能是：mind-map | flowchart | swimlane | free-layout | business-big-map | auto。',
+  '如果图片是一个"业务大图"、"系统架构图"、"能力全景图"、"产品能力地图"或类似的多层嵌套矩形结构图（不是流程图或泳道图），sceneHint 应设为 "business-big-map"。',
   'groups/nodes/edges 必须是数组，id 必须唯一且可引用。',
   'groups 用于表达画框/泳道/容器嵌套：kind 只能是 group|lane|container。',
   '节点与容器均可给 x/y/w/h（0~1 归一化）。',
@@ -675,7 +677,7 @@ const IMAGE_TO_STRUCTURED_STAGE1_SYSTEM_PROMPT = [
   '{',
   `  "schema": "${IMAGE_STRUCTURE_SCHEMA}",`,
   '  "title": "可选标题",',
-  '  "sceneHint": "mind-map|flowchart|swimlane|free-layout|auto",',
+  '  "sceneHint": "mind-map|flowchart|swimlane|free-layout|business-big-map|auto",',
   '  "lanes": ["可选泳道1", "可选泳道2"],',
   '  "groups": [',
   '    { "id": "g1", "label": "阶段一", "kind": "group", "parentId": "可选", "x": 0.08, "y": 0.12, "w": 0.36, "h": 0.30 }',
@@ -741,6 +743,7 @@ function normalizeImageSceneHint(input: unknown): ImageSceneHint {
     input === 'flowchart' ||
     input === 'swimlane' ||
     input === 'free-layout' ||
+    input === 'business-big-map' ||
     input === 'auto'
   ) return input
   return 'auto'
@@ -4536,6 +4539,25 @@ export async function openRouterGenerateDiagramFromImage(
   const sceneConfidence = structured.confidence?.scene ?? 1
   const sceneFromImage =
     structured.sceneHint === 'auto' || sceneConfidence < 0.45 ? undefined : structured.sceneHint
+
+  // ── 业务大图检测：模型识别到 business-big-map 或胶囊强制时，走独立管线 ──
+  const shouldRenderBigMap =
+    diagramScene === 'business-big-map' || sceneFromImage === 'business-big-map'
+  if (shouldRenderBigMap) {
+    report('业务大图识图', '检测到业务大图结构，走 BusinessBigMap 管线')
+    const { generateBigMapFromImage: genBigMap } = await import('./businessBigMap')
+    const { draft: bigMapDraft } = await genBigMap({
+      apiKey: key,
+      model: recogModel,
+      imageDataUrl,
+      prompt: prompt ?? undefined,
+      signal,
+      onProgress: (info) => report(info.phase, info.detail),
+    })
+    report('识图落图完成', '业务大图已生成')
+    return { draft: bigMapDraft, structured }
+  }
+
   const shouldRenderSwimlane =
     diagramScene === 'swimlane' ||
     sceneFromImage === 'swimlane' ||

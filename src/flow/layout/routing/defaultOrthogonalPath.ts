@@ -99,7 +99,13 @@ export function getDefaultOrthogonalPoints(
   }
   if (isHorizontalSource) {
     // Mixed orientation (horizontal -> vertical):
-    // enforce source-out first and target-in last to avoid crossing target body.
+    // Try L-shape (1 bend) when port directions are compatible with the geometry.
+    const lOutOk = sourcePosition === Position.Right ? targetX >= sourceX - EPS : targetX <= sourceX + EPS
+    const lInOk = targetPosition === Position.Top ? sourceY <= targetY + EPS : sourceY >= targetY - EPS
+    if (lOutOk && lInOk && Math.abs(sourceX - targetX) > EPS && Math.abs(sourceY - targetY) > EPS) {
+      return [source, { x: targetX, y: sourceY }, target]
+    }
+    // Fallback: enforce source-out first and target-in last to avoid crossing target body.
     const sourceOutX = sourcePosition === Position.Right ? sourceX + offset : sourceX - offset
     const targetInY = targetPosition === Position.Top ? targetY - offset : targetY + offset
     const bendY = targetInY + autoOffset
@@ -113,7 +119,13 @@ export function getDefaultOrthogonalPoints(
     ]
   }
   // Mixed orientation (vertical -> horizontal):
-  // enforce source-out first and target-in last to avoid crossing target body.
+  // Try L-shape (1 bend) when port directions are compatible with the geometry.
+  const lOutOk = sourcePosition === Position.Bottom ? targetY >= sourceY - EPS : targetY <= sourceY + EPS
+  const lInOk = targetPosition === Position.Left ? sourceX <= targetX + EPS : sourceX >= targetX - EPS
+  if (lOutOk && lInOk && Math.abs(sourceX - targetX) > EPS && Math.abs(sourceY - targetY) > EPS) {
+    return [source, { x: sourceX, y: targetY }, target]
+  }
+  // Fallback: enforce source-out first and target-in last to avoid crossing target body.
   const sourceOutY = sourcePosition === Position.Bottom ? sourceY + offset : sourceY - offset
   const targetInX = targetPosition === Position.Left ? targetX - offset : targetX + offset
   const bendX = targetInX + autoOffset

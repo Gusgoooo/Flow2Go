@@ -80,10 +80,13 @@ Open [http://localhost:5173](http://localhost:5173).
 
 统一路由为 OpenAI 兼容协议：
 
-- Base URL: `http://routify.alibaba-inc.com/protocol/openai/v1`
+- Base URL: `https://routify.alibaba-inc.com/protocol/openai/v1`
 - Chat: `.../chat/completions`
 - 鉴权：`Authorization: Bearer <key>`
 - **本地开发**：浏览器直连上述外网地址会被 **CORS** 拦截（控制台常见 `Failed to fetch`）；项目在 `localhost` / `127.0.0.1` 下会改用同源路径 `/protocol/openai/v1`，由 Vite **开发/预览代理**转发到 Routify。修改 `vite.config.ts` 后需重启 `npm run dev`。生产环境若静态站点仍跨域，需在网关侧放行 CORS，或设置 `VITE_ROUTIFY_BASE_URL` 指向自有反代。
+
+如果你是 GitLab Pages/快速部署平台这类**纯静态托管**（无法运行 Nginx 反代），通常需要外部代理来解决 CORS。可参考：
+- `docs/routify-proxy/cloudflare-worker.md`
 
 环境变量（不要提交真实密钥）：
 
