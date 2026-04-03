@@ -4046,17 +4046,6 @@ function EditorInner({ onBackHome, source, previewSnapshot, readOnly: _readOnly 
                 </div>
               </div>
             </div>
-            <div
-              style={{
-                marginTop: 8,
-                fontSize: 12,
-                lineHeight: 1.4,
-                color: '#94a3b8',
-                userSelect: 'none',
-              }}
-            >
-              请勿上传公司数据
-            </div>
           </div>
         )}
 
