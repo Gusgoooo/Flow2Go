@@ -3,13 +3,23 @@
  *
  * 双模式自动切换：
  * 1. 服务端代理模式（推荐）：Express server 运行时，走 `/api/routify/*`，
- *    API Key 由服务端 `process.env.ROUTIFY_API_KEY` 注入，前端零密钥。
+ *    API Key 由服务端按 X-API-Token 选择的环境变量注入（与 codify 同思路），前端零密钥。
+ *    默认 Token：`flow2go_routify` → `ROUTIFY_API_KEY`（可用 `VITE_ROUTIFY_X_API_TOKEN` 覆盖）。
  * 2. 直连回退模式：未部署 Express server 时，若构建阶段设置了
  *    `VITE_ROUTIFY_API_KEY`，则直连 Routify 网关（本地开发由 Vite 代理解决 CORS）。
  */
 
 const ROUTIFY_OPENAI_BASE_REMOTE = 'https://routify.alibaba-inc.com/protocol/openai/v1'
 const SERVER_PROXY_BASE = '/api/routify'
+const DEFAULT_X_API_TOKEN = 'flow2go_routify'
+
+function getRoutifyXApiToken(): string {
+  try {
+    const t = (import.meta as { env?: { VITE_ROUTIFY_X_API_TOKEN?: string } }).env?.VITE_ROUTIFY_X_API_TOKEN
+    if (typeof t === 'string' && t.trim()) return t.trim()
+  } catch { /* ignore */ }
+  return DEFAULT_X_API_TOKEN
+}
 
 function getViteRoutifyKey(): string {
   try {
@@ -71,6 +81,8 @@ export async function routifyOpenAICompatiblePost(
       )
     }
     headers['Authorization'] = `Bearer ${token}`
+  } else {
+    headers['X-API-Token'] = getRoutifyXApiToken()
   }
 
   const hasBody = opts.body !== undefined && method !== 'GET'
