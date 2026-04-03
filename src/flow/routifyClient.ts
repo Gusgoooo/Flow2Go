@@ -96,6 +96,7 @@ export async function routifyOpenAICompatiblePost(
   const base = getRoutifyOpenAIBase()
   const url = `${base}/${clean}`
   const method = opts.method ?? 'POST'
+  console.info('[Flow2Go Routify] request', { method, url, mode: isServerProxyAvailable() ? 'proxy' : 'direct' })
 
   const headers: Record<string, string> = { ...opts.headers }
 
