@@ -2,6 +2,7 @@ import { readFileSync } from 'node:fs'
 import path from 'node:path'
 import { fileURLToPath } from 'node:url'
 import express, { type Request, type Response } from 'express'
+import { DEFAULT_ROUTIFY_OPENAI_BASE, resolveRoutifyProfile } from './server/routifyTokenMap'
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url))
 
@@ -26,18 +27,10 @@ loadDotEnv(path.resolve(__dirname, '.env'))
 const PORT = Number(process.env.PORT || 3001)
 const HOST = process.env.HOST || '0.0.0.0'
 
-const ROUTIFY_BASE =
-  process.env.ROUTIFY_BASE_URL ||
-  'https://routify.alibaba-inc.com/protocol/openai/v1'
-
 const corsHeaders = {
   'Access-Control-Allow-Origin': '*',
-  'Access-Control-Allow-Headers': 'Content-Type, Authorization',
+  'Access-Control-Allow-Headers': 'Content-Type, Authorization, X-API-Token',
   'Access-Control-Allow-Methods': 'GET, POST, OPTIONS',
-}
-
-function getRoutifyApiKey(): string {
-  return (process.env.ROUTIFY_API_KEY || '').trim()
 }
 
 const app = express()
@@ -48,18 +41,20 @@ app.options('/api/routify/*path', (_req: Request, res: Response) => {
 })
 
 app.all('/api/routify/*path', async (req: Request, res: Response) => {
-  const apiKey = getRoutifyApiKey()
-  if (!apiKey) {
-    res.set(corsHeaders).status(500).json({ error: '服务端未配置 ROUTIFY_API_KEY 环境变量' })
+  const profile = resolveRoutifyProfile(req)
+  if ('error' in profile) {
+    res.set(corsHeaders).status(profile.status).json({ error: profile.error })
     return
   }
 
+  const { apiKey, baseURL, token, source } = profile
+
   const subPath = (req.params as Record<string, string>).path ?? ''
-  const upstream = `${ROUTIFY_BASE.replace(/\/+$/, '')}/${subPath}`
+  const upstream = `${baseURL.replace(/\/+$/, '')}/${subPath}`
 
   const headers: Record<string, string> = {
     Authorization: `Bearer ${apiKey}`,
-    'Content-Type': req.headers['content-type'] || 'application/json',
+    'Content-Type': (req.headers['content-type'] as string) || 'application/json',
   }
 
   try {
@@ -91,7 +86,7 @@ app.all('/api/routify/*path', async (req: Request, res: Response) => {
     }
     await pump()
   } catch (e) {
-    console.error('[routify proxy]', e)
+    console.error('[routify proxy]', { token, source, upstream }, e)
     res.set(corsHeaders).status(502).json({ error: `Routify 代理失败: ${e instanceof Error ? e.message : String(e)}` })
   }
 })
@@ -103,10 +98,11 @@ app.get('*path', (_req: Request, res: Response) => {
 })
 
 app.listen(PORT, HOST, () => {
-  const key = getRoutifyApiKey()
-  const keySource = process.env.ROUTIFY_API_KEY ? 'ROUTIFY_API_KEY' : '—'
-  const baseSource = process.env.ROUTIFY_BASE_URL ? 'ROUTIFY_BASE_URL' : 'default'
+  const probe = resolveRoutifyProfile({
+    headers: { 'x-api-token': 'flow2go_routify' },
+  })
+  const ok = 'apiKey' in probe && probe.apiKey
   console.info(`🚀 Flow2Go server on http://${HOST}:${PORT}`)
-  console.info(`   Upstream  → ${ROUTIFY_BASE}  (${baseSource})`)
-  console.info(`   API Key   ${key ? `✅ from ${keySource}` : '❌ NOT SET'}`)
+  console.info(`   Routify default upstream → ${DEFAULT_ROUTIFY_OPENAI_BASE}`)
+  console.info(`   X-API-Token flow2go_routify + ROUTIFY_API_KEY ${ok ? '✅' : '❌ NOT SET'}`)
 })
