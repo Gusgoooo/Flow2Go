@@ -1,5 +1,5 @@
 import { useEffect, useRef } from 'react'
-import type { EdgeLabelLayoutConfig, EdgeLabelPlacement } from './edgeLabels/types'
+import type { EdgeLabelLayoutConfig, EdgeLabelPlacement } from '../edgeLabels/types'
 import styles from './flowEditor.module.css'
 
 type InlineInspectorProps = {

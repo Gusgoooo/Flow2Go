@@ -1,7 +1,7 @@
 import { useCallback, useState } from 'react'
 import { HexColorPicker } from 'react-colorful'
 import styles from './ColorEditor.module.css'
-import { PRESET_COLORS } from './ColorEditor'
+import { PRESET_COLORS } from '../constants'
 
 export type GradientValue = {
   type: 'solid' | 'linear'

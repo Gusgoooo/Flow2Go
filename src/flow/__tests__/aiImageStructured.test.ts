@@ -5,7 +5,7 @@ import {
   buildSwimlaneDraftFromImageStructured,
   refineImageStructuredDraft,
   validateImageStructuredDraft,
-} from '../aiDiagram'
+} from '../ai/aiDiagram'
 import { GRID_UNIT } from '../grid'
 
 describe('ai image structured pipeline', () => {

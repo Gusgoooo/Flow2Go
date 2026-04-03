@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { autoLayoutSwimlane } from '../swimlaneLayout'
+import { autoLayoutSwimlane } from '../swimlane/swimlaneLayout'
 
 describe('swimlane layout column span', () => {
   it('merges adjacent rows when column sets are disjoint (approximate same row)', () => {

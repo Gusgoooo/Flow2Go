@@ -1,4 +1,4 @@
-import type { AiDiagramDraft } from './aiDiagram'
+import type { AiDiagramDraft } from './ai/aiDiagram'
 
 export type SemanticPipeline =
   | 'auto'

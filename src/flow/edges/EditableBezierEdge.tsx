@@ -1,11 +1,11 @@
 import { useEffect, useMemo, useRef, useState } from 'react'
 import { BaseEdge, MarkerType, Position, getBezierPath, type EdgeProps, useReactFlow, useStore } from '@xyflow/react'
-import { getBezierLabelAnchors } from './edgeLabels/edgeLabelPosition'
-import { SmartEdgeLabel } from './edgeLabels/SmartEdgeLabel'
-import type { EdgeLabelLayoutConfig, EdgeLabelStyle } from './edgeLabels/types'
-import { QuickTextStyleToolbar, QUICK_TOOLBAR_DATA_ATTR } from './QuickTextStyleToolbar'
+import { getBezierLabelAnchors } from '../edgeLabels/edgeLabelPosition'
+import { SmartEdgeLabel } from '../edgeLabels/SmartEdgeLabel'
+import type { EdgeLabelLayoutConfig, EdgeLabelStyle } from '../edgeLabels/types'
+import { QuickTextStyleToolbar, QUICK_TOOLBAR_DATA_ATTR } from '../style/QuickTextStyleToolbar'
 import { padEdgeEndpoints } from './edgeEndpointPad'
-import { GRID_UNIT, SIZE_STEP_RATIO, snapToGrid } from './grid'
+import { GRID_UNIT, SIZE_STEP_RATIO, snapToGrid } from '../grid'
 
 type SwimlaneEdgeSemanticType = 'normal' | 'crossLane' | 'returnFlow' | 'conditional'
 

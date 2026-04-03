@@ -9,7 +9,12 @@ import {
 } from 'react'
 import { Handle, NodeResizer, Position, useReactFlow, type NodeProps } from '@xyflow/react'
 import styles from './quadNode.module.css'
-import { QuickTextStyleToolbar, QUICK_TOOLBAR_DATA_ATTR } from './QuickTextStyleToolbar'
+import { QuickTextStyleToolbar, QUICK_TOOLBAR_DATA_ATTR } from '../style/QuickTextStyleToolbar'
+import {
+  COMPLETED_STROKE, COMPLETED_FILL, FAILED_STROKE, FAILED_FILL,
+  END_NODE_FILL, DECISION_NODE_FILL, DECISION_LABEL_COLOR,
+  COMPLETED_KEYWORDS, FAILED_KEYWORDS,
+} from '../constants'
 
 export type QuadShape = 'rect' | 'circle' | 'diamond'
 
@@ -51,16 +56,6 @@ const DEFAULT_TITLE_FS = 12
 const DEFAULT_SUBTITLE_FS = 10
 const QUAD_MIN_W = 80
 const QUAD_MIN_H = 32
-
-const COMPLETED_STROKE = '#31C262'
-const COMPLETED_FILL = 'rgba(49, 194, 98, 0.12)' // 12% 透明度
-const FAILED_STROKE = '#FF4E4E'
-const FAILED_FILL = 'rgba(255, 78, 78, 0.12)' // 12% 透明度
-const END_NODE_FILL = 'rgba(226, 232, 240, 0.8)'
-const DECISION_NODE_FILL = '#FFB100'
-const DECISION_LABEL_COLOR = '#ffffff'
-const COMPLETED_KEYWORDS = ['完成', '通过']
-const FAILED_KEYWORDS = ['失败', '不通过']
 
 /** 行高 = 字号 + 8px（与主副标题各自字号同步） */
 function lineHeightForFontSizePx(fs: number) {

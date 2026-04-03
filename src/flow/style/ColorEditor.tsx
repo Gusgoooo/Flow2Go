@@ -3,38 +3,9 @@ import { createPortal } from 'react-dom'
 import { useFloating, offset, flip, shift } from '@floating-ui/react'
 import { HexColorInput, HexColorPicker } from 'react-colorful'
 import styles from './ColorEditor.module.css'
+import { PRESET_COLORS, RECENT_COLORS_MAX } from '../constants'
 
-/** 预设颜色（统一色板，与最近使用数量一致） */
-export const PRESET_COLORS = [
-  '#FF6A00',
-  '#C059FF',
-  '#FF6CC4',
-  '#4D9EF5',
-  '#FFB100',
-  '#33D8EA',
-  '#FF4E4E',
-  '#31C262',
-  '#0f172a',
-  '#64748b',
-  '#94a3b8',
-  '#e2e8f0',
-  '#ffffff',
-  '#fef3c7',
-  '#86efac',
-  '#7dd3fc',
-] as const
-
-/** AI 场景胶囊高亮用色：取预设色板前 5 个，与节点配色器一致 */
-export const AI_SCENE_CAPSULE_ACCENT_COLORS: readonly [string, string, string, string, string] = [
-  PRESET_COLORS[0],
-  PRESET_COLORS[1],
-  PRESET_COLORS[2],
-  PRESET_COLORS[3],
-  PRESET_COLORS[4],
-]
-
-/** 最近使用数量 = 预设颜色数量，超出则按时间只保留最新 */
-export const RECENT_COLORS_MAX = PRESET_COLORS.length
+export { PRESET_COLORS, AI_SCENE_CAPSULE_ACCENT_COLORS, RECENT_COLORS_MAX } from '../constants'
 
 const RECENT_STORAGE_KEY = 'flow2go-color-recent'
 

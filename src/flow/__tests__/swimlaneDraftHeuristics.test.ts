@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { swimlaneDraftToGraphBatchPayload, type SwimlaneDraft } from '../swimlaneDraft'
+import { swimlaneDraftToGraphBatchPayload, type SwimlaneDraft } from '../swimlane/swimlaneDraft'
 
 function nodeStyleFromPayload(payload: ReturnType<typeof swimlaneDraftToGraphBatchPayload>, nodeId: string): Record<string, any> {
   const op = payload.operations.find((item) => item.op === 'graph.createNodeQuad' && item.params.id === nodeId)

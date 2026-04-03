@@ -1,6 +1,6 @@
 import { Position } from '@xyflow/react'
 import { describe, expect, it } from 'vitest'
-import { resolveDragNormalizeAnchorPreference } from '../EditableSmoothStepEdge'
+import { resolveDragNormalizeAnchorPreference } from '../edges/EditableSmoothStepEdge'
 
 describe('resolveDragNormalizeAnchorPreference', () => {
   it('prefers target anchor when dragged parallel segment is closer to in side', () => {

@@ -1,8 +1,8 @@
 import type { CSSProperties } from 'react'
 import { X } from 'lucide-react'
-import type { AiDiagramSceneHint } from './aiDiagram'
-import type { AiSceneCapsulePreset } from './aiPromptPresets'
-import styles from './flowEditor.module.css'
+import type { AiDiagramSceneHint } from './ai/aiDiagram'
+import type { AiSceneCapsulePreset } from './ai/aiPromptPresets'
+import styles from './editor/flowEditor.module.css'
 
 type Props = {
   presets: AiSceneCapsulePreset[]

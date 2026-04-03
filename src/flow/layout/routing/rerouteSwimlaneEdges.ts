@@ -92,13 +92,41 @@ function isOrdinarySwimlaneNode(node: Node<any> | undefined): boolean {
   return true
 }
 
-function semanticOf(edge: Edge<any>, srcLaneId?: string, tgtLaneId?: string, srcNode?: Node<any>, tgtNode?: Node<any>): SwimlaneEdgeSemanticType {
+function semanticOf(
+  edge: Edge<any>,
+  srcLaneId?: string,
+  tgtLaneId?: string,
+  srcNode?: Node<any>,
+  tgtNode?: Node<any>,
+  byId?: Map<string, Node<any>>,
+): SwimlaneEdgeSemanticType {
   const explicit = (edge.data as any)?.semanticType as SwimlaneEdgeSemanticType | undefined
   if (explicit) return explicit
   if (srcLaneId && tgtLaneId && srcLaneId !== tgtLaneId) return 'crossLane'
-  const srcOrder = Number((srcNode?.data as any)?.nodeOrder ?? 0)
-  const tgtOrder = Number((tgtNode?.data as any)?.nodeOrder ?? 0)
-  if (srcLaneId && tgtLaneId && srcLaneId === tgtLaneId && srcOrder > tgtOrder) return 'returnFlow'
+  if (!srcLaneId || !tgtLaneId || srcLaneId !== tgtLaneId) return 'normal'
+  if (!srcNode || !tgtNode) return 'normal'
+
+  const srcCol = (srcNode.data as any)?.laneCol as number | undefined
+  const tgtCol = (tgtNode.data as any)?.laneCol as number | undefined
+  const srcRow = (srcNode.data as any)?.laneRow as number | undefined
+  const tgtRow = (tgtNode.data as any)?.laneRow as number | undefined
+  const hasGridInfo = srcCol != null && tgtCol != null
+
+  if (hasGridInfo) {
+    if (srcCol !== tgtCol) return srcCol > tgtCol ? 'returnFlow' : 'normal'
+    if (srcRow != null && tgtRow != null && srcRow !== tgtRow) return srcRow > tgtRow ? 'returnFlow' : 'normal'
+  }
+
+  if (byId && srcNode && tgtNode) {
+    const sCx = centerX(srcNode, byId)
+    const tCx = centerX(tgtNode, byId)
+    const dx = tCx - sCx
+    if (Math.abs(dx) > 1) return dx < 0 ? 'returnFlow' : 'normal'
+  }
+
+  const srcOrder = Number((srcNode.data as any)?.nodeOrder ?? 0)
+  const tgtOrder = Number((tgtNode.data as any)?.nodeOrder ?? 0)
+  if (srcOrder > tgtOrder) return 'returnFlow'
   return 'normal'
 }
 
@@ -228,7 +256,7 @@ export function rerouteSwimlaneEdges(nodes: Node<any>[], edges: Edge<any>[]): Ed
 
     const srcLaneId = laneIdOf(srcNode)
     const tgtLaneId = laneIdOf(tgtNode)
-    const semantic = semanticOf(edge, srcLaneId, tgtLaneId, srcNode, tgtNode)
+    const semantic = semanticOf(edge, srcLaneId, tgtLaneId, srcNode, tgtNode, nodeById)
     const sourceLane = srcLaneId ? nodeById.get(srcLaneId) : undefined
     const targetLane = tgtLaneId ? nodeById.get(tgtLaneId) : undefined
 

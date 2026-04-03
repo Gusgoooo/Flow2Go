@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useLayoutEffect, useRef, useState } from 'react'
 import { useReactFlow, useUpdateNodeInternals, type NodeProps } from '@xyflow/react'
-import { QuickTextStyleToolbar, QUICK_TOOLBAR_DATA_ATTR } from './QuickTextStyleToolbar'
-import { snapSizeToGrid } from './grid'
+import { QuickTextStyleToolbar, QUICK_TOOLBAR_DATA_ATTR } from '../style/QuickTextStyleToolbar'
+import { snapSizeToGrid } from '../grid'
 
 export type TextNodeData = {
   label?: string
