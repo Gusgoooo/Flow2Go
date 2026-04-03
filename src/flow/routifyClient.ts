@@ -13,6 +13,13 @@
 const ROUTIFY_OPENAI_BASE_REMOTE = 'https://routify.alibaba-inc.com/protocol/openai/v1'
 const DEFAULT_PROXY_RELATIVE_BASE = '/api/routify'
 const DEFAULT_X_API_TOKEN = 'flow2go_routify'
+const FORCE_DIRECT_HOST_KEYWORDS = ['pre-codify.alibaba-inc.com', 'dev.g.alicdn.com']
+
+function shouldForceDirectByHost(): boolean {
+  if (typeof window === 'undefined') return false
+  const host = window.location.hostname.toLowerCase()
+  return FORCE_DIRECT_HOST_KEYWORDS.some((k) => host.includes(k))
+}
 
 /**
  * 服务端代理根路径。
@@ -48,6 +55,7 @@ function getViteRoutifyKey(): string {
 }
 
 function isServerProxyAvailable(): boolean {
+  if (shouldForceDirectByHost()) return false
   const viteKey = getViteRoutifyKey()
   if (viteKey) return false
   return true
