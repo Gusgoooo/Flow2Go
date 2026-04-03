@@ -26,7 +26,10 @@ loadDotEnv(path.resolve(__dirname, '.env'))
 const PORT = Number(process.env.PORT || 3001)
 const HOST = process.env.HOST || '0.0.0.0'
 
-const ROUTIFY_BASE = process.env.ROUTIFY_BASE_URL || 'https://routify.alibaba-inc.com/protocol/openai/v1'
+const ROUTIFY_BASE =
+  process.env.ROUTIFY_BASE_URL ||
+  process.env.IDEALAB_BASE_URL_FBI ||
+  'https://routify.alibaba-inc.com/protocol/openai/v1'
 
 const corsHeaders = {
   'Access-Control-Allow-Origin': '*',
@@ -35,7 +38,7 @@ const corsHeaders = {
 }
 
 function getRoutifyApiKey(): string {
-  return (process.env.ROUTIFY_API_KEY ?? '').trim()
+  return (process.env.ROUTIFY_API_KEY || process.env.IDEALAB_API_KEY_FBI || '').trim()
 }
 
 const app = express()
@@ -102,7 +105,11 @@ app.get('*path', (_req: Request, res: Response) => {
 
 app.listen(PORT, HOST, () => {
   const key = getRoutifyApiKey()
+  const keySource = process.env.ROUTIFY_API_KEY ? 'ROUTIFY_API_KEY' :
+    process.env.IDEALAB_API_KEY_FBI ? 'IDEALAB_API_KEY_FBI (codify)' : '—'
+  const baseSource = process.env.ROUTIFY_BASE_URL ? 'ROUTIFY_BASE_URL' :
+    process.env.IDEALAB_BASE_URL_FBI ? 'IDEALAB_BASE_URL_FBI (codify)' : 'default'
   console.info(`🚀 Flow2Go server on http://${HOST}:${PORT}`)
-  console.info(`   Routify proxy → ${ROUTIFY_BASE}`)
-  console.info(`   ROUTIFY_API_KEY ${key ? '✅ configured' : '❌ NOT SET'}`)
+  console.info(`   Upstream  → ${ROUTIFY_BASE}  (${baseSource})`)
+  console.info(`   API Key   ${key ? `✅ from ${keySource}` : '❌ NOT SET'}`)
 })
