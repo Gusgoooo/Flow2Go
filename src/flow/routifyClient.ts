@@ -1,51 +1,30 @@
 /**
- * Routify OpenAI-compatible 统一网关客户端（极简版）。
+ * Routify OpenAI-compatible 统一网关客户端。
  *
- * 架构与 codify 对齐：
- * - 构建时 `VITE_ROUTIFY_API_KEY` 被 Vite 内联到 JS bundle，前端直连 Routify。
- * - 本地开发走 Vite devServer 代理（`/protocol/openai/v1` → routify.alibaba-inc.com）解决 CORS。
- * - 线上（非 localhost）直接请求 https://routify.alibaba-inc.com/protocol/openai/v1。
- *
- * ⚡ 只有一个环境变量需要关心：VITE_ROUTIFY_API_KEY
- *    - 本地：写在 .env.local（已 gitignore）
- *    - 线上：在 CI/CD 构建环境中设置
+ * 架构：前端零密钥，所有请求走同源 codify 服务端代理。
+ * - 线上：前端 → /api/flow2go/routify/* → codify Next.js API Route → Routify 网关
+ *   AK 由 codify 服务端 process.env.ROUTIFY_API_KEY 注入，前端不持有任何密钥。
+ * - 本地开发：Vite devServer 代理同路径 → routify.alibaba-inc.com（注入 .env.local 的 key）
  */
 
-const ROUTIFY_OPENAI_BASE_REMOTE = 'https://routify.alibaba-inc.com/protocol/openai/v1'
-
-function getViteRoutifyKey(): string {
-  try {
-    const v = (import.meta as { env?: { VITE_ROUTIFY_API_KEY?: string } }).env?.VITE_ROUTIFY_API_KEY
-    if (typeof v === 'string' && v.trim()) return v.trim()
-  } catch { /* ignore */ }
-  return ''
-}
-
-function isLocalhost(): boolean {
-  if (typeof window === 'undefined') return false
-  const h = window.location.hostname
-  return h === 'localhost' || h === '127.0.0.1' || h === '[::1]'
-}
+const PROXY_PATH = '/api/flow2go/routify'
 
 export function getRoutifyOpenAIBase(): string {
-  if (isLocalhost()) return '/protocol/openai/v1'
-  return ROUTIFY_OPENAI_BASE_REMOTE
+  return PROXY_PATH
 }
 
 export function getRoutifyApiKey(): string {
-  return getViteRoutifyKey()
+  return '(server-managed)'
 }
 
-export const ROUTIFY_OPENAI_BASE = ROUTIFY_OPENAI_BASE_REMOTE
-export const ROUTIFY_CHAT_COMPLETIONS_URL = `${ROUTIFY_OPENAI_BASE_REMOTE}/chat/completions`
+export const ROUTIFY_OPENAI_BASE = 'https://routify.alibaba-inc.com/protocol/openai/v1'
+export const ROUTIFY_CHAT_COMPLETIONS_URL = `${ROUTIFY_OPENAI_BASE}/chat/completions`
 
 if (typeof window !== 'undefined') {
-  const key = getViteRoutifyKey()
-  const base = getRoutifyOpenAIBase()
   console.info(
     '[Flow2Go Routify] 启动诊断',
-    '\n  API Key:', key ? `已配置 (${key.slice(0, 6)}…)` : '⚠️ 未配置 VITE_ROUTIFY_API_KEY',
-    '\n  Base URL:', base,
+    '\n  模式: 服务端代理（codify Next.js）',
+    '\n  代理路径:', PROXY_PATH,
     '\n  Hostname:', window.location.hostname,
   )
 }
@@ -62,24 +41,10 @@ export async function routifyOpenAICompatiblePost(
   opts: RoutifyOpenAIPostOptions = {},
 ): Promise<Response> {
   const clean = path.replace(/^\/+/, '')
-  const base = getRoutifyOpenAIBase()
-  const url = `${base}/${clean}`
+  const url = `${PROXY_PATH}/${clean}`
   const method = opts.method ?? 'POST'
 
-  const apiKey = getViteRoutifyKey()
-  if (!apiKey) {
-    throw new Error(
-      '[Flow2Go] 未配置 Routify API Key！\n'
-      + '请在构建环境（CI/CD）中设置 VITE_ROUTIFY_API_KEY=sk-xxx，\n'
-      + '或本地 .env.local 文件中添加 VITE_ROUTIFY_API_KEY=sk-xxx。\n'
-      + '⚠️ 这是 Vite 构建时变量，必须在 `npm run build` 时存在。',
-    )
-  }
-
-  const headers: Record<string, string> = {
-    ...opts.headers,
-    'Authorization': `Bearer ${apiKey}`,
-  }
+  const headers: Record<string, string> = { ...opts.headers }
 
   const hasBody = opts.body !== undefined && method !== 'GET'
   if (hasBody) {
