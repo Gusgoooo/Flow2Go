@@ -7,6 +7,8 @@ export type SemanticPipeline =
   | 'swimlane-text'
   | 'swimlane-image'
   | 'free-layout-image'
+  | 'business-big-map-text'
+  | 'business-big-map-image'
 
 export type SemanticPayloadFormat =
   | 'raw-text'

@@ -1,5 +1,5 @@
 /** OpenAI 兼容代理：转发至 Routify 网关（服务端使用 process.env.ROUTIFY_API_KEY） */
-const ROUTIFY_BASE = 'http://routify.alibaba-inc.com/protocol/openai/v1'
+const ROUTIFY_BASE = 'https://routify.alibaba-inc.com/protocol/openai/v1'
 
 function readBody(req: any): any {
   if (typeof req.body === 'string') {

@@ -241,7 +241,7 @@ export function QuadNode(props: NodeProps) {
       : data.stroke
   const strokeWidth =
     (isCompleted || isFailed) && !hasUserStrokeWidth
-      ? 2
+      ? 1
       : (!hasUserStrokeWidth && isSemanticDecision)
         ? 0
         : data.strokeWidth
@@ -267,14 +267,14 @@ export function QuadNode(props: NodeProps) {
   }
   // rect 保持默认圆角
 
-  // 描边：统一使用“外描边”（box-shadow 外扩），避免描边侵占节点内容区与网格尺寸。
+  // 描边：统一使用“内描边”（inset box-shadow），避免外扩影响对齐与矩形布局。
   nodeStyle.border = 'none'
   if (strokeWidth === 0) {
     nodeStyle.boxShadow = 'none'
   } else {
     const effectiveStrokeWidth = Number.isFinite(strokeWidth as number) ? Math.max(0, Number(strokeWidth)) : 1
     const effectiveStrokeColor = strokeColor ?? '#e2e8f0'
-    nodeStyle.boxShadow = `0 0 0 ${effectiveStrokeWidth}px ${effectiveStrokeColor}`
+    nodeStyle.boxShadow = `inset 0 0 0 ${effectiveStrokeWidth}px ${effectiveStrokeColor}`
   }
 
   // 选中时不强制黑色描边：保持用户设置的 stroke 颜色
