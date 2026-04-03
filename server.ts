@@ -27,6 +27,9 @@ loadDotEnv(path.resolve(__dirname, '.env'))
 const PORT = Number(process.env.PORT || 3001)
 const HOST = process.env.HOST || '0.0.0.0'
 
+/** 与前端 VITE_ROUTIFY_PROXY_BASE 路径段保持一致，默认 /api/routify */
+const PROXY_MOUNT = (process.env.ROUTIFY_PROXY_MOUNT || '/api/routify').replace(/\/+$/, '')
+
 const corsHeaders = {
   'Access-Control-Allow-Origin': '*',
   'Access-Control-Allow-Headers': 'Content-Type, Authorization, X-API-Token',
@@ -36,11 +39,11 @@ const corsHeaders = {
 const app = express()
 app.use(express.json({ limit: '20mb' }))
 
-app.options('/api/routify/*path', (_req: Request, res: Response) => {
+app.options(`${PROXY_MOUNT}/*path`, (_req: Request, res: Response) => {
   res.set(corsHeaders).status(204).end()
 })
 
-app.all('/api/routify/*path', async (req: Request, res: Response) => {
+app.all(`${PROXY_MOUNT}/*path`, async (req: Request, res: Response) => {
   const profile = resolveRoutifyProfile(req)
   if ('error' in profile) {
     res.set(corsHeaders).status(profile.status).json({ error: profile.error })
@@ -103,6 +106,7 @@ app.listen(PORT, HOST, () => {
   })
   const ok = 'apiKey' in probe && probe.apiKey
   console.info(`🚀 Flow2Go server on http://${HOST}:${PORT}`)
+  console.info(`   Routify proxy mount → ${PROXY_MOUNT}/*`)
   console.info(`   Routify default upstream → ${DEFAULT_ROUTIFY_OPENAI_BASE}`)
   console.info(`   X-API-Token flow2go_routify + ROUTIFY_API_KEY ${ok ? '✅' : '❌ NOT SET'}`)
 })
