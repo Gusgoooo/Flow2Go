@@ -327,6 +327,32 @@ function snapEndpointsToPorts(
     }
   }
 
+  // 处理首段退化：当 source->first 长度接近 0 时，借用下一段的几何信息恢复端口方向，
+  // 避免“从 handle 直接横向/纵向出线”的视觉断层。
+  const firstAfterSnap = snapped[1]
+  const secondAfterSnap = snapped.length > 3 ? snapped[2] : undefined
+  if (firstAfterSnap) {
+    if (sourcePosition === Position.Left || sourcePosition === Position.Right) {
+      if (Math.abs(firstAfterSnap.x - src.x) < ORTHO_EPS) {
+        const outwardFromSecond =
+          secondAfterSnap
+          && ((sourcePosition === Position.Right && secondAfterSnap.x > src.x + ORTHO_EPS)
+            || (sourcePosition === Position.Left && secondAfterSnap.x < src.x - ORTHO_EPS))
+        if (outwardFromSecond && secondAfterSnap) {
+          firstAfterSnap.x = secondAfterSnap.x
+        }
+      }
+    } else if (Math.abs(firstAfterSnap.y - src.y) < ORTHO_EPS) {
+      const outwardFromSecond =
+        secondAfterSnap
+        && ((sourcePosition === Position.Bottom && secondAfterSnap.y > src.y + ORTHO_EPS)
+          || (sourcePosition === Position.Top && secondAfterSnap.y < src.y - ORTHO_EPS))
+      if (outwardFromSecond && secondAfterSnap) {
+        firstAfterSnap.y = secondAfterSnap.y
+      }
+    }
+  }
+
   // 最后一段：最后一个中间点 → 目标节点
   const tgt = snapped[snapped.length - 1]
   const lastIdx = snapped.length - 2
@@ -355,6 +381,31 @@ function snapEndpointsToPorts(
       if (prevIdx > 0) {
         const prev = snapped[prevIdx]
         if (prev) prev.y = last.y
+      }
+    }
+  }
+
+  // 处理尾段退化：当 last->target 长度接近 0 时，借用前一段的几何信息恢复端口入线方向。
+  const penultimateIdx = snapped.length - 3
+  const penultimate = penultimateIdx >= 1 ? snapped[penultimateIdx] : undefined
+  if (last) {
+    if (targetPosition === Position.Left || targetPosition === Position.Right) {
+      if (Math.abs(last.x - tgt.x) < ORTHO_EPS) {
+        const inwardFromPrev =
+          penultimate
+          && ((targetPosition === Position.Left && penultimate.x < tgt.x - ORTHO_EPS)
+            || (targetPosition === Position.Right && penultimate.x > tgt.x + ORTHO_EPS))
+        if (inwardFromPrev && penultimate) {
+          last.x = penultimate.x
+        }
+      }
+    } else if (Math.abs(last.y - tgt.y) < ORTHO_EPS) {
+      const inwardFromPrev =
+        penultimate
+        && ((targetPosition === Position.Top && penultimate.y < tgt.y - ORTHO_EPS)
+          || (targetPosition === Position.Bottom && penultimate.y > tgt.y + ORTHO_EPS))
+      if (inwardFromPrev && penultimate) {
+        last.y = penultimate.y
       }
     }
   }
