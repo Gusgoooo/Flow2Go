@@ -223,7 +223,6 @@ async function openRouterChatCompleteByMessages(args: {
     const res = await routifyChatCompletions({
       body: requestPayload,
       signal: mergedController.signal,
-      bearerFallback: args.apiKey,
     })
 
     const text = await res.text()

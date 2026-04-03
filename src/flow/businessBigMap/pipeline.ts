@@ -131,7 +131,7 @@ export type BigMapTextGenerateOptions = {
 export async function generateBigMapFromText(
   opts: BigMapTextGenerateOptions,
 ): Promise<{ draft: AiDiagramDraft; logs: BigMapPipelineLog[]; issues: BigMapValidationIssue[] }> {
-  const { apiKey, model, prompt, signal, timeoutMs = 90_000, onProgress } = opts
+  const { model, prompt, signal, timeoutMs = 90_000, onProgress } = opts
   const startMs = Date.now()
   const logs: BigMapPipelineLog[] = []
   const allIssues: BigMapValidationIssue[] = []
@@ -165,7 +165,6 @@ export async function generateBigMapFromText(
         { role: 'user', content: prompt },
       ]},
       signal: controller.signal,
-      bearerFallback: apiKey,
     })
     const rawBodyText = await res.text()
     if (!res.ok) throw new Error(`Routify 错误 ${res.status}: ${truncateText(rawBodyText, 2000)}`)
@@ -211,7 +210,7 @@ export type BigMapImageGenerateOptions = {
 export async function generateBigMapFromImage(
   opts: BigMapImageGenerateOptions,
 ): Promise<{ draft: AiDiagramDraft; logs: BigMapPipelineLog[]; issues: BigMapValidationIssue[] }> {
-  const { apiKey, model, imageDataUrl, prompt, signal, timeoutMs = 120_000, onProgress } = opts
+  const { model, imageDataUrl, prompt, signal, timeoutMs = 120_000, onProgress } = opts
   const startMs = Date.now()
   const logs: BigMapPipelineLog[] = []
   const allIssues: BigMapValidationIssue[] = []
@@ -250,7 +249,6 @@ export async function generateBigMapFromImage(
     const res = await routifyChatCompletions({
       body: { model, temperature: 0, stream: false, messages },
       signal: controller.signal,
-      bearerFallback: apiKey,
     })
     const rawBodyText = await res.text()
     if (!res.ok) throw new Error(`Routify 错误 ${res.status}: ${truncateText(rawBodyText, 2000)}`)

@@ -1,7 +1,6 @@
 import { routifyOpenAICompatiblePost } from './routifyClient'
 
 type PostOpenRouterOptions = {
-  apiKey?: string
   signal?: AbortSignal
 }
 
@@ -16,6 +15,5 @@ export async function postOpenRouter(
   return routifyOpenAICompatiblePost(path, {
     body: payload,
     signal: opts.signal,
-    bearerFallback: opts.apiKey,
   })
 }

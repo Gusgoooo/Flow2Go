@@ -1034,8 +1034,7 @@ function validateSwimlaneDraft(draft: any): SwimlaneDraft {
 export async function generateSwimlaneDraftWithLLM(
   opts: GenerateSwimlaneDraftOptions,
 ): Promise<SwimlaneDraft> {
-  const { apiKey, model, prompt, signal, timeoutMs = 90_000 } = opts
-  // Key 可选：生产环境可通过服务端代理环境变量提供
+  const { model, prompt, signal, timeoutMs = 90_000 } = opts
   const controller = new AbortController()
   const timer = setTimeout(() => controller.abort(new Error('timeout')), timeoutMs)
   const onAbort = () => controller.abort(signal?.reason)
@@ -1051,7 +1050,6 @@ export async function generateSwimlaneDraftWithLLM(
         ],
       },
       signal: controller.signal,
-      bearerFallback: apiKey,
     })
     const text = await res.text()
     if (!res.ok) throw new Error(`Routify 请求失败: ${res.status} ${text}`)
