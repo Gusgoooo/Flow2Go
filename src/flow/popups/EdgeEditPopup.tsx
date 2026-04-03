@@ -1,12 +1,11 @@
 import { useRef, useEffect } from 'react'
 import { MarkerType, type Edge } from '@xyflow/react'
-import { ColorEditor } from './ColorEditor'
+import { ColorEditor } from '../style/ColorEditor'
 import styles from './NodeEditPopup.module.css'
+import { DEFAULT_EDGE_COLOR } from '../constants'
 
 type EdgeLabelStyle = { fontSize?: number; fontWeight?: string; color?: string }
 type FlowEdge = Edge<{ arrowStyle?: any }> & { labelStyle?: EdgeLabelStyle }
-
-const DEFAULT_EDGE_COLOR = '#94a3b8'
 
 type Props = {
   edge: FlowEdge

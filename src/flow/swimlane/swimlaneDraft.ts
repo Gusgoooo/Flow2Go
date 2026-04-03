@@ -2,8 +2,8 @@
  * SwimlaneDraft: 泳道图中间结构。
  * LLM / 外部输入只需产出此结构，由 swimlaneDraftToGraphBatchPayload 转为 GraphBatchPayload。
  */
-import type { GraphBatchPayload, GraphOperation } from './mermaid/types'
-import { routifyChatCompletions } from './routifyClient'
+import type { GraphBatchPayload, GraphOperation } from '../mermaid/types'
+import { routifyChatCompletions } from '../routifyClient'
 
 export type SwimlaneDraftNode = {
   id: string
@@ -128,6 +128,34 @@ function sanitizeEdgeLabel(
   if (labelToken === 'yes') return '是'
   if (labelToken === 'no') return '否'
   return trimmed.slice(0, 12)
+}
+
+/**
+ * Detect implied return flow by geometric position first (laneCol/laneRow),
+ * falling back to order only when geometry is unavailable.
+ * Horizontal swimlanes flow left-to-right so "backward" = target is left of source.
+ * Vertical swimlanes flow top-to-bottom so "backward" = target is above source.
+ */
+function isImpliedReturnFlow(
+  sourceNode: SwimlaneDraftNode,
+  targetNode: SwimlaneDraftNode,
+  direction: SwimlaneDraft['direction'],
+): boolean {
+  if (sourceNode.laneId !== targetNode.laneId) return false
+  const isHorizontal = direction === 'horizontal'
+
+  const srcPrimary = isHorizontal ? sourceNode.laneCol : sourceNode.laneRow
+  const tgtPrimary = isHorizontal ? targetNode.laneCol : targetNode.laneRow
+  if (srcPrimary != null && tgtPrimary != null) {
+    if (srcPrimary !== tgtPrimary) return srcPrimary > tgtPrimary
+    const srcSecondary = isHorizontal ? sourceNode.laneRow : sourceNode.laneCol
+    const tgtSecondary = isHorizontal ? targetNode.laneRow : targetNode.laneCol
+    if (srcSecondary != null && tgtSecondary != null && srcSecondary !== tgtSecondary) {
+      return srcSecondary > tgtSecondary
+    }
+  }
+
+  return (sourceNode.order ?? 0) > (targetNode.order ?? 0)
 }
 
 function isCrossLaneReturnFlowEdge(
@@ -279,7 +307,9 @@ function enforceSwimlaneDraftSemantics(input: SwimlaneDraft): SwimlaneDraft {
     let semanticType: SwimlaneDraftEdge['semanticType']
     if (isCrossLane) {
       semanticType = explicit === 'returnFlow' || isReturnLabel(edge.label) ? 'returnFlow' : 'crossLane'
-    } else if (explicit === 'returnFlow' || (sourceNode.order ?? 0) > (targetNode.order ?? 0)) {
+    } else if (explicit === 'returnFlow') {
+      semanticType = 'returnFlow'
+    } else if (isImpliedReturnFlow(sourceNode, targetNode, draft.direction)) {
       semanticType = 'returnFlow'
     } else if (explicit === 'conditional' || isDecisionNode(sourceNode) || isYesNoLabel(edge.label)) {
       semanticType = 'conditional'

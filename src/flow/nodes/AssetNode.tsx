@@ -1,7 +1,7 @@
 import { useCallback, useMemo } from 'react'
 import { NodeResizer, useReactFlow, type NodeProps } from '@xyflow/react'
-import { type GradientValue, gradientToCss } from './GradientColorEditor'
-import { GRID_UNIT, snapPointToGrid, snapSizeToGrid } from './grid'
+import { type GradientValue, gradientToCss } from '../style/GradientColorEditor'
+import { GRID_UNIT, snapPointToGrid, snapSizeToGrid } from '../grid'
 
 export type AssetNodeData = {
   assetUrl: string

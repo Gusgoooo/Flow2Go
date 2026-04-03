@@ -1,9 +1,9 @@
 import { useEffect, useMemo, useRef } from 'react'
 import { type Node } from '@xyflow/react'
 import { FlipHorizontal2, FlipVertical2, RotateCcw, RotateCw } from 'lucide-react'
-import { ColorEditor } from './ColorEditor'
-import { type GradientValue } from './GradientColorEditor'
-import type { AssetNodeData } from './AssetNode'
+import { ColorEditor } from '../style/ColorEditor'
+import { type GradientValue } from '../style/GradientColorEditor'
+import type { AssetNodeData } from '../nodes/AssetNode'
 import styles from './NodeEditPopup.module.css'
 
 type Props = {

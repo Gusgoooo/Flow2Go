@@ -8,14 +8,15 @@ import {
   useReactFlow,
   useStore,
 } from '@xyflow/react'
-import { getPolylineLabelAnchors } from './edgeLabels/edgeLabelPosition'
-import { SmartEdgeLabel } from './edgeLabels/SmartEdgeLabel'
-import type { EdgeLabelLayoutConfig, EdgeLabelStyle } from './edgeLabels/types'
-import { QuickTextStyleToolbar, QUICK_TOOLBAR_DATA_ATTR } from './QuickTextStyleToolbar'
+import { getPolylineLabelAnchors } from '../edgeLabels/edgeLabelPosition'
+import { SmartEdgeLabel } from '../edgeLabels/SmartEdgeLabel'
+import type { EdgeLabelLayoutConfig, EdgeLabelStyle } from '../edgeLabels/types'
+import { QuickTextStyleToolbar, QUICK_TOOLBAR_DATA_ATTR } from '../style/QuickTextStyleToolbar'
 import { padEdgeEndpoints } from './edgeEndpointPad'
-import { getNodeExclusionBoxes } from './layout/routing/exclusion'
-import { orthogonalizePolyline, resolveOrthogonalPathAvoidingObstacles } from './layout/routing/orthogonalObstacleDetour'
-import { GRID_UNIT, SIZE_STEP_RATIO, normalizeWaypointsToGrid, snapPointToGrid, snapToGrid } from './grid'
+import { getNodeExclusionBoxes } from '../layout/routing/exclusion'
+import { orthogonalizePolyline, resolveOrthogonalPathAvoidingObstacles } from '../layout/routing/orthogonalObstacleDetour'
+import { normalizeWaypointsToGrid, snapPointToGrid, snapToGrid } from '../grid'
+import { ORTHO_EPS, EDGE_STEP_UNIT } from '../constants'
 
 type SwimlaneEdgeSemanticType = 'normal' | 'crossLane' | 'returnFlow' | 'conditional'
 
@@ -40,8 +41,6 @@ type EdgeData = {
   labelSettingsUnlocked?: boolean
 }
 type Point = { x: number; y: number }
-const ORTHO_EPS = 1e-6
-const EDGE_STEP_UNIT = Math.max(1, GRID_UNIT * SIZE_STEP_RATIO)
 type NormalizeAnchor = 'source' | 'target'
 
 function markerColorFrom(style: EdgeProps['style'], marker: unknown): string {

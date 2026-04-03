@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { buildSwimlaneDraftFromPrompt, normalizeSwimlaneDraftCandidate } from '../swimlaneDraft'
+import { buildSwimlaneDraftFromPrompt, normalizeSwimlaneDraftCandidate } from '../swimlane/swimlaneDraft'
 
 describe('normalizeSwimlaneDraftCandidate', () => {
   it('converts logic-schema nodes/edges into Flow2Go draft schema', () => {

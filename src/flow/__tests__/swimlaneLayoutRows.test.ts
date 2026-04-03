@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest'
 import type { Edge, Node } from '@xyflow/react'
-import { autoLayoutSwimlane } from '../swimlaneLayout'
+import { autoLayoutSwimlane } from '../swimlane/swimlaneLayout'
 
 function nodeById(nodes: Node<any>[], id: string): Node<any> {
   const node = nodes.find((n) => n.id === id)

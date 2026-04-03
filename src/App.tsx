@@ -1,13 +1,13 @@
 import { useEffect, useState } from 'react'
 import './App.css'
-import FlowEditor from './flow/FlowEditor'
+import FlowEditor from './flow/editor/FlowEditor'
 import {
   getProject,
   loadLastProjectId,
   saveLastProjectId,
   createProject,
   saveProject,
-} from './flow/projectStorage'
+} from './flow/persistence/projectStorage'
 
 const FIRST_VISIT_KEY = 'flow2go_first_visit'
 

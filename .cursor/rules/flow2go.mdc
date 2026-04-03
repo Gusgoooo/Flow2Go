@@ -1,0 +1,84 @@
+---
+description: Flow2Go 编码规范与架构约定。当修改 src/flow/ 下的任何代码时自动加载。
+globs:
+  - src/flow/**
+---
+
+# Flow2Go 编码规范
+
+## 目录结构
+
+```
+src/flow/
+  constants/        # 颜色、布局、边、AI 常量（唯一真相源）
+  editor/           # FlowEditor 壳层、InlineInspector
+  nodes/            # QuadNode / GroupNode / TextNode / AssetNode
+  edges/            # EditableSmoothStepEdge / EditableBezierEdge / edgeEndpointPad
+  popups/           # NodeEditPopup / EdgeEditPopup / GroupEditPopup / AssetEditPopup
+  style/            # ColorEditor / GradientColorEditor / QuickTextStyleToolbar
+  ai/               # aiDiagram / aiLayoutTypes / aiPromptPresets
+  swimlane/         # swimlaneDraft / swimlaneLayout / swimlaneExample
+  persistence/      # projectStorage / diagramSpec / semanticRunStorage
+  layout/routing/   # 正交路由、避让、泳道边重路由
+  mermaid/          # Mermaid 解析与 graph batch apply
+  edgeLabels/       # SmartEdgeLabel、标注位置算法
+  businessBigMap/   # 业务大图管线
+  mindMap/          # 思维导图布局
+  overview/         # 概览/缩略图
+  __tests__/        # 测试文件
+  # 跨域 util（体量小、无强归属）留在根：
+  grid.ts  frameUtils.ts  routifyClient.ts  openRouterClient.ts
+  builtinAssets.ts  semanticAsset.ts  semanticAssetCatalog.ts
+  AiSceneCapsules.tsx  layout.ts  dagreLayout.ts
+```
+
+### 文件归属规则
+
+- 节点组件 → `nodes/`，边组件 → `edges/`，弹窗 → `popups/`
+- 颜色/样式编辑器 → `style/`
+- AI 生成链路 → `ai/`，泳道专用 → `swimlane/`
+- 持久化/存储 → `persistence/`
+- 每个子目录保持 `index.ts` barrel re-export
+
+## 常量管理
+
+- 所有可复用常量定义在 `src/flow/constants/` 下对应文件
+- 禁止在组件文件顶层 `const` 定义 magic number 或颜色字面量
+- 需要新增常量时，按类别放入 `colors.ts / layout.ts / edge.ts / ai.ts`
+- `grid.ts` 的 `GRID_UNIT / HANDLE_ALIGN_UNIT / SIZE_STEP_RATIO` 保留原位，由 `constants/layout.ts` re-export
+- 重复/语义相同的常量必须合并为唯一定义（如 `END_NODE_FILL` 统一名称）
+
+## 导入路径约定
+
+- 优先从子目录 barrel `index.ts` 导入，不深入子模块内部文件
+- 同一子目录内文件互引使用 `./` 相对路径
+- 跨子目录引用使用 `../subdir/` 相对路径
+- 禁止循环依赖：`constants/` 不得反向依赖业务模块
+
+## 泳道回流判定（Swimlane Return Flow）
+
+- 检测顺序：`laneCol` → `laneRow` → 实际几何位置（`centerX / centerY`） → `order`（最低优先级兜底）
+- 禁止仅依赖 AI 输出的 `order` 字段判定 `returnFlow`
+- `semanticType` 枚举：`normal | crossLane | returnFlow | conditional`
+
+## 边路由规则（Edge Routing）
+
+- 终端方向检查（`isTerminalDirectionValid`）优先于象限硬编码保护
+- U-turn 检测（`hasUTurn`）必须在路径压缩前执行
+- 混合朝向优先生成 L-shape（1 弯），仅在几何不允许时才回退到多弯
+- 端点修正后必须调用 `alignTerminalsToEndpoints` 保持正交
+
+## 编码约定
+
+- TypeScript + React 函数组件，ESM 模块
+- UI 字符串默认使用中文（简体）
+- `useMemo / useCallback` 保障几何计算稳定性，避免不必要重渲染
+- 样式文件统一 `*.module.css`
+- Frame 技术形态固定：`type: 'group'` + `data.role: 'frame'`
+- `parentId` 存在时 `position` 为局部坐标，否则为全局坐标
+
+## 测试与验证
+
+- 功能改动后执行四重验证：`tsc --noEmit` → `vitest run` → `npm run dev` → `npm run build`
+- 涉及 Frame/Group/Edge 改动，逐项核对 QA checklist
+- AI 画图改动需验收：非法 JSON、可撤销、请求取消、失败隔离

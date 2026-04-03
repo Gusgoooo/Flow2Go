@@ -44,26 +44,26 @@ import {
   X,
 } from 'lucide-react'
 // import { clearPersistedState } from './persistence'  // 已移除清空功能
-import defaultExample from './defaultExample.json'
-import { getProject, saveProject } from './projectStorage'
+import defaultExample from '../defaultExample.json'
+import { getProject, saveProject } from '../persistence/projectStorage'
 import styles from './flowEditor.module.css'
-import ShinyText from '../components/ShinyText'
-import { GroupNode, type GroupNodeData } from './GroupNode'
-import { type LayoutDirection } from './layout'
-import { autoLayoutDagre } from './dagreLayout'
-import { QuadNode } from './QuadNode'
-import { EditableSmoothStepEdge } from './EditableSmoothStepEdge'
-import { EditableBezierEdge } from './EditableBezierEdge'
-import { EdgeLabelLayoutProvider } from './edgeLabels/SmartEdgeLabel'
-import type { EdgeLabelLayoutConfig } from './edgeLabels/types'
-import { AssetNode } from './AssetNode'
-import { TextNode } from './TextNode'
+import ShinyText from '../../components/ShinyText'
+import { GroupNode, type GroupNodeData } from '../nodes/GroupNode'
+import { type LayoutDirection } from '../layout'
+import { autoLayoutDagre } from '../dagreLayout'
+import { QuadNode } from '../nodes/QuadNode'
+import { EditableSmoothStepEdge } from '../edges/EditableSmoothStepEdge'
+import { EditableBezierEdge } from '../edges/EditableBezierEdge'
+import { EdgeLabelLayoutProvider } from '../edgeLabels/SmartEdgeLabel'
+import type { EdgeLabelLayoutConfig } from '../edgeLabels/types'
+import { AssetNode } from '../nodes/AssetNode'
+import { TextNode } from '../nodes/TextNode'
 import { InlineInspector } from './InlineInspector'
-import { findBestParentFrame, getNodeAbsolutePosition, getNodeSizeLike, isFrameNode } from './frameUtils'
-import { NodeEditPopup } from './NodeEditPopup'
-import { GroupEditPopup } from './GroupEditPopup'
-import { EdgeEditPopup } from './EdgeEditPopup'
-import { AssetEditPopup } from './AssetEditPopup'
+import { findBestParentFrame, getNodeAbsolutePosition, getNodeSizeLike, isFrameNode } from '../frameUtils'
+import { NodeEditPopup } from '../popups/NodeEditPopup'
+import { GroupEditPopup } from '../popups/GroupEditPopup'
+import { EdgeEditPopup } from '../popups/EdgeEditPopup'
+import { AssetEditPopup } from '../popups/AssetEditPopup'
 import {
   openRouterGenerateDiagram,
   openRouterGenerateDiagramFromImage,
@@ -71,30 +71,30 @@ import {
   type AiDiagramDraft,
   type AiDiagramSceneHint,
   type AiGenerateProgressInfo,
-} from './aiDiagram'
-import { generateSwimlaneDraftWithLLM, swimlaneDraftToGraphBatchPayload } from './swimlaneDraft'
-import { materializeGraphBatchPayloadToSnapshot } from './mermaid/apply'
+} from '../ai/aiDiagram'
+import { generateSwimlaneDraftWithLLM, swimlaneDraftToGraphBatchPayload } from '../swimlane/swimlaneDraft'
+import { materializeGraphBatchPayloadToSnapshot } from '../mermaid/apply'
 import {
   buildSemanticRunBundle,
   fingerprintDataUrl,
   type SemanticPayloadFormat,
   type SemanticPipeline,
-} from './semanticAsset'
+} from '../semanticAsset'
 import {
   getSemanticRunBundle,
   loadSemanticRunBundles,
   saveSemanticRunBundle,
-} from './semanticRunStorage'
+} from '../persistence/semanticRunStorage'
 import {
   getSemanticAssetCatalog,
   getRulePackByPipeline,
   validateSemanticAssetCatalog,
-} from './semanticAssetCatalog'
-import { getDiagramSpec, validateDiagramSpec } from './diagramSpec'
-import { AI_SCENE_CAPSULE_PRESETS } from './aiPromptPresets'
-import { generateBigMapFromText, generateBigMapFromImage } from './businessBigMap'
-import { AiSceneCapsules } from './AiSceneCapsules'
-import { BUILTIN_ASSETS } from './builtinAssets'
+} from '../semanticAssetCatalog'
+import { getDiagramSpec, validateDiagramSpec } from '../persistence/diagramSpec'
+import { AI_SCENE_CAPSULE_PRESETS } from '../ai/aiPromptPresets'
+import { generateBigMapFromText, generateBigMapFromImage } from '../businessBigMap'
+import { AiSceneCapsules } from '../AiSceneCapsules'
+import { BUILTIN_ASSETS } from '../builtinAssets'
 import {
   GRID_UNIT,
   HANDLE_ALIGN_UNIT,
@@ -102,11 +102,9 @@ import {
   normalizeWaypointsToGrid,
   snapSizeByNodeType,
   snapPointToGrid,
-} from './grid'
+} from '../grid'
 // overview 示例入口已移除
-
-/** Routify 网关默认文本模型（OpenAI 兼容 `model` 字段；勿使用 OpenRouter 的 `provider/model` 前缀） */
-const DEFAULT_ROUTIFY_TEXT_MODEL = 'gpt-5.4-2026-03-05'
+import { DEFAULT_EDGE_COLOR, DEFAULT_ROUTIFY_TEXT_MODEL, DEFAULT_ROUTIFY_VISION_MODEL, OPENROUTER_MASK, DEFAULT_QUAD_SIZE, DEFAULT_TEXT_SIZE, DEFAULT_GROUP_SIZE } from '../constants'
 
 export type AssetItem = {
   id: string
@@ -157,9 +155,6 @@ const DND_MIME = 'application/flow2go-node'
 const GRID: [number, number] = [GRID_UNIT, GRID_UNIT]
 const GROUP_PADDING = GRID[0] // 群组内边距跟随网格
 const GROUP_TITLE_H = GRID[1] * 4 // 标题高度为网格的4倍 (32px)
-const DEFAULT_QUAD_SIZE = { w: 160, h: 48 }
-const DEFAULT_TEXT_SIZE = { w: 64, h: 32 }
-const DEFAULT_GROUP_SIZE = { w: 640, h: 416 }
 const IMAGE_ASSET_TARGET_WIDTH_UNITS = 70
 const IMAGE_ASSET_TARGET_WIDTH_PX = GRID_UNIT * IMAGE_ASSET_TARGET_WIDTH_UNITS
 const IMAGE_FILE_NAME_RE = /\.(png|jpe?g|webp|gif|bmp|svg|avif)$/i
@@ -384,14 +379,10 @@ function hexToRgbColor(hex: string): { r: number; g: number; b: number } | null 
 }
 
 /** 边默认颜色与默认终点箭头（React Flow MarkerType），所有新边/未设置箭头的边都带终点箭头 */
-const DEFAULT_EDGE_COLOR = '#94a3b8'
 const DEFAULT_MARKER_END = {
   type: MarkerType.ArrowClosed,
   color: DEFAULT_EDGE_COLOR,
 } as const
-const OPENROUTER_MASK = '*****'
-
-const DEFAULT_ROUTIFY_VISION_MODEL = 'gpt-5.4-2026-03-05'
 
 function decodeOpenRouterKey(raw: string): string {
   const t = raw.trim()

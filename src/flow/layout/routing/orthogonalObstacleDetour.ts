@@ -1,9 +1,7 @@
 import { Position } from '@xyflow/react'
 import { getDefaultOrthogonalPoints, type OrthogonalPoint } from './defaultOrthogonalPath'
 import { doesPolylineIntersectAnyExclusionBox, doesSegmentIntersectRect, type NodeExclusionBox } from './exclusion'
-
-/** 绕行线与节点包络的额外间隙（保持正值，避免"看起来可走 2 弯却被迫 4 弯"） */
-const ROUTE_CLEAR = 8
+import { ROUTE_CLEAR } from '../../constants'
 
 function getIntersectingBoxes(
   points: OrthogonalPoint[],

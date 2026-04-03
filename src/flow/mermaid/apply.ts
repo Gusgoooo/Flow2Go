@@ -6,9 +6,16 @@ import {
 } from '../layout/routing/exclusion'
 import { buildPolylineSignature } from '../layout/routing/polylineUtils'
 import { layoutMindMapMindElixirStyle } from '../mindMap/mindElixirLayout'
-import { autoLayoutSwimlane } from '../swimlaneLayout'
+import { autoLayoutSwimlane } from '../swimlane/swimlaneLayout'
 import { GRID_UNIT, normalizeNodeGeometryToGrid, normalizeWaypointsToGrid } from '../grid'
 import type { FlowDirection, GraphBatchPayload, GraphOperation } from './types'
+import {
+  DEFAULT_LANE_TITLE_TEXT_COLOR,
+  END_NODE_FILL,
+  DECISION_NODE_FILL,
+  TOP_FRAME_THEME_COLORS,
+  LAYOUT_UNIT,
+} from '../constants'
 
 export type ApplyMermaidContext = {
   /**
@@ -68,9 +75,6 @@ function dirToLayoutDirection(dir: FlowDirection) {
   return dir as any
 }
 
-/** 与 GroupNode 泳道标题一致；泳道 createFrame 时强制使用，避免沿用 frame 默认 #64748b */
-const DEFAULT_LANE_TITLE_TEXT_COLOR = '#334155'
-
 function frameDefaults(title: string) {
   return {
     width: 640,
@@ -87,14 +91,12 @@ function frameDefaults(title: string) {
   }
 }
 
-const LAYOUT_UNIT = 24
 const LEGACY_COMPACT_INNER_UNIT = 12
 const NODE_MIN_WIDTH_UNITS = 3
 const LEGACY_COMPACT_CHAPTER_W_70 = LAYOUT_UNIT * 70
 const LEGACY_COMPACT_CHAPTER_W_90 = LAYOUT_UNIT * 90
 const LEGACY_COMPACT_CHAPTER_W_120 = LAYOUT_UNIT * 120
 const LEGACY_COMPACT_CHAPTER_W_140 = LAYOUT_UNIT * 140
-const TOP_FRAME_THEME_COLORS = ['#4d9ef5', '#33d8ea', '#c059ff', '#ff6cc4']
 
 function hexToRgba(hex: string, alpha: number) {
   const t = hex.replace('#', '')
@@ -118,9 +120,6 @@ function quadDefaults(title: string, shape: 'rect' | 'circle' | 'diamond' | unde
   }
 }
 
-const SEMANTIC_END_NODE_FILL = 'rgba(226, 232, 240, 0.8)'
-const SEMANTIC_DECISION_NODE_FILL = '#FFB100'
-
 function withSemanticNodeStyleDefaults(
   rawStyle: Record<string, any>,
   opts?: { skipPresetSemanticColors?: boolean },
@@ -132,10 +131,10 @@ function withSemanticNodeStyleDefaults(
   const skipColor = opts?.skipPresetSemanticColors
 
   if (semantic === 'end' && !hasUserFill && !skipColor) {
-    next.color = SEMANTIC_END_NODE_FILL
+    next.color = END_NODE_FILL
   }
   if (semantic === 'decision') {
-    if (!hasUserFill && !skipColor) next.color = SEMANTIC_DECISION_NODE_FILL
+    if (!hasUserFill && !skipColor) next.color = DECISION_NODE_FILL
     if (!hasUserStrokeWidth) next.strokeWidth = 0
   }
   return next

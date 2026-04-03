@@ -52,13 +52,22 @@ export type OpenRouterImageToDiagramOptions = {
   onProgress?: (info: AiGenerateProgressInfo) => void
 }
 
-import { parseMermaidFlowchart, transpileMermaidFlowIR } from './mermaid'
-import { materializeGraphBatchPayloadToSnapshot } from './mermaid/apply'
-import { GRID_UNIT, snapToGrid } from './grid'
-import { swimlaneDraftToGraphBatchPayload, type SwimlaneDraft } from './swimlaneDraft'
-import { routifyChatCompletions } from './routifyClient'
-
-const DEFAULT_TIMEOUT_MS = 90_000
+import { parseMermaidFlowchart, transpileMermaidFlowIR } from '../mermaid'
+import { materializeGraphBatchPayloadToSnapshot } from '../mermaid/apply'
+import { GRID_UNIT, snapToGrid } from '../grid'
+import {
+  DEFAULT_TIMEOUT_MS,
+  LONG_INPUT_SUMMARY_THRESHOLD,
+  LONG_INPUT_TIMEOUT_MS,
+  FLOWCHART_GUARD_NODE_MAX,
+  FLOWCHART_GUARD_EDGE_MAX,
+  FLOWCHART_GUARD_EDGE_OVER_NODE_ALLOWANCE,
+  STABLE_GENERATION_TEMPERATURE,
+  SWIMLANE_IMAGE_LANE_BODY_FILL,
+  SWIMLANE_IMAGE_LANE_STROKE,
+} from '../constants'
+import { swimlaneDraftToGraphBatchPayload, type SwimlaneDraft } from '../swimlane/swimlaneDraft'
+import { routifyChatCompletions } from '../routifyClient'
 
 import MERMAID_GENERATOR_SYSTEM_PROMPT from './aiPromptPresets/mermaid-generator-system-prompt.md?raw'
 import {
@@ -453,13 +462,6 @@ const SCENE_ROUTER_SYSTEM_PROMPT = [
   '',
   '默认：不确定时用 flowchart + Frontend-Backend Flow Template + compact。',
 ].join('\n')
-
-const LONG_INPUT_SUMMARY_THRESHOLD = 2200
-const LONG_INPUT_TIMEOUT_MS = 150_000
-const FLOWCHART_GUARD_NODE_MAX = 16
-const FLOWCHART_GUARD_EDGE_MAX = 20
-const FLOWCHART_GUARD_EDGE_OVER_NODE_ALLOWANCE = 4
-const STABLE_GENERATION_TEMPERATURE = 0
 
 function isFlowchartOverComplex(nodesCount: number, edgesCount: number): boolean {
   if (nodesCount > FLOWCHART_GUARD_NODE_MAX) return true
@@ -907,6 +909,19 @@ function shouldUseMonochromeImageTheme(structured: AiImageStructuredDraft): bool
 
   const colorful = colors.filter((c) => !isNearGray(c, 20)).length
   return colorful / colors.length <= 0.08
+}
+
+function isImpliedReturnFlowByGrid(
+  src: { laneCol?: number; laneRow?: number; order?: number },
+  tgt: { laneCol?: number; laneRow?: number; order?: number },
+): boolean {
+  if (src.laneCol != null && tgt.laneCol != null && src.laneCol !== tgt.laneCol) {
+    return src.laneCol > tgt.laneCol
+  }
+  if (src.laneRow != null && tgt.laneRow != null && src.laneRow !== tgt.laneRow) {
+    return src.laneRow > tgt.laneRow
+  }
+  return (src.order ?? 0) > (tgt.order ?? 0)
 }
 
 function normalizeEdgeRelation(input: unknown): string {
@@ -1959,7 +1974,7 @@ export function buildSwimlaneDraftFromImageStructured(structured: AiImageStructu
     if (relation === 'yes' || relation === 'no') semanticType = 'conditional'
     else if (relation === 'return_to' || relation === 'cancel_to') semanticType = 'returnFlow'
     else if (sourceNode.laneId !== targetNode.laneId) semanticType = 'crossLane'
-    else if ((sourceNode.order ?? 0) > (targetNode.order ?? 0)) semanticType = 'returnFlow'
+    else if (isImpliedReturnFlowByGrid(sourceNode, targetNode)) semanticType = 'returnFlow'
     else if (sourceNode.semanticType === 'decision') semanticType = 'conditional'
 
     normalizedEdges.push({
@@ -2204,9 +2219,6 @@ function quickReviewAndFixImageSwimlaneEdges(args: {
 }
 
 /** 图生图泳道：与 GroupNode `.laneNode` 一致的默认区底色，禁止沿用识图模型配色 */
-const SWIMLANE_IMAGE_LANE_BODY_FILL = 'rgba(241, 245, 249, 0.5)'
-const SWIMLANE_IMAGE_LANE_STROKE = 'rgba(203, 213, 225, 0.6)'
-
 function applySwimlaneImageDefaultLaneGroupPaint(node: any): any {
   if (node?.type !== 'group' || node?.data?.role !== 'lane') return node
   const d = { ...(node.data ?? {}) }
@@ -4545,7 +4557,7 @@ export async function openRouterGenerateDiagramFromImage(
     diagramScene === 'business-big-map' || sceneFromImage === 'business-big-map'
   if (shouldRenderBigMap) {
     report('业务大图识图', '检测到业务大图结构，走 BusinessBigMap 管线')
-    const { generateBigMapFromImage: genBigMap } = await import('./businessBigMap')
+    const { generateBigMapFromImage: genBigMap } = await import('../businessBigMap')
     const { draft: bigMapDraft } = await genBigMap({
       apiKey: key,
       model: recogModel,

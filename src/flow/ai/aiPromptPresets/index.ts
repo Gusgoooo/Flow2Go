@@ -1,5 +1,5 @@
 import type { AiDiagramSceneHint } from '../aiDiagram'
-import { AI_SCENE_CAPSULE_ACCENT_COLORS } from '../ColorEditor'
+import { AI_SCENE_CAPSULE_ACCENT_COLORS } from '../../constants'
 
 export type { AiDiagramSceneHint }
 

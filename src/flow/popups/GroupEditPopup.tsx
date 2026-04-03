@@ -1,8 +1,8 @@
 import { useRef, useEffect } from 'react'
 import { type Node } from '@xyflow/react'
 import { Trash2 } from 'lucide-react'
-import { ColorEditor } from './ColorEditor'
-import type { GroupNodeData } from './GroupNode'
+import { ColorEditor } from '../style/ColorEditor'
+import type { GroupNodeData } from '../nodes/GroupNode'
 import styles from './NodeEditPopup.module.css'
 
 const FRAME_PRESET: Partial<GroupNodeData> = {

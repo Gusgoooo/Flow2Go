@@ -1,7 +1,7 @@
 import { useRef, useEffect } from 'react'
 import { type Node } from '@xyflow/react'
-import { ColorEditor } from './ColorEditor'
-import type { QuadShape } from './QuadNode'
+import { ColorEditor } from '../style/ColorEditor'
+import type { QuadShape } from '../nodes/QuadNode'
 import styles from './NodeEditPopup.module.css'
 
 type QuadNodeData = {

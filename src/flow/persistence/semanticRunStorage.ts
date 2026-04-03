@@ -1,4 +1,4 @@
-import type { SemanticRunBundle } from './semanticAsset'
+import type { SemanticRunBundle } from '../semanticAsset'
 
 const KEY = 'flow2go:semantic-runs:v1'
 

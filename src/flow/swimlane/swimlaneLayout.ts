@@ -4,8 +4,8 @@
  * 不依赖 ELK / Dagre，纯规则布局，保证结果稳定。
  */
 import type { Edge, Node } from '@xyflow/react'
-import type { FlowDirection } from './mermaid/types'
-import { doesPolylineIntersectAnyExclusionBox, getNodeExclusionBoxes } from './layout/routing/exclusion'
+import type { FlowDirection } from '../mermaid/types'
+import { doesPolylineIntersectAnyExclusionBox, getNodeExclusionBoxes } from '../layout/routing/exclusion'
 import {
   GRID_UNIT,
   HANDLE_ALIGN_UNIT,
@@ -14,7 +14,8 @@ import {
   normalizeWaypointsToGrid,
   snapSizeByNodeType,
   snapToGrid,
-} from './grid'
+} from '../grid'
+import { DEFAULT_NODE_SIZES } from '../constants'
 
 const LANE_HEADER_SIZE = 48
 // 泳道容器（group）按 handle 对齐网格走 16 的半步（8px），
@@ -41,12 +42,6 @@ function median(values: number[]): number {
 
 function clamp(n: number, min: number, max: number): number {
   return Math.max(min, Math.min(max, n))
-}
-
-const DEFAULT_NODE_SIZES: Record<string, { w: number; h: number }> = {
-  rect: { w: 160, h: 48 },
-  circle: { w: 64, h: 64 },
-  diamond: { w: 96, h: 64 },
 }
 
 function gridIndex(value: unknown, fallback: number): number {

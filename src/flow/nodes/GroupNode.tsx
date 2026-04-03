@@ -1,7 +1,8 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
 import { Handle, NodeResizer, Position, useReactFlow, type NodeProps } from '@xyflow/react'
 import styles from './groupNode.module.css'
-import { QuickTextStyleToolbar, QUICK_TOOLBAR_DATA_ATTR } from './QuickTextStyleToolbar'
+import { QuickTextStyleToolbar, QUICK_TOOLBAR_DATA_ATTR } from '../style/QuickTextStyleToolbar'
+import { DEFAULT_LANE_HEADER_BG } from '../constants'
 
 export type LaneMeta = {
   laneId: string
@@ -39,8 +40,6 @@ export type GroupNodeData = {
   role?: 'frame' | 'lane'
   laneMeta?: LaneMeta
 }
-
-const DEFAULT_LANE_HEADER_BG = 'rgba(71, 85, 105, 0.08)'
 
 const DEFAULT_GROUP_TITLE_FS = 13
 const DEFAULT_GROUP_SUBTITLE_FS = 10

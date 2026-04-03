@@ -7,8 +7,8 @@
  */
 import { layoutSSR } from 'mind-elixir/LayoutSsr'
 import type { Edge, Node } from '@xyflow/react'
+import { LAYOUT_UNIT } from '../constants'
 
-const LAYOUT_UNIT = 24
 const H_GAP = LAYOUT_UNIT * 2.5
 const V_GAP = LAYOUT_UNIT * 0.75
 

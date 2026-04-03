@@ -1,5 +1,7 @@
 import type { Node } from '@xyflow/react'
 
+import { ROUTING_PAD_X, ROUTING_PAD_Y, DEFAULT_SIZE_BY_KIND } from '../../constants'
+
 export type Rect = {
   x: number
   y: number
@@ -11,17 +13,7 @@ export type NodeExclusionBox = Rect & {
   nodeId: string
 }
 
-// 路由安全区：每个节点外扩 1 个布局单位（用于“碰到安全区就触发多弯避让”）
-export const ROUTING_PAD_X = 24
-export const ROUTING_PAD_Y = 24
-
-const DEFAULT_SIZE_BY_KIND: Record<string, { width: number; height: number }> = {
-  rect: { width: 160, height: 48 },
-  circle: { width: 64, height: 64 },
-  diamond: { width: 96, height: 64 },
-  text: { width: 120, height: 32 },
-  asset: { width: 96, height: 96 },
-}
+export { ROUTING_PAD_X, ROUTING_PAD_Y } from '../../constants'
 
 function estimateNodeSize(node: Node<any>): { width: number; height: number } {
   const style = (node.style ?? {}) as Record<string, unknown>

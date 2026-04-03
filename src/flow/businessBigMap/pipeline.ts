@@ -6,7 +6,7 @@
  * 文生图和图生图都收敛到此管线。
  */
 
-import type { AiDiagramDraft, AiGenerateProgressInfo } from '../aiDiagram'
+import type { AiDiagramDraft, AiGenerateProgressInfo } from '../ai/aiDiagram'
 import { routifyChatCompletions } from '../routifyClient'
 import type {
   BusinessBigMapIR,
