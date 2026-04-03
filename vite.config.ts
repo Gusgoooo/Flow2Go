@@ -4,9 +4,11 @@ import path from 'node:path'
 import tailwindcss from '@tailwindcss/vite'
 
 // https://vite.dev/config/
-const routifyProxy = {
-  '/protocol/openai/v1': {
-    target: 'https://routify.alibaba-inc.com',
+const SERVER_PORT = Number(process.env.SERVER_PORT || 3001)
+
+const proxyRules = {
+  '/api/routify': {
+    target: `http://127.0.0.1:${SERVER_PORT}`,
     changeOrigin: true,
   },
 } as const
@@ -20,7 +22,7 @@ export default defineConfig({
       '@': path.resolve(__dirname, './src'),
     },
   },
-  /** 浏览器直连 Routify 会触发 CORS；开发/预览经同源路径转发 */
-  server: { proxy: routifyProxy },
-  preview: { proxy: routifyProxy },
+  /** 开发/预览时 /api/routify/* 转发到 Express 代理服务器（服务端注入 AK） */
+  server: { proxy: proxyRules },
+  preview: { proxy: proxyRules },
 })

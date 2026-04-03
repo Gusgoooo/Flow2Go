@@ -167,19 +167,74 @@ function alignTerminalsToEndpoints(
   targetPosition: Position,
 ): Point[] {
   if (waypoints.length === 0) return waypoints
+
+  const sourceH = sourcePosition === Position.Left || sourcePosition === Position.Right
+  const targetH = targetPosition === Position.Left || targetPosition === Position.Right
+
+  if (waypoints.length === 1) {
+    const wp = waypoints[0]
+    if (sourceH !== targetH) {
+      return sourceH
+        ? [{ x: wp.x, y: source.y }]
+        : [{ x: source.x, y: wp.y }]
+    }
+    if (sourceH) {
+      return Math.abs(source.y - target.y) < ORTHO_EPS
+        ? [{ x: wp.x, y: source.y }]
+        : [{ x: wp.x, y: source.y }, { x: wp.x, y: target.y }]
+    }
+    return Math.abs(source.x - target.x) < ORTHO_EPS
+      ? [{ x: source.x, y: wp.y }]
+      : [{ x: source.x, y: wp.y }, { x: target.x, y: wp.y }]
+  }
+
   const result = waypoints.map((p) => ({ ...p }))
-  const first = result[0]
-  if (sourcePosition === Position.Left || sourcePosition === Position.Right) {
-    first.y = source.y
+
+  if (sourceH) {
+    result[0].y = source.y
+    result[1].x = result[0].x
   } else {
-    first.x = source.x
+    result[0].x = source.x
+    result[1].y = result[0].y
   }
-  const last = result[result.length - 1]
-  if (targetPosition === Position.Left || targetPosition === Position.Right) {
-    last.y = target.y
+
+  const li = result.length - 1
+  if (targetH) {
+    result[li].y = target.y
   } else {
-    last.x = target.x
+    result[li].x = target.x
   }
+
+  if (li - 1 >= 2) {
+    if (targetH) {
+      result[li - 1].x = result[li].x
+    } else {
+      result[li - 1].y = result[li].y
+    }
+  } else if (result.length === 2) {
+    if (sourceH !== targetH) {
+      if (sourceH) {
+        const bridgeY = result[1].y
+        result.splice(1, 0, { x: result[0].x, y: bridgeY })
+      } else {
+        const bridgeX = result[1].x
+        result.splice(1, 0, { x: bridgeX, y: result[0].y })
+      }
+      const newLi = result.length - 1
+      if (targetH) {
+        result[newLi - 1].x = result[newLi].x
+      } else {
+        result[newLi - 1].y = result[newLi].y
+      }
+    } else {
+      if (targetH) {
+        result[li - 1].x = result[li].x
+      } else {
+        result[li - 1].y = result[li].y
+      }
+    }
+  }
+
   return result
 }
 
@@ -198,10 +253,11 @@ function coerceRenderablePath(
   const rebuilt = [source, ...aligned, target]
   if (!hasDiagonalSegment(rebuilt)) return rebuilt
 
-  const repaired = snapEndpointsToPorts(orthogonalizePolyline(rebuilt), sourcePosition, targetPosition)
-  const repairedWaypoints = normalizeWaypointsToGrid(repaired.slice(1, -1), EDGE_STEP_UNIT)
-  const repairedAligned = alignTerminalsToEndpoints(repairedWaypoints, source, target, sourcePosition, targetPosition)
-  return [source, ...repairedAligned, target]
+  const reOrtho = orthogonalizePolyline(rebuilt)
+  const reSnapped = snapEndpointsToPorts(reOrtho, sourcePosition, targetPosition)
+  if (!hasDiagonalSegment(reSnapped)) return reSnapped
+
+  return orthogonalizePolyline(reSnapped)
 }
 
 /** 让首尾两段与端口方向对齐，避免 in/out 出现斜线 */
@@ -479,11 +535,12 @@ function adaptWaypointsByRouteRef(
     return waypoints
   }
   const n = waypoints.length
+  const mid = (n - 1) / 2
   return waypoints.map((p, i) => {
-    const t = (i + 1) / (n + 1)
+    const followSource = i <= mid
     return {
-      x: p.x + dsx * (1 - t) + dtx * t,
-      y: p.y + dsy * (1 - t) + dty * t,
+      x: p.x + (followSource ? dsx : dtx),
+      y: p.y + (followSource ? dsy : dty),
     }
   })
 }

@@ -33,11 +33,11 @@ import {
 import JSZip from 'jszip'
 import {
   AlignHorizontalDistributeCenter,
-  KeyRound,
+  
   InspectionPanel,
   MessageCircleQuestion,
   Plus,
-  Settings2,
+  
   SquareDashedKanban,
   Square,
   Type,
@@ -104,7 +104,7 @@ import {
   snapPointToGrid,
 } from '../grid'
 // overview 示例入口已移除
-import { DEFAULT_EDGE_COLOR, DEFAULT_ROUTIFY_TEXT_MODEL, DEFAULT_ROUTIFY_VISION_MODEL, OPENROUTER_MASK, DEFAULT_QUAD_SIZE, DEFAULT_TEXT_SIZE, DEFAULT_GROUP_SIZE } from '../constants'
+import { DEFAULT_EDGE_COLOR, DEFAULT_ROUTIFY_TEXT_MODEL, DEFAULT_ROUTIFY_VISION_MODEL, DEFAULT_QUAD_SIZE, DEFAULT_TEXT_SIZE, DEFAULT_GROUP_SIZE } from '../constants'
 
 export type AssetItem = {
   id: string
@@ -383,49 +383,6 @@ const DEFAULT_MARKER_END = {
   type: MarkerType.ArrowClosed,
   color: DEFAULT_EDGE_COLOR,
 } as const
-
-function decodeOpenRouterKey(raw: string): string {
-  const t = raw.trim()
-  if (!t) return ''
-  const wrapped = t.startsWith(OPENROUTER_MASK) && t.endsWith(OPENROUTER_MASK) && t.length > OPENROUTER_MASK.length * 2
-  const core = wrapped ? t.slice(OPENROUTER_MASK.length, t.length - OPENROUTER_MASK.length) : t
-  try {
-    const decoded = atob(core)
-    return decoded.trim()
-  } catch {
-    // 兼容旧数据：若不是 base64 包裹，就直接当作明文 key
-    return t
-  }
-}
-
-function encodeOpenRouterKey(raw: string): string {
-  const t = raw.trim()
-  if (!t) return ''
-  return `${OPENROUTER_MASK}${btoa(t)}${OPENROUTER_MASK}`
-}
-
-function readPrefilledOpenRouterKey(): string {
-  // 预填 AK：只允许来自环境变量（避免把任何默认 key 写进仓库）
-  const envGitlab = (import.meta as any)?.env?.VITE_OPENROUTER_KEY_ENC_GITLAB
-  if (typeof envGitlab === 'string' && envGitlab.trim()) return decodeOpenRouterKey(envGitlab)
-  return ''
-}
-
-function readStoredOpenRouterKey(): string {
-  try {
-    const stored = localStorage.getItem('flow2go-openrouter-key') || ''
-    const decoded = decodeOpenRouterKey(stored)
-    return decoded || readPrefilledOpenRouterKey()
-  } catch {
-    return readPrefilledOpenRouterKey()
-  }
-}
-
-function persistOpenRouterKey(raw: string) {
-  try {
-    localStorage.setItem('flow2go-openrouter-key', encodeOpenRouterKey(raw))
-  } catch {}
-}
 
 function nowId(prefix: string) {
   return `${prefix}-${Date.now()}-${Math.random().toString(16).slice(2)}`
@@ -773,7 +730,7 @@ function EditorInner({ onBackHome, source, previewSnapshot, readOnly: _readOnly 
   const aiModalImageInputRef = useRef<HTMLInputElement | null>(null)
   /** 与胶囊绑定：生成时传入 diagramScene；点 ✕ 取消高亮并清空输入框 */
   const [aiModalScene, setAiModalScene] = useState<AiDiagramSceneHint | null>(null)
-  const [aiConfigOpen, setAiConfigOpen] = useState(false)
+  
   const [aiModalGenerating, setAiModalGenerating] = useState(false)
   /** 生成阶段文案（与控制台 [Flow2Go AI] 日志对应，用于区分慢 / 卡在某一步 / 失败） */
   const [aiModalProgress, setAiModalProgress] = useState<{ phase: string; detail?: string } | null>(null)
@@ -785,9 +742,7 @@ function EditorInner({ onBackHome, source, previewSnapshot, readOnly: _readOnly 
   // 模型固定：文本生成与图片识图统一使用同一模型，不在 UI 暴露选择，避免配置复杂度与线上不一致
   const aiModalModel = DEFAULT_ROUTIFY_TEXT_MODEL
   const aiModalVisionModel = DEFAULT_ROUTIFY_VISION_MODEL
-  const [aiModalKey, setAiModalKey] = useState<string>(() => {
-    return readStoredOpenRouterKey()
-  })
+  // API Key 由服务端环境变量 ROUTIFY_API_KEY 注入，前端无需持有
 
   const [inlineInspector, setInlineInspector] = useState<{
     kind: 'node' | 'group' | 'edge' | null
@@ -3597,7 +3552,6 @@ function EditorInner({ onBackHome, source, previewSnapshot, readOnly: _readOnly 
                   type="button"
                   onClick={() => {
                     setAiModalError(null)
-                    setAiConfigOpen(false)
                     setAiModalPrompt('')
                     setAiModalPromptUserEdited(false)
                     setAiModalImageDataUrl(null)
@@ -3681,14 +3635,6 @@ function EditorInner({ onBackHome, source, previewSnapshot, readOnly: _readOnly 
               <div style={{ padding: '12px 14px', display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 10, borderBottom: '1px solid #e2e8f0' }}>
                 <div style={{ fontSize: 14, fontWeight: 800 }}>AI 生成</div>
                 <div style={{ display: 'flex', gap: 8 }}>
-                  <button
-                    type="button"
-                    className={styles.aiConfigIconBtn}
-                    title="模型网关（Routify）配置"
-                    onClick={() => setAiConfigOpen((v) => !v)}
-                  >
-                    <Settings2 size={16} />
-                  </button>
                   <button type="button" className={styles.aiCloseIconBtn} title="关闭" onClick={() => setAiModalOpen(false)}>
                     <X size={16} />
                   </button>
@@ -3696,34 +3642,9 @@ function EditorInner({ onBackHome, source, previewSnapshot, readOnly: _readOnly 
               </div>
 
               <div className={styles.aiModalLayout}>
-                {aiConfigOpen && (
-                  <div className={styles.aiConfigPanel}>
-                    <div className={styles.aiConfigTitle}>模型网关（Routify）配置</div>
-                    <input
-                      className={styles.aiApiKeyInput}
-                      type="password"
-                      value={aiModalKey}
-                      onChange={(e) => {
-                        setAiModalKey(e.target.value)
-                        persistOpenRouterKey(e.target.value)
-                      }}
-                      placeholder="填写 Routify API Key"
-                    />
-                    <div className={styles.aiNote} style={{ opacity: 0.9 }}>
-                      配置只保存在本地浏览器。未配置 Key 时，无法发起生成。
-                    </div>
-                  </div>
-                )}
-
                 <div className={styles.aiPromptColumn}>
                   <div className={styles.aiPromptHeader}>
                     <div style={{ fontSize: 12, fontWeight: 800, color: '#334155' }}>Prompt</div>
-                    {!aiModalKey.trim() && (
-                      <button type="button" className={styles.aiNeedConfigTag} onClick={() => setAiConfigOpen(true)}>
-                        <KeyRound size={14} />
-                        需先配置 API Key
-                      </button>
-                    )}
                   </div>
                   <div className={styles.aiChatInputWrap}>
                     {aiModalImageDataUrl && (
@@ -3842,7 +3763,7 @@ function EditorInner({ onBackHome, source, previewSnapshot, readOnly: _readOnly 
                           if (aiModalScene === 'business-big-map' && aiModalImageDataUrl) {
                             setAiModalProgress({ phase: '识图结构化', detail: '读取图中业务大图结构…' })
                             const { draft } = await generateBigMapFromImage({
-                              apiKey: aiModalKey.trim(),
+                              apiKey: '',
                               model: aiModalVisionModel.trim() || DEFAULT_ROUTIFY_TEXT_MODEL,
                               imageDataUrl: aiModalImageDataUrl,
                               prompt: p || undefined,
@@ -3874,7 +3795,7 @@ function EditorInner({ onBackHome, source, previewSnapshot, readOnly: _readOnly 
                           if (aiModalScene === 'business-big-map') {
                             if (!p) throw new Error('业务大图请先输入文本描述')
                             const { draft } = await generateBigMapFromText({
-                              apiKey: aiModalKey.trim(),
+                              apiKey: '',
                               model: aiModalModel.trim() || DEFAULT_ROUTIFY_TEXT_MODEL,
                               prompt: p,
                               signal: ac.signal,
@@ -3902,7 +3823,7 @@ function EditorInner({ onBackHome, source, previewSnapshot, readOnly: _readOnly 
                           if (aiModalImageDataUrl) {
                             setAiModalProgress({ phase: '识图结构化', detail: '读取图中节点和连线…' })
                             const { draft, structured } = await openRouterGenerateDiagramFromImage({
-                              apiKey: aiModalKey.trim(),
+                              apiKey: '',
                               recognitionModel: aiModalVisionModel.trim() || 'qwen/qwen2.5-vl-72b-instruct',
                               generationModel: aiModalModel.trim() || DEFAULT_ROUTIFY_TEXT_MODEL,
                               imageDataUrl: aiModalImageDataUrl,
@@ -3941,7 +3862,7 @@ function EditorInner({ onBackHome, source, previewSnapshot, readOnly: _readOnly 
                             if (!p) throw new Error('泳道图请先输入文本描述')
                             setAiModalProgress({ phase: '生成泳道图', detail: 'LLM 结构化中…' })
                             const draftFromPrompt = await generateSwimlaneDraftWithLLM({
-                              apiKey: aiModalKey.trim(),
+                              apiKey: '',
                               model: aiModalModel.trim() || DEFAULT_ROUTIFY_TEXT_MODEL,
                               prompt: p,
                               signal: ac.signal,
@@ -3980,7 +3901,7 @@ function EditorInner({ onBackHome, source, previewSnapshot, readOnly: _readOnly 
                             return
                           }
                           const draft = await openRouterGenerateDiagram({
-                            apiKey: aiModalKey.trim(),
+                            apiKey: '',
                             model: aiModalModel.trim() || DEFAULT_ROUTIFY_TEXT_MODEL,
                             prompt: p,
                             signal: ac.signal,
@@ -4045,17 +3966,6 @@ function EditorInner({ onBackHome, source, previewSnapshot, readOnly: _readOnly 
                   )}
                 </div>
               </div>
-            </div>
-            <div
-              style={{
-                marginTop: 8,
-                fontSize: 12,
-                lineHeight: 1.4,
-                color: '#94a3b8',
-                userSelect: 'none',
-              }}
-            >
-              请勿上传公司数据
             </div>
           </div>
         )}
