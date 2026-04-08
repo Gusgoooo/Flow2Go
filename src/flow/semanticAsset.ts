@@ -9,6 +9,7 @@ export type SemanticPipeline =
   | 'free-layout-image'
   | 'business-big-map-text'
   | 'business-big-map-image'
+  | 'infographic-text'
 
 export type SemanticPayloadFormat =
   | 'raw-text'

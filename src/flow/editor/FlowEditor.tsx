@@ -105,6 +105,17 @@ import {
 } from '../grid'
 // overview 示例入口已移除
 import { DEFAULT_EDGE_COLOR, DEFAULT_ROUTIFY_TEXT_MODEL, DEFAULT_ROUTIFY_VISION_MODEL, DEFAULT_QUAD_SIZE, DEFAULT_TEXT_SIZE, DEFAULT_GROUP_SIZE } from '../constants'
+import {
+  INFOGRAPH_FRAME_ROLE,
+  INFOGRAPH_IMAGE_GEN_MODEL,
+} from '../constants'
+import {
+  runInfographicPipeline,
+  ocrBlocksToRoleBlocks,
+  buildInfographicFrameNodes,
+  nextInfographicFrameIndex,
+  computeInfographicFrameX,
+} from '../infographicRuntime'
 
 export type AssetItem = {
   id: string
@@ -394,6 +405,7 @@ function sceneHintToPipeline(scene: AiDiagramSceneHint | null): SemanticPipeline
   if (scene === 'flowchart') return 'flowchart'
   if (scene === 'free-layout') return 'free-layout-image'
   if (scene === 'business-big-map') return 'business-big-map-text'
+  if (scene === 'infographic') return 'infographic-text'
   return 'auto'
 }
 
@@ -2782,6 +2794,35 @@ function EditorInner({ onBackHome, source, previewSnapshot, readOnly: _readOnly 
     rf.fitView({ padding: Math.max(0.1, horizontalPadding) })
   }, [rf, isPreview])
 
+  /** 将视口对准指定节点（用于信息图生成后居中展示） */
+  const fitViewToNodeIds = useCallback(
+    (nodeIds: string[]) => {
+      if (nodeIds.length === 0) {
+        customFitView()
+        return
+      }
+      const LEFT_PANEL = isPreview ? 400 : 292 + 20
+      const RIGHT_PANEL = isPreview ? 400 : 332 + 20
+      const container = document.querySelector('.react-flow')
+      if (!container) {
+        rf.fitView({ nodes: nodeIds.map((id) => ({ id })), padding: 0.2, duration: 220 })
+        return
+      }
+      const rect = container.getBoundingClientRect()
+      const totalWidth = rect.width
+      const maxPanelWidth = Math.max(LEFT_PANEL, RIGHT_PANEL)
+      const horizontalPadding = totalWidth > 0 ? maxPanelWidth / totalWidth : 0.2
+      rf.fitView({
+        nodes: nodeIds.map((id) => ({ id })),
+        padding: Math.max(0.1, horizontalPadding),
+        duration: 220,
+        minZoom: 0.05,
+        maxZoom: 1.5,
+      })
+    },
+    [customFitView, isPreview, rf],
+  )
+
   // 预览模式初始加载时自动 fit 并应用安全区
   useEffect(() => {
     if (isPreview) {
@@ -3192,6 +3233,12 @@ function EditorInner({ onBackHome, source, previewSnapshot, readOnly: _readOnly 
   // 框选时会出现 selection-rect 覆盖层，可能吃掉右键事件；这里用 capture 阶段兜底。右击空白画布打开画布菜单；右击在节点/边上时不处理，交给 onNodeContextMenu/onEdgeContextMenu，才能显示「前移一层/后移一层」等。
   const onCanvasContextMenuCapture = useCallback(
     (evt: React.MouseEvent) => {
+      // AI 弹窗打开时禁止对画布任何操作（含右键）
+      if (aiModalOpen) {
+        evt.preventDefault()
+        evt.stopPropagation()
+        return
+      }
       const el = evt.target as Element | null
       if (el?.closest?.('.react-flow__node') || el?.closest?.('.react-flow__edge')) return
       evt.preventDefault()
@@ -3203,11 +3250,15 @@ function EditorInner({ onBackHome, source, previewSnapshot, readOnly: _readOnly 
       const flowPos = rf.screenToFlowPosition({ x: evt.clientX, y: evt.clientY })
       setMenu({ open: true, x, y, clientX: evt.clientX, clientY: evt.clientY, kind: 'pane', flowPos })
     },
-    [rf],
+    [aiModalOpen, rf],
   )
 
   const onNodeContextMenu = useCallback(
     (evt: MouseEvent | React.MouseEvent, node: FlowNode) => {
+      if (aiModalOpen) {
+        ;(evt as any).preventDefault?.()
+        return
+      }
       if (textEditLock) return
       ;(evt as any).preventDefault?.()
       const rect = canvasRef.current?.getBoundingClientRect()
@@ -3225,11 +3276,15 @@ function EditorInner({ onBackHome, source, previewSnapshot, readOnly: _readOnly 
       }
       setMenu({ open: true, x, y, clientX: cx, clientY: cy, kind: 'node', nodeId: node.id, nodeType: node.type, flowPos })
     },
-    [rf, selectedEdgesNow.length, selectedNodesNow],
+    [aiModalOpen, rf, selectedEdgesNow.length, selectedNodesNow, textEditLock],
   )
 
   const onEdgeContextMenu = useCallback(
     (evt: MouseEvent | React.MouseEvent, edge: FlowEdge) => {
+      if (aiModalOpen) {
+        ;(evt as any).preventDefault?.()
+        return
+      }
       if (textEditLock) return
       ;(evt as any).preventDefault?.()
       const rect = canvasRef.current?.getBoundingClientRect()
@@ -3247,7 +3302,7 @@ function EditorInner({ onBackHome, source, previewSnapshot, readOnly: _readOnly 
       }
       setMenu({ open: true, x, y, clientX: cx, clientY: cy, kind: 'edge', edgeId: edge.id, flowPos })
     },
-    [rf, selectedEdgesNow.length, selectedNodesNow],
+    [aiModalOpen, rf, selectedEdgesNow.length, selectedNodesNow, textEditLock],
   )
 
   // 用于区分“单击边打开菜单”和“双击边编辑文字”
@@ -3356,6 +3411,8 @@ function EditorInner({ onBackHome, source, previewSnapshot, readOnly: _readOnly 
     }
 
     const onKeyDown = (e: KeyboardEvent) => {
+      // AI 弹窗打开时，禁止任何对画布的快捷键操作
+      if (aiModalOpen) return
       const target = e.target as HTMLElement | null
       const tag = target?.tagName?.toLowerCase()
       if (tag === 'input' || tag === 'textarea' || target?.isContentEditable) return
@@ -3418,6 +3475,7 @@ function EditorInner({ onBackHome, source, previewSnapshot, readOnly: _readOnly 
     window.addEventListener('keydown', onKeyDown)
     return () => window.removeEventListener('keydown', onKeyDown)
   }, [
+    aiModalOpen,
     copySelection,
     deleteSelection,
     duplicateNode,
@@ -3616,6 +3674,26 @@ function EditorInner({ onBackHome, source, previewSnapshot, readOnly: _readOnly 
               justifyContent: 'center',
               padding: 16,
             }}
+            onContextMenu={(e) => {
+              // 禁止右键菜单以及任何向后穿透
+              e.preventDefault()
+              e.stopPropagation()
+            }}
+            onPointerDownCapture={(e) => {
+              // 只拦截“点在遮罩背景”时的事件，避免穿透到背后画布；
+              // 点在弹窗内容区时必须允许正常交互（输入/点击/拖拽滚动）。
+              if (e.target === e.currentTarget) {
+                e.preventDefault()
+                e.stopPropagation()
+              }
+            }}
+            onWheelCapture={(e) => {
+              // 仅当滚轮发生在遮罩背景上才阻断；弹窗内容区允许滚动
+              if (e.target === e.currentTarget) {
+                e.preventDefault()
+                e.stopPropagation()
+              }
+            }}
           >
             <div
               onClick={(e) => e.stopPropagation()}
@@ -3759,6 +3837,88 @@ function EditorInner({ onBackHome, source, previewSnapshot, readOnly: _readOnly 
                         try {
                           const ac = new AbortController()
                           aiModalAbortRef.current = ac
+                          // ── 信息图：纯文本 → 分析 → 生图 → 视觉 OCR → 二次去字 → 可编辑文字层 ──
+                          if (aiModalScene === 'infographic') {
+                            if (!p) throw new Error('请先输入要生成信息图的文本')
+                            if (aiModalImageDataUrl) {
+                              throw new Error('信息图生成请使用纯文本：请先移除已上传的参考图')
+                            }
+                            const { analysis, ocrBlocks, cleanedImageDataUrl } = await runInfographicPipeline({
+                              userText: p,
+                              textModel: aiModalModel.trim() || DEFAULT_ROUTIFY_TEXT_MODEL,
+                              visionModel: aiModalVisionModel.trim() || DEFAULT_ROUTIFY_VISION_MODEL,
+                              imageModel: INFOGRAPH_IMAGE_GEN_MODEL,
+                              signal: ac.signal,
+                              onProgress: (prog) => {
+                                const phaseMap: Record<string, string> = {
+                                  analyze: '分析素材',
+                                  generateImage: '生成信息图',
+                                  ocr: '识别文字',
+                                  removeText: '去字重绘',
+                                  done: '完成',
+                                }
+                                setAiModalProgress({
+                                  phase: phaseMap[prog.phase] ?? prog.phase,
+                                  detail: prog.detail,
+                                })
+                              },
+                            })
+                            const roleBlocks = ocrBlocksToRoleBlocks(ocrBlocks)
+                            let nextNodes = nodesEdgesRef.current.nodes
+                            const existingFrames = nextNodes.filter(
+                              (n) => n.type === 'group' && !n.parentId && (n.data as any)?.role === INFOGRAPH_FRAME_ROLE,
+                            ).length
+                            const slideIndex = nextInfographicFrameIndex(nextNodes)
+                            const frameX = computeInfographicFrameX({ existingFrames, order: 0 })
+                            const cleanedSize = await (async () => {
+                              try {
+                                const { getImageNaturalSizeFromDataUrl } = await import('../infographicRuntime')
+                                return await getImageNaturalSizeFromDataUrl(cleanedImageDataUrl)
+                              } catch {
+                                return { width: 1600, height: 900 }
+                              }
+                            })()
+                            const built = buildInfographicFrameNodes({
+                              baseNodes: nextNodes,
+                              slideIndex,
+                              cleanedImageDataUrl,
+                              roleBlocks,
+                              cleanedImageSize: cleanedSize,
+                              frameX,
+                            })
+                            nextNodes = built.nodes
+                            const infographicFrameId = built.frameId
+                            const draft: AiDiagramDraft = {
+                              schema: 'flow2go.ai.diagram.v1',
+                              title: analysis.summary.slice(0, 120) || '信息图',
+                              nodes: [],
+                              edges: [],
+                              viewport: { x: 0, y: 0, zoom: 1 },
+                              rawText: JSON.stringify(analysis),
+                            }
+                            recordSemanticRun({
+                              pipeline: 'infographic-text',
+                              semanticFormat: 'raw-text',
+                              semanticPayload: { analysis, ocrBlockCount: ocrBlocks.length, nodeCount: nextNodes.length },
+                              draft,
+                              sceneHint: aiModalScene,
+                              prompt: p,
+                              textModel: aiModalModel.trim() || DEFAULT_ROUTIFY_TEXT_MODEL,
+                              visionModel: aiModalVisionModel.trim() || DEFAULT_ROUTIFY_VISION_MODEL,
+                            })
+                            setNodes((_) => {
+                              const updated = assignZIndex(normalizeNodesToGrid(nextNodes))
+                              pushHistory(updated, nodesEdgesRef.current.edges, 'infographic-generate')
+                              return updated
+                            })
+                            requestAnimationFrame(() => {
+                              requestAnimationFrame(() => fitViewToNodeIds([infographicFrameId]))
+                            })
+                            setAiModalOpen(false)
+                            setAiModalGenerating(false)
+                            setAiModalProgress(null)
+                            return
+                          }
                           // ── 业务大图：图+胶囊 → 强制走业务大图图生图 ──
                           if (aiModalScene === 'business-big-map' && aiModalImageDataUrl) {
                             setAiModalProgress({ phase: '识图结构化', detail: '读取图中业务大图结构…' })

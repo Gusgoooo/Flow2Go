@@ -8,6 +8,7 @@
  */
 
 const PROXY_PATH = '/api/flow2go/routify'
+const VERTEX_PROXY_PATH = '/api/flow2go/vertex'
 
 export function getRoutifyOpenAIBase(): string {
   return PROXY_PATH
@@ -63,6 +64,27 @@ export async function routifyOpenAICompatiblePost(
   return res
 }
 
+export async function routifyVertexPost(
+  path: string,
+  opts: RoutifyOpenAIPostOptions = {},
+): Promise<Response> {
+  const clean = path.replace(/^\/+/, '')
+  const url = `${VERTEX_PROXY_PATH}/${clean}`
+  const method = opts.method ?? 'POST'
+  const headers: Record<string, string> = { ...opts.headers }
+  const hasBody = opts.body !== undefined && method !== 'GET'
+  if (hasBody) {
+    headers['Content-Type'] = headers['Content-Type'] ?? 'application/json'
+  }
+  console.info('[Flow2Go Routify]', method, url)
+  return fetch(url, {
+    method,
+    headers,
+    body: hasBody ? JSON.stringify(opts.body) : undefined,
+    signal: opts.signal,
+  })
+}
+
 export type RoutifyChatCompletionsOptions = {
   body: Record<string, unknown>
   signal?: AbortSignal
@@ -80,6 +102,20 @@ export async function routifyImagesGenerations(opts: {
   signal?: AbortSignal
 }): Promise<Response> {
   return routifyOpenAICompatiblePost('images/generations', {
+    body: opts.body,
+    signal: opts.signal,
+  })
+}
+
+export async function routifyVertexGenerateContent(opts: {
+  model: string
+  body: Record<string, unknown>
+  signal?: AbortSignal
+}): Promise<Response> {
+  const model = String(opts.model || '').trim()
+  if (!model) throw new Error('Vertex 生图缺少 model')
+  // Vertex: POST /protocol/vertex/v1beta/models/{model}:generateContent
+  return routifyVertexPost(`models/${encodeURIComponent(model)}:generateContent`, {
     body: opts.body,
     signal: opts.signal,
   })

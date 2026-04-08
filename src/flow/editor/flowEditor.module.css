@@ -409,6 +409,9 @@
   background: #fef2f2;
   padding: 8px 10px;
   border-radius: 12px;
+  user-select: text;
+  cursor: text;
+  white-space: pre-wrap;
 }
 
 .aiHint {

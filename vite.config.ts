@@ -8,6 +8,12 @@ import tailwindcss from '@tailwindcss/vite'
 export default defineConfig(({ mode }) => {
   const env = loadEnv(mode, process.cwd(), '')
   const routifyKey = env.ROUTIFY_API_KEY || ''
+  const routifyBase = env.VITE_ROUTIFY_BASE_URL || 'https://routify.alibaba-inc.com/protocol/openai/v1'
+  const routifyOrigin = routifyBase.replace(/\/protocol\/openai\/v1\/?$/, '')
+  // 可选：本地启动 server.ts 作为“变量注入代理”（不影响线上 codify）
+  // - target: http://localhost:3001
+  // - mount: /api/routify/*
+  const localProxy = env.VITE_ROUTIFY_LOCAL_PROXY_URL || ''
 
   return {
     base: './',
@@ -25,13 +31,31 @@ export default defineConfig(({ mode }) => {
     server: {
       proxy: {
         '/api/flow2go/routify': {
-          target: 'https://routify.alibaba-inc.com',
+          target: localProxy || routifyOrigin,
           changeOrigin: true,
-          rewrite: (p) => p.replace(/^\/api\/flow2go\/routify/, '/protocol/openai/v1'),
+          rewrite: (p) =>
+            (localProxy
+              ? p.replace(/^\/api\/flow2go\/routify/, '/api/routify')
+              : p.replace(/^\/api\/flow2go\/routify/, '/protocol/openai/v1')),
           configure: (proxy) => {
             proxy.on('proxyReq', (proxyReq) => {
               if (routifyKey) {
                 proxyReq.setHeader('Authorization', `Bearer ${routifyKey}`)
+              }
+            })
+          },
+        },
+        '/api/flow2go/vertex': {
+          target: localProxy || routifyOrigin,
+          changeOrigin: true,
+          rewrite: (p) =>
+            (localProxy
+              ? p.replace(/^\/api\/flow2go\/vertex/, '/api/vertex')
+              : p.replace(/^\/api\/flow2go\/vertex/, '/protocol/vertex/v1beta')),
+          configure: (proxy) => {
+            proxy.on('proxyReq', (proxyReq) => {
+              if (routifyKey) {
+                proxyReq.setHeader('x-goog-api-key', routifyKey)
               }
             })
           },

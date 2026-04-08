@@ -82,6 +82,19 @@ export const AI_SCENE_CAPSULE_PRESETS: AiSceneCapsulePreset[] = [
     ].join('\n'),
   },
   {
+    id: 'infographic',
+    label: '信息图',
+    scene: 'infographic',
+    accentHex: AI_SCENE_CAPSULE_ACCENT_COLORS[0],
+    tip: '自然语言生成可编辑信息图（先分析再出图，去字后叠文字层）',
+    prompt: [
+      '请根据下面素材生成一张信息图。',
+      '',
+      '主题：团队本季度 OKR 与关键结果复盘。',
+      '要点：目标要可衡量；关键结果要有关键指标；风险与依赖单列；下一迭代行动三项。',
+    ].join('\n'),
+  },
+  {
     id: 'business-big-map',
     label: '业务大图',
     scene: 'business-big-map' as AiDiagramSceneHint,
